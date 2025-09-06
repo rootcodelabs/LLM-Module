@@ -1,0 +1,52 @@
+# Example LLM Configuration File
+# This file demonstrates how to configure the LLM Config Module
+# Copy this file and modify it according to your needs
+
+llm:
+  # Default provider to use when none is specified
+  default_provider: "azure_openai"
+  
+  # Provider configurations
+  providers:
+    # Azure OpenAI Configuration
+    azure_openai:
+      enabled: true
+      model: "gpt-4o"
+      api_version: "2024-02-15-preview"
+      
+      # Use environment variables for sensitive information
+      endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      api_key: "${AZURE_OPENAI_API_KEY}"
+      deployment_name: "${AZURE_OPENAI_DEPLOYMENT_NAME}"
+      
+      # Generation parameters
+      max_tokens: 4096
+      temperature: 0.7
+    
+    # AWS Bedrock Configuration
+    aws_bedrock:
+      enabled: false  # Set to true to enable
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+      
+      # AWS credentials - use environment variables
+      region: "${AWS_REGION:us-east-1}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      session_token: "${AWS_SESSION_TOKEN:}"  # Optional
+      
+      # Generation parameters
+      max_tokens: 4096
+      temperature: 0.7
+
+# Environment Variables Required:
+# 
+# For Azure OpenAI:
+# - AZURE_OPENAI_ENDPOINT: Your Azure OpenAI endpoint URL
+# - AZURE_OPENAI_API_KEY: Your Azure OpenAI API key
+# - AZURE_OPENAI_DEPLOYMENT_NAME: Your model deployment name
+#
+# For AWS Bedrock:
+# - AWS_REGION: AWS region (defaults to us-east-1)
+# - AWS_ACCESS_KEY_ID: Your AWS access key ID
+# - AWS_SECRET_ACCESS_KEY: Your AWS secret access key
+# - AWS_SESSION_TOKEN: Optional session token for temporary credentials

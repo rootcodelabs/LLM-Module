@@ -1,0 +1,31 @@
+# LLM Configuration File
+# This file defines the configuration for different LLM providers
+# Environment variables can be used with ${VAR_NAME} or ${VAR_NAME:default_value} syntax
+
+llm:
+  # Default provider to use when none is specified
+  default_provider: "azure_openai"
+  
+  # Provider configurations
+  providers:
+    # Azure OpenAI Configuration
+    azure_openai:
+      enabled: true
+      model: "gpt-4o"
+      api_version: "2024-02-15-preview"
+      endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      api_key: "${AZURE_OPENAI_API_KEY}"
+      deployment_name: "${AZURE_OPENAI_DEPLOYMENT_NAME}"
+      max_tokens: 4096
+      temperature: 0.7
+    
+    # AWS Bedrock Configuration
+    aws_bedrock:
+      enabled: false
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+      region: "${AWS_REGION:us-east-1}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      session_token: "${AWS_SESSION_TOKEN:}"
+      max_tokens: 4096
+      temperature: 0.7
