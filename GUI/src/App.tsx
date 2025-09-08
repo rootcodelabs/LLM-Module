@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { UserInfo } from 'types/userInfo';
 import { authQueryKeys } from 'utils/queryKeys';
 import { ROLES } from 'enums/roles';
+import LoadingScreen from 'pages/LoadingScreen/LoadingScreen';
 
 const App: FC = () => {
   const navigate = useNavigate();
