@@ -1,6 +1,7 @@
 """Configuration loader for the LLM Config Module."""
 
 import os
+from dotenv import load_dotenv
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -15,6 +16,9 @@ from .schema import (
 )
 from ..types import LLMProvider
 from ..exceptions import ConfigurationError, InvalidConfigurationError
+
+# Load environment variables from .env file if present
+load_dotenv(".env")
 
 
 class ConfigurationLoader:
@@ -61,7 +65,6 @@ class ConfigurationLoader:
                 raise ConfigurationError(
                     f"Configuration file not found: {self.config_path}"
                 )
-
             with open(self.config_path, "r", encoding="utf-8") as file:
                 raw_config = yaml.safe_load(file)
 

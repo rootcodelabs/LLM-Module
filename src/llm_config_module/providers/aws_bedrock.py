@@ -29,24 +29,39 @@ class AWSBedrockProvider(BaseLLMProvider):
         try:
             self.validate_config()
 
-            # Prepare AWS credentials
-            aws_config = {
-                "region_name": self.config["region"],
-                "aws_access_key_id": self.config["access_key_id"],
-                "aws_secret_access_key": self.config["secret_access_key"],
-            }
+            # Prepare AWS credentials as environment variables or API parameters
+            import os
+
+            os.environ["AWS_ACCESS_KEY_ID"] = self.config["access_key_id"]
+            os.environ["AWS_SECRET_ACCESS_KEY"] = self.config["secret_access_key"]
+            os.environ["AWS_REGION"] = self.config["region"]
 
             # Add session token if provided
             if self.config.get("session_token"):
-                aws_config["aws_session_token"] = self.config["session_token"]
+                os.environ["AWS_SESSION_TOKEN"] = self.config["session_token"]
 
-            # Initialize DSPY Bedrock client
-            # Note: DSPY may use different parameter names, this is based on common patterns
-            self._client = dspy.Bedrock(  # type: ignore[attr-defined]
-                model=self.config["model"],
-                max_tokens=self.config.get("max_tokens", 4096),
-                temperature=self.config.get("temperature", 0.7),
-                **aws_config,
+            # Initialize DSPY LM client with Bedrock model
+            # DSPy uses LM with bedrock/ prefix for Bedrock models
+            model_name = f"bedrock/{self.config['model']}"
+            self._client = dspy.LM(
+                model=model_name,
+                model_type="chat",  # Explicit model type for proper response parsing
+                temperature=self.config.get(
+                    "temperature", 0.0
+                ),  # Use DSPY default of 0.0
+                max_tokens=self.config.get(
+                    "max_tokens", 4000
+                ),  # Use DSPY default of 4000
+                cache=True,  # Keep caching enabled (DSPY default) - this fixes serialization
+                callbacks=None,
+                num_retries=self.config.get(
+                    "num_retries", 3
+                ),  # Explicit retry configuration
+                # AWS Bedrock specific parameters
+                aws_access_key_id=self.config.get("access_key_id"),
+                aws_secret_access_key=self.config.get("secret_access_key"),
+                aws_session_token=self.config.get("session_token"),
+                region_name=self.config.get("region"),
             )
 
             self._initialized = True
@@ -79,11 +94,11 @@ class AWSBedrockProvider(BaseLLMProvider):
             # Use DSPY's generate method
             response = self._client.generate(prompt, **kwargs)  # type: ignore[attr-defined]
 
-            # DSPY returns a list of completions, we take the first one
-            if isinstance(response, list) and len(response) > 0:  # type: ignore[arg-type]
-                return response[0]  # type: ignore[return-value]
-            elif isinstance(response, str):
+            # Simple response handling - convert to string regardless of format
+            if isinstance(response, str):
                 return response
+            elif isinstance(response, list) and len(response) > 0:  # type: ignore[arg-type]
+                return str(response[0])  # type: ignore[return-value]
             else:
                 return str(response)  # type: ignore[arg-type]
 

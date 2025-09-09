@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import dspy  # type: ignore[import-untyped]
 
-from .factory import LLMFactory
+from .llm_factory import LLMFactory
 from .config.loader import ConfigurationLoader
 from .config.schema import LLMConfiguration
 from .providers.base import BaseLLMProvider

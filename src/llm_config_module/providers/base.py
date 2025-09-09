@@ -95,9 +95,9 @@ class BaseLLMProvider(ABC):
         missing_fields: List[str] = []
 
         for field in required_fields:
-            if field not in self.config:
-                missing_fields.append(field)
-            elif not self.config[field]:  # Check for empty strings/None
+            if (
+                field not in self.config or not self.config[field]
+            ):  # Check for missing or empty strings/None
                 missing_fields.append(field)
 
         if missing_fields:

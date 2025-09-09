@@ -30,7 +30,7 @@ class AzureOpenAIConfig(ProviderConfig):
 
     endpoint: str = ""
     api_key: str = ""
-    api_version: str = "2024-02-15-preview"
+    api_version: str = "2025-01-01-preview"
     deployment_name: str = ""
 
     def to_dict(self) -> Dict[str, Any]:

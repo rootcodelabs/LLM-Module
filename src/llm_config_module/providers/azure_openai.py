@@ -36,16 +36,22 @@ class AzureOpenAIProvider(BaseLLMProvider):
         try:
             self.validate_config()
 
-            # Initialize DSPY Azure OpenAI client
-            self._client = dspy.AzureOpenAI(  # type: ignore[attr-defined]
-                api_base=self.config["endpoint"],
+            # Initialize DSPY LM client with proper Azure OpenAI configuration
+            self._client = dspy.LM(
+                model=f"azure/{self.config['deployment_name']}",  # Proper Azure model format
+                model_type="chat",
+                temperature=self.config.get(
+                    "temperature", 0.0
+                ),  # Use DSPY default of 0.0
+                max_tokens=self.config.get(
+                    "max_tokens", 4000
+                ),  # Use DSPY default of 4000
+                cache=True,  # Keep caching enabled (DSPY default)
+                callbacks=None,
+                num_retries=3,  # Explicit retry configuration
                 api_key=self.config["api_key"],
+                api_base=self.config["endpoint"],
                 api_version=self.config["api_version"],
-                model=self.config[
-                    "deployment_name"
-                ],  # DSPY uses deployment name as model
-                max_tokens=self.config.get("max_tokens", 4096),
-                temperature=self.config.get("temperature", 0.7),
             )
 
             self._initialized = True
@@ -78,11 +84,11 @@ class AzureOpenAIProvider(BaseLLMProvider):
             # Use DSPY's generate method
             response = self._client.generate(prompt, **kwargs)  # type: ignore[attr-defined]
 
-            # DSPY returns a list of completions, we take the first one
-            if isinstance(response, list) and len(response) > 0:  # type: ignore[arg-type]
-                return response[0]  # type: ignore[return-value]
-            elif isinstance(response, str):
+            # Simple response handling - convert to string regardless of format
+            if isinstance(response, str):
                 return response
+            elif isinstance(response, list) and len(response) > 0:  # type: ignore[arg-type]
+                return str(response[0])  # type: ignore[return-value]
             else:
                 return str(response)  # type: ignore[arg-type]
 

@@ -22,8 +22,8 @@ Example usage:
     azure_llm = manager.get_llm(LLMProvider.AZURE_OPENAI)
 """
 
-from .manager import LLMManager
-from .factory import LLMFactory
+from .llm_manager import LLMManager
+from .llm_factory import LLMFactory
 from .types import LLMProvider
 from .exceptions import (
     LLMConfigError,

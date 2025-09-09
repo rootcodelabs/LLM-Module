@@ -70,7 +70,6 @@ def dspy_integration_example() -> None:
     print("\n=== DSPY Integration Example ===")
 
     try:
-
         manager = LLMManager()
 
         # Configure DSPY with the default provider
