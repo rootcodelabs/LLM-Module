@@ -29,17 +29,6 @@ class AWSBedrockProvider(BaseLLMProvider):
         try:
             self.validate_config()
 
-            # Prepare AWS credentials as environment variables or API parameters
-            import os
-
-            os.environ["AWS_ACCESS_KEY_ID"] = self.config["access_key_id"]
-            os.environ["AWS_SECRET_ACCESS_KEY"] = self.config["secret_access_key"]
-            os.environ["AWS_REGION"] = self.config["region"]
-
-            # Add session token if provided
-            if self.config.get("session_token"):
-                os.environ["AWS_SESSION_TOKEN"] = self.config["session_token"]
-
             # Initialize DSPY LM client with Bedrock model
             # DSPy uses LM with bedrock/ prefix for Bedrock models
             model_name = f"bedrock/{self.config['model']}"
