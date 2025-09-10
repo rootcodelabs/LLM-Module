@@ -60,7 +60,7 @@ const Header: FC<HeaderProps> = () => {
   }, [open, sessionTimeOutDuration]);
 
   useEffect(() => {
-    let timer= null;
+    let timer = null;
     if (sessionTimeOutModalOpened) {
       timer = setInterval(() => {
         setSessionTimeOutDuration((prev) => {
