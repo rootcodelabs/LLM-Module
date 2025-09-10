@@ -61,15 +61,3 @@ reportUnusedImport = "warning"             # Hygiene: warn, but don’t fail bui
 [[tool.pyright.overrides]]
 module = "tests/**"
 reportMissingTypeStubs = "warning"
-
-[tool.pytest.ini_options]
-# Test configuration - completely suppress warnings including count
-testpaths = ["tests"]
-minversion = "8.0"
-addopts = [
-    "--strict-markers",
-    "--strict-config", 
-    "-ra",  # Show extra test summary info
-    "--disable-warnings",  # Disable all warnings during test runs
-    "-p", "no:warnings"    # Disable warnings plugin completely
-]
