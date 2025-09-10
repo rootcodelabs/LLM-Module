@@ -51,8 +51,7 @@ def test_development_environment(vault_env_vars: Dict[str, str]) -> None:
     LLMManager.reset_instance()
 
     # For development environment, test with valid connection ID from test data
-    # Use the Azure connection ID that we know works from our Testcontainers vault data
-    test_connection_id = "conn_azure_prod_01"  # Based on our Testcontainers vault data
+    test_connection_id = "conn_azure_prod_01"
 
     try:
         # Initialize LLM Manager for development
