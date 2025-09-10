@@ -1,7 +1,7 @@
 """Configuration module for LLM Config Module."""
 
-from .loader import ConfigurationLoader
-from .schema import (
+from llm_config_module.config.loader import ConfigurationLoader
+from llm_config_module.config.schema import (
     LLMConfiguration,
     ProviderConfig,
     AzureOpenAIConfig,

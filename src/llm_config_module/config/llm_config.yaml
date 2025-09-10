@@ -1,4 +1,10 @@
 llm:
+  # Vault Configuration
+  vault:
+    url: "${VAULT_ADDR:http://localhost:8200}"
+    token: "${VAULT_TOKEN}"
+    enabled: true
+  
   # Default provider to use when none is specified
   default_provider: "aws_bedrock"
   
@@ -9,9 +15,6 @@ llm:
       enabled: false
       model: "gpt-4o-mini"
       api_version: "2024-02-15-preview"
-      endpoint: "${AZURE_OPENAI_ENDPOINT}"
-      api_key: "${AZURE_OPENAI_API_KEY}"
-      deployment_name: "${AZURE_OPENAI_DEPLOYMENT_NAME}"
       max_tokens: 4096
       temperature: 0.7
       cache: true
@@ -26,12 +29,6 @@ llm:
       temperature: 0.7
       cache: true  # Keep caching enabled (DSPY default)
       num_retries: 3
-      # AWS credentials - use environment variables
-      region: "${AWS_REGION:us-east-1}"
-      access_key_id: "${AWS_ACCESS_KEY_ID}"
-      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
-      session_token: "${AWS_SESSION_TOKEN:}"  # Optional
-      
       # Generation parameters
       max_tokens: 4096
       temperature: 0.7

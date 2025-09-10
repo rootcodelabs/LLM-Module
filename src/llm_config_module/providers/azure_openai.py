@@ -4,8 +4,8 @@ from typing import Any, Dict, List
 
 import dspy  # type: ignore[import-untyped]
 
-from .base import BaseLLMProvider
-from ..exceptions import ProviderInitializationError
+from llm_config_module.providers.base import BaseLLMProvider
+from llm_config_module.exceptions import ProviderInitializationError
 
 
 class AzureOpenAIProvider(BaseLLMProvider):
@@ -39,7 +39,7 @@ class AzureOpenAIProvider(BaseLLMProvider):
             # Initialize DSPY LM client with proper Azure OpenAI configuration
             self._client = dspy.LM(
                 model=f"azure/{self.config['deployment_name']}",  # Proper Azure model format
-                model_type="chat",
+                model_type=self.config.get("model_type", "chat"),
                 temperature=self.config.get(
                     "temperature", 0.0
                 ),  # Use DSPY default of 0.0
@@ -48,7 +48,9 @@ class AzureOpenAIProvider(BaseLLMProvider):
                 ),  # Use DSPY default of 4000
                 cache=True,  # Keep caching enabled (DSPY default)
                 callbacks=None,
-                num_retries=3,  # Explicit retry configuration
+                num_retries=self.config.get(
+                    "num_retries", 3
+                ),  # Explicit retry configuration
                 api_key=self.config["api_key"],
                 api_base=self.config["endpoint"],
                 api_version=self.config["api_version"],

@@ -1,12 +1,19 @@
 """Configuration schema definitions for the LLM Config Module."""
 
-from dataclasses import dataclass
 from typing import Dict, Any, Optional
-from ..types import LLMProvider
+from pydantic import BaseModel
+from llm_config_module.types import LLMProvider
 
 
-@dataclass
-class ProviderConfig:
+class VaultConfig(BaseModel):
+    """Configuration for HashiCorp Vault integration."""
+
+    url: str = "http://localhost:8200"
+    token: str = ""
+    enabled: bool = True
+
+
+class ProviderConfig(BaseModel):
     """Base configuration for LLM providers."""
 
     enabled: bool
@@ -24,7 +31,6 @@ class ProviderConfig:
         }
 
 
-@dataclass
 class AzureOpenAIConfig(ProviderConfig):
     """Configuration for Azure OpenAI provider."""
 
@@ -47,7 +53,6 @@ class AzureOpenAIConfig(ProviderConfig):
         return base_dict
 
 
-@dataclass
 class AWSBedrockConfig(ProviderConfig):
     """Configuration for AWS Bedrock provider."""
 
@@ -70,10 +75,10 @@ class AWSBedrockConfig(ProviderConfig):
         return base_dict
 
 
-@dataclass
-class LLMConfiguration:
+class LLMConfiguration(BaseModel):
     """Main configuration container for LLM settings."""
 
+    vault: Optional[VaultConfig] = None
     default_provider: LLMProvider
     providers: Dict[str, ProviderConfig]
 
@@ -84,4 +89,5 @@ class LLMConfiguration:
     def is_provider_enabled(self, provider: LLMProvider) -> bool:
         """Check if a provider is enabled."""
         config = self.get_provider_config(provider)
-        return config is not None and config.enabled
+        is_enabled = config is not None and config.enabled
+        return is_enabled

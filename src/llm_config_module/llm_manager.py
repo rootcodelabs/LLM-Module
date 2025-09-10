@@ -4,12 +4,12 @@ from typing import Any, Dict, List, Optional
 
 import dspy  # type: ignore[import-untyped]
 
-from .llm_factory import LLMFactory
-from .config.loader import ConfigurationLoader
-from .config.schema import LLMConfiguration
-from .providers.base import BaseLLMProvider
-from .types import LLMProvider
-from .exceptions import ConfigurationError
+from llm_config_module.llm_factory import LLMFactory
+from llm_config_module.config.loader import ConfigurationLoader
+from llm_config_module.config.schema import LLMConfiguration
+from llm_config_module.providers.base import BaseLLMProvider
+from llm_config_module.types import LLMProvider
+from llm_config_module.exceptions import ConfigurationError
 
 
 class LLMManager:
@@ -23,11 +23,18 @@ class LLMManager:
     _instance: Optional["LLMManager"] = None
     _initialized: bool = False
 
-    def __new__(cls, config_path: Optional[str] = None) -> "LLMManager":
+    def __new__(
+        cls,
+        config_path: Optional[str] = None,
+        environment: str = "development",
+        connection_id: Optional[str] = None,
+    ) -> "LLMManager":
         """Create or return the singleton instance.
 
         Args:
             config_path: Optional path to configuration file.
+            environment: Environment type ("production", "development", "test")
+            connection_id: Connection ID (required for development/test environments)
 
         Returns:
             LLMManager singleton instance.
@@ -36,14 +43,25 @@ class LLMManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        environment: str = "development",
+        connection_id: Optional[str] = None,
+    ) -> None:
         """Initialize the LLM Manager.
 
         Args:
             config_path: Optional path to configuration file.
+            environment: Environment type ("production", "development", "test")
+            connection_id: Connection ID (required for development/test environments)
         """
         if not self._initialized:
-            self._config_loader = ConfigurationLoader(config_path)
+            self._environment = environment
+            self._connection_id = connection_id
+            self._config_loader = ConfigurationLoader(
+                config_path, environment, connection_id
+            )
             self._config: Optional[LLMConfiguration] = None
             self._providers: Dict[LLMProvider, BaseLLMProvider] = {}
             self._default_provider: Optional[BaseLLMProvider] = None
@@ -202,6 +220,14 @@ class LLMManager:
         # Reload configuration and providers
         self._load_configuration()
         self._initialize_providers()
+
+    def get_configuration(self) -> Optional[LLMConfiguration]:
+        """Get the current configuration.
+
+        Returns:
+            Current LLM configuration or None if not loaded
+        """
+        return self._config
 
     @classmethod
     def reset_instance(cls) -> None:

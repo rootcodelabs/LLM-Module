@@ -1,24 +1,18 @@
-import os
-from pathlib import Path
 import pytest
 import dspy  # type: ignore
 from typing import Any
-from llm_config_module.llm_manager import LLMManager
-from llm_config_module.types import LLMProvider
+from pathlib import Path
+from src.llm_config_module.llm_manager import LLMManager
+from src.llm_config_module.types import LLMProvider
+from vault_test_helpers import should_skip_azure_test
 
 
 @pytest.mark.skipif(
-    not all(
-        os.getenv(v)
-        for v in [
-            "AZURE_OPENAI_API_KEY",
-            "AZURE_OPENAI_ENDPOINT",
-            "AZURE_OPENAI_DEPLOYMENT_NAME",
-        ]
-    ),
-    reason="Azure environment variables not set",
+    should_skip_azure_test(),
+    reason="Azure OpenAI not available in vault or vault not accessible",
 )
 def test_azure_llm_inference():
+    """Test that Azure OpenAI can generate text."""
     cfg_path = (
         Path(__file__).parent.parent
         / "src"
@@ -28,19 +22,23 @@ def test_azure_llm_inference():
     )
     assert cfg_path.exists(), f"llm_config.yaml not found at {cfg_path}"
 
-    manager = LLMManager(str(cfg_path))
+    # Reset singleton to ensure fresh vault discovery
+    LLMManager.reset_instance()
+
+    # Initialize with production environment to use vault credentials
+    llm_manager = LLMManager(str(cfg_path), environment="production")
 
     # Check if Azure OpenAI provider is available and enabled
-    is_azure_available = manager.is_provider_available(LLMProvider.AZURE_OPENAI)
+    is_azure_available = llm_manager.is_provider_available(LLMProvider.AZURE_OPENAI)
 
     if not is_azure_available:
-        print("\n🔒 Azure OpenAI provider is disabled in configuration")
-        print("✅ Test passed - Azure OpenAI provider is properly disabled")
+        print("\nAzure OpenAI provider is disabled in configuration")
+        print("Test passed - Azure OpenAI provider is properly disabled")
         return  # Test passes without doing inference
 
     # If Azure is enabled, proceed with inference test
-    print("\n🔓 Azure OpenAI provider is enabled - running inference test")
-    manager.configure_dspy()
+    print("\nAzure OpenAI provider is enabled - running inference test")
+    llm_manager.configure_dspy()
 
     class QA(dspy.Signature):
         """Short factual answer"""
@@ -54,12 +52,12 @@ def test_azure_llm_inference():
     )
 
     print(
-        "🤖 Question: If this pass through the Azure OpenAI provider, say 'Azure DSPY Configuration Successful'"
+        "Question: If this pass through the Azure OpenAI provider, say 'Azure DSPY Configuration Successful'"
     )
-    print(f"🎯 Answer: {out.answer}")  # type: ignore
+    print(f"Answer: {out.answer}")  # type: ignore
 
     # Type-safe assertions
     answer: Any = getattr(out, "answer", None)
     assert answer is not None, "Answer should not be None"
     assert isinstance(answer, str), f"Answer should be string, got {type(answer)}"
-    print("✅ Azure OpenAI inference test passed!")
+    print("Azure OpenAI inference test passed!")

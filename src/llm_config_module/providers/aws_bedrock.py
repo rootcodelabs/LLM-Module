@@ -4,8 +4,8 @@ from typing import Any, Dict, List
 
 import dspy  # type: ignore[import-untyped]
 
-from .base import BaseLLMProvider
-from ..exceptions import ProviderInitializationError
+from llm_config_module.providers.base import BaseLLMProvider
+from llm_config_module.exceptions import ProviderInitializationError
 
 
 class AWSBedrockProvider(BaseLLMProvider):

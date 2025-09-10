@@ -1,36 +1,81 @@
 """Configuration loader for the LLM Config Module."""
 
 import os
-from dotenv import load_dotenv
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import yaml
+from dotenv import load_dotenv
+from loguru import logger
 
-from .schema import (
+from llm_config_module.config.schema import (
     LLMConfiguration,
     ProviderConfig,
     AzureOpenAIConfig,
     AWSBedrockConfig,
+    VaultConfig,
 )
-from ..types import LLMProvider
-from ..exceptions import ConfigurationError, InvalidConfigurationError
+from .vault_resolver import VaultSecretResolver
+from llm_config_module.types import LLMProvider
+from llm_config_module.exceptions import ConfigurationError, InvalidConfigurationError
 
-# Load environment variables from .env file if present
-load_dotenv(".env")
+# Constants
+DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
 
 
 class ConfigurationLoader:
     """Loads and processes LLM configuration from YAML files with environment variable support."""
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        environment: str = "development",
+        connection_id: Optional[str] = None,
+    ) -> None:
         """Initialize the configuration loader.
 
         Args:
             config_path: Path to the configuration file. If None, uses default location.
+            environment: Environment type ("production", "development", "test")
+            connection_id: Connection ID (required for development/test environments)
         """
+        # Load environment variables from .env file if it exists
+        self._load_environment_variables()
+
         self.config_path = self._resolve_config_path(config_path)
+        self.environment = environment
+        self.connection_id = connection_id
+
+    def _load_environment_variables(self) -> None:
+        """Load environment variables from .env file if it exists."""
+        try:
+            # Look for .env file in the project root
+            # Start from the config file's directory and go up to find project root
+            current_dir = Path(__file__).parent
+            project_root = current_dir
+
+            # Go up until we find the project root (containing pyproject.toml or similar)
+            while project_root.parent != project_root:
+                if (project_root / "pyproject.toml").exists() or (
+                    project_root / ".git"
+                ).exists():
+                    break
+                project_root = project_root.parent
+
+            env_file = project_root / ".env"
+            if env_file.exists():
+                load_dotenv(env_file)
+                logger.debug(f"Loaded environment variables from {env_file}")
+            else:
+                # Try loading from current directory as fallback
+                load_dotenv(
+                    verbose=False
+                )  # This will look for .env in current directory
+
+        except Exception as e:
+            # Don't fail if .env loading fails, just log a warning
+            logger.warning(f"Could not load .env file: {e}")
 
     def _resolve_config_path(self, config_path: Optional[str]) -> Path:
         """Resolve the configuration file path."""
@@ -39,9 +84,9 @@ class ConfigurationLoader:
 
         # Default locations to search for config
         default_locations = [
-            Path("llm_config.yaml"),
-            Path("config/llm_config.yaml"),
-            Path(__file__).parent / "llm_config.yaml",
+            Path(DEFAULT_CONFIG_FILENAME),
+            Path("config") / DEFAULT_CONFIG_FILENAME,
+            Path(__file__).parent / DEFAULT_CONFIG_FILENAME,
         ]
 
         for location in default_locations:
@@ -49,7 +94,7 @@ class ConfigurationLoader:
                 return location
 
         # If no config file found, use the default location in the config directory
-        return Path(__file__).parent / "llm_config.yaml"
+        return Path(__file__).parent / DEFAULT_CONFIG_FILENAME
 
     def load_config(self) -> LLMConfiguration:
         """Load and parse the configuration file.
@@ -71,8 +116,8 @@ class ConfigurationLoader:
             if not raw_config or "llm" not in raw_config:
                 raise ConfigurationError("Invalid configuration: missing 'llm' section")
 
-            # Process environment variables
-            processed_config = self._process_environment_variables(raw_config["llm"])
+            # Process vault configuration and resolve secrets
+            processed_config = self._resolve_vault_secrets(raw_config["llm"])
 
             # Parse and validate configuration
             return self._parse_configuration(processed_config)
@@ -82,8 +127,239 @@ class ConfigurationLoader:
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {e}") from e
 
+    def _resolve_vault_secrets(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve secrets from Vault for provider configurations.
+
+        Args:
+            config: Raw configuration dictionary.
+
+        Returns:
+            Configuration with Vault secrets resolved.
+
+        Raises:
+            ConfigurationError: If vault configuration is invalid or secrets cannot be resolved
+        """
+        try:
+            # First process any remaining environment variables (like vault config)
+            config = self._process_environment_variables(config)
+
+            # Initialize vault resolver
+            resolver = self._initialize_vault_resolver(config)
+
+            # Process provider configurations
+            self._resolve_provider_secrets(config, resolver)
+
+            return config
+
+        except Exception as e:
+            if isinstance(e, ConfigurationError):
+                raise
+            raise ConfigurationError(f"Failed to resolve vault secrets: {e}") from e
+
+    def _initialize_vault_resolver(self, config: Dict[str, Any]) -> VaultSecretResolver:
+        """Initialize vault secret resolver from configuration.
+
+        Args:
+            config: Configuration dictionary
+
+        Returns:
+            Initialized VaultSecretResolver
+
+        Raises:
+            ConfigurationError: If vault configuration is invalid
+        """
+        vault_config = config.get("vault", {})
+        if not vault_config.get("enabled", True):
+            raise ConfigurationError("Vault is disabled in configuration")
+
+        vault_url = vault_config.get("url")
+        vault_token = vault_config.get("token")
+
+        if not vault_url or not vault_token:
+            raise ConfigurationError(
+                "Vault URL and token must be provided in configuration or environment variables"
+            )
+
+        return VaultSecretResolver(vault_url, vault_token)
+
+    def _resolve_provider_secrets(
+        self, config: Dict[str, Any], resolver: VaultSecretResolver
+    ) -> None:
+        """Resolve secrets for available providers using dynamic discovery.
+
+        This method discovers what providers are actually available in vault
+        for the given environment, rather than relying on static configuration.
+
+        Args:
+            config: Configuration dictionary to update
+            resolver: Vault secret resolver
+
+        Raises:
+            ConfigurationError: If secret resolution fails
+        """
+        if "providers" not in config:
+            return
+
+        # Validate environment-specific requirements
+        if self.environment in ["development", "test"]:
+            if not self.connection_id:
+                raise ConfigurationError(
+                    f"connection_id is required for {self.environment} environment"
+                )
+
+        try:
+            # Discover available providers from vault
+            available_providers = resolver.discover_available_providers(
+                environment=self.environment, connection_id=self.connection_id
+            )
+
+            # Build configuration for available providers
+            providers_to_process = self._build_provider_configs(
+                config, available_providers
+            )
+
+            if not providers_to_process:
+                raise ConfigurationError(
+                    f"No providers available for {self.environment} environment"
+                    + (
+                        f" with connection_id {self.connection_id}"
+                        if self.connection_id
+                        else ""
+                    )
+                )
+
+            # Update the config to only include available providers
+            config["providers"] = providers_to_process
+
+            # Resolve secrets for each available provider
+            self._resolve_secrets_for_providers(config, resolver, providers_to_process)
+
+            # Ensure we still have at least one provider after secret resolution
+            if not config["providers"]:
+                raise ConfigurationError(
+                    "No providers available after secret resolution"
+                )
+
+            # Update default_provider if needed
+            self._update_default_provider(config)
+
+            logger.info(
+                f"Successfully configured {len(config['providers'])} providers: {list(config['providers'].keys())}"
+            )
+
+        except Exception as e:
+            if isinstance(e, ConfigurationError):
+                raise
+            raise ConfigurationError(f"Failed to resolve provider secrets: {e}") from e
+
+    def _build_provider_configs(
+        self, config: Dict[str, Any], available_providers: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build configuration for available providers.
+
+        Args:
+            config: Original configuration
+            available_providers: Available providers from vault
+
+        Returns:
+            Dictionary of provider configurations
+        """
+        providers_to_process: Dict[str, Dict[str, Any]] = {}
+
+        for provider_name, connection in available_providers.items():
+            # Check if provider is defined in config
+            if provider_name in config["providers"]:
+                provider_config = config["providers"][provider_name]
+
+                # Copy the template configuration
+                if isinstance(provider_config, dict):
+                    providers_to_process[provider_name] = {
+                        **provider_config,
+                        "enabled": True,  # Force enable since it's available in vault
+                    }
+                    logger.info(
+                        f"Using provider {provider_name} from vault connection {connection.metadata.id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Invalid configuration for provider {provider_name}, skipping"
+                    )
+            else:
+                # Provider available in vault but not in config template
+                # Create a minimal config for it
+                providers_to_process[provider_name] = {
+                    "enabled": True,
+                    "cache": True,
+                    "num_retries": 3,
+                }
+                logger.info(
+                    f"Provider {provider_name} available in vault but not in config, using minimal configuration"
+                )
+
+        return providers_to_process
+
+    def _resolve_secrets_for_providers(
+        self,
+        config: Dict[str, Any],
+        resolver: VaultSecretResolver,
+        providers_to_process: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Resolve secrets for each provider.
+
+        Args:
+            config: Configuration dictionary to update
+            resolver: Vault secret resolver
+            providers_to_process: Providers to process
+        """
+        provider_names = list(providers_to_process.keys())
+
+        for provider_name in provider_names:
+            try:
+                secrets = resolver.resolve_provider_secrets(
+                    provider=provider_name,
+                    environment=self.environment,
+                    connection_id=self.connection_id,
+                )
+
+                # Update provider config with resolved secrets
+                if provider_name in config["providers"]:
+                    provider_dict = cast(
+                        Dict[str, Any], config["providers"][provider_name]
+                    )
+                    provider_dict.update(secrets)
+
+            except Exception as e:
+                # Remove the provider if secret resolution fails
+                logger.error(
+                    f"Failed to resolve secrets for {provider_name}, removing from available providers: {e}"
+                )
+                if provider_name in config["providers"]:
+                    del config["providers"][provider_name]
+
+    def _update_default_provider(self, config: Dict[str, Any]) -> None:
+        """Update default_provider if it's not available.
+
+        Args:
+            config: Configuration dictionary to update
+        """
+        if "default_provider" in config and "providers" in config:
+            default_provider = config["default_provider"]
+            available_providers = config["providers"]
+
+            if default_provider not in available_providers:
+                # Set default to the first available provider
+                if available_providers:
+                    new_default = next(iter(available_providers.keys()))
+                    logger.warning(
+                        f"Default provider '{default_provider}' not available, "
+                        f"using '{new_default}' instead"
+                    )
+                    config["default_provider"] = new_default
+
     def _process_environment_variables(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Process environment variable substitutions in configuration.
+
+        This method is now only used for vault configuration processing.
 
         Args:
             config: Raw configuration dictionary.
@@ -173,8 +449,15 @@ class ConfigurationLoader:
                     f"Default provider '{default_provider.value}' is not enabled"
                 )
 
+            # Parse vault configuration
+            vault_config = None
+            if "vault" in config:
+                vault_config = VaultConfig(**config["vault"])
+
             return LLMConfiguration(
-                default_provider=default_provider, providers=providers
+                vault=vault_config,
+                default_provider=default_provider,
+                providers=providers,
             )
 
         except Exception as e:

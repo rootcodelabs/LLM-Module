@@ -1,20 +1,18 @@
-import os
-from pathlib import Path
 import pytest
 import dspy  # type: ignore
 from typing import Any
-from llm_config_module.llm_manager import LLMManager
-from llm_config_module.types import LLMProvider
+from pathlib import Path
+from src.llm_config_module.llm_manager import LLMManager
+from src.llm_config_module.types import LLMProvider
+from vault_test_helpers import should_skip_aws_test
 
 
 @pytest.mark.skipif(
-    not all(
-        os.getenv(v)
-        for v in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
-    ),
-    reason="AWS environment variables not set",
+    should_skip_aws_test(),
+    reason="AWS Bedrock not available in vault or vault not accessible",
 )
 def test_aws_llm_inference():
+    """Test AWS Bedrock inference using vault-provided credentials."""
     cfg_path = (
         Path(__file__).parent.parent
         / "src"
@@ -24,7 +22,11 @@ def test_aws_llm_inference():
     )
     assert cfg_path.exists(), f"llm_config.yaml not found at {cfg_path}"
 
-    manager = LLMManager(str(cfg_path))
+    # Reset singleton to ensure fresh vault discovery
+    LLMManager.reset_instance()
+
+    # Initialize with production environment to use vault credentials
+    manager = LLMManager(str(cfg_path), environment="production")
 
     # Check if AWS Bedrock provider is available and enabled
     is_aws_available = manager.is_provider_available(LLMProvider.AWS_BEDROCK)
@@ -35,7 +37,7 @@ def test_aws_llm_inference():
         return  # Test passes without doing inference
 
     # If AWS is enabled, proceed with inference test
-    print("\n🔓 AWS Bedrock provider is enabled - running inference test")
+    print("\nAWS Bedrock provider is enabled - running inference test")
     manager.configure_dspy()
 
     class QA(dspy.Signature):
@@ -48,6 +50,11 @@ def test_aws_llm_inference():
     out = qa(
         question="If this pass through the AWS Bedrock provider, say 'AWS DSPY Configuration Successful'"
     )
+
+    print(
+        "Question: If this pass through the AWS Bedrock provider, say 'AWS DSPY Configuration Successful'"
+    )
+    print(f"Answer: {out.answer}")  # type: ignore
 
     # Type-safe assertions
     answer: Any = getattr(out, "answer", None)
