@@ -1,4 +1,4 @@
-export const modelStatuses = 
+export const platforms = 
     [
         {label: 'Active', value: 'active'},
         {label: 'Deprecated', value: 'deprecated'},

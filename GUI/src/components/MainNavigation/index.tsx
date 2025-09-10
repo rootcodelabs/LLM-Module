@@ -19,52 +19,20 @@ const MainNavigation: FC = () => {
   const items = [
     {
       id: 'userManagement',
-      label: t('menu.userManagement'),
+      label: 'User Management',
       path: '/user-management',
       icon: <MdSupervisorAccount />,
     },
-    {
-      id: 'agencies',
-      label: t('menu.agencies'),
-      path: '/integrated-agencies',
-      icon: <MdCorporateFare />
-    },
-    {
-      id: 'dataSets',
-      label: t('menu.dataSets.title'),
-      path: '',
-      icon: <MdFileCopy/>,
-      children: [
-        {
-          label: t('menu.dataSets.overview'),
-          path: 'datasets',
-        },
-        {
-          label: t('menu.dataSets.progress'),
-          path: 'datasets/progress',
-        }
-      ],
-    },
-    {
-      id: 'dataModels',
-      label: t('menu.dataModels.title'),
-      path: '',
+     {
+      id: 'llmConnections',
+      label: 'LLM Connections',
+      path: '/llm-connections',
       icon: <MdOutlineDataset />,
-      children: [
-        {
-          label: t('menu.dataModels.overview'),
-          path: 'data-models',
-        },
-        {
-          label: t('menu.dataModels.progress'),
-          path: 'training/progress',
-        }
-      ],
     },
     {
-      id: 'testing',
-      label: t('menu.testModel'),
-      path: '/testing',
+      id: 'testLLM',
+      label: 'Test LLM',
+      path: '/test-llm',
       icon: <MdSearch />
     }
   ];
@@ -154,7 +122,7 @@ const MainNavigation: FC = () => {
 
   return (
     <nav className={clsx('nav', { 'nav--collapsed': navCollapsed })}>
-      <ul className="nav__menu">{renderMenuTree(menuItems)}</ul>
+      <ul className="nav__menu">{renderMenuTree(items)}</ul>
     </nav>
   );
 };

@@ -34,7 +34,7 @@ const CreateLLMConnection = () => {
         <div className="container">
         <div className="title_container">
           <div className="flex-grid">
-            <Link to={'/data-models'}>
+            <Link to={'/llm-connections'}>
               <BackArrowButton />
             </Link>
             <div className="title">{'Create LLM Connection'}</div>

@@ -23,6 +23,7 @@ type LLMConnectionFormProps = {
   onCancel: () => void;
   defaultValues?: Partial<LLMConnectionFormData>;
   isEditing?: boolean;
+  readOnly?: boolean;
 };
 
 const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
@@ -30,6 +31,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
   onCancel,
   defaultValues,
   isEditing = false,
+  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const {
@@ -158,6 +160,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   options={llmPlatformOptions}
                   placeholder="Select LLM Platform"
                   error={errors.llmPlatform?.message}
+                  disabled={readOnly}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
                   }}
@@ -182,7 +185,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   options={getLLMModelOptions(selectedLLMPlatform)}
                   placeholder="Select LLM Model"
                   error={errors.llmModel?.message}
-                  disabled={!selectedLLMPlatform}
+                  disabled={!selectedLLMPlatform || readOnly}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
                   }}
@@ -346,9 +349,7 @@ budget, the LLM will respond with an “inactive” status</p>
               )}
             />
           </div>
-        </div>
-
-        <Track className="form-footer" gap={16} justify="end">
+          <Track className="form-footer" gap={16} justify="end">
           <div className="flex-grid">
             <Button
               appearance="secondary"
@@ -362,10 +363,12 @@ budget, the LLM will respond with an “inactive” status</p>
               disabled={!isDirty || !isValid}
               appearance="primary"
             >
-              {isEditing ? (t('global.update') || 'Update') : (t('global.create') || 'Create')}
+              {isEditing ? ('Update') : ('Create')}
             </Button>
           </div>
         </Track>
+        </div>
+        
       </form>
     </div>
   );

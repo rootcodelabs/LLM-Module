@@ -98,7 +98,7 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
           <Button
             appearance="secondary"
             size="s"
-            onClick={() => navigate(`/view-llm-connections?id=${llmConnectionId}`)}
+            onClick={() => navigate(`/view-llm-connection?id=${llmConnectionId}`)}
           >
             {t('datasets.datasetCard.settings') ?? ''}
           </Button>

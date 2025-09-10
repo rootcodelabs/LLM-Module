@@ -1,6 +1,6 @@
 .llm-connection-form {
   max-width: 800px;
-  padding: 20px;
+  padding: 0rem 1.5rem;
 
   .form-section {
     margin-bottom: 32px;
@@ -14,7 +14,7 @@
       font-size: 18px;
       font-weight: 600;
       color: #333;
-      border-bottom: 2px solid #007bff;
+      border-bottom: 2px solid #005aa3;
       padding-bottom: 8px;
     }
   }
@@ -53,15 +53,15 @@
 
       &:hover {
         background-color: #f5f5f5;
-        border-color: #007bff;
+        border-color: #005aa3;
       }
 
       &:has(.radio-input:checked) {
         background-color: #e3f2fd;
-        border-color: #007bff;
+        border-color: #005aa3;
         
         .radio-label {
-          color: #007bff;
+          color: #005aa3;
           font-weight: 500;
         }
       }
@@ -71,7 +71,7 @@
       margin-right: 8px;
       width: 16px;
       height: 16px;
-      accent-color: #007bff;
+      accent-color: #005aa3;
     }
 
     .radio-label {
