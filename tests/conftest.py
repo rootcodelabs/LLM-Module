@@ -123,12 +123,14 @@ def reset_singletons() -> Generator[None, None, None]:
 
     # Reset LLMManager
     from llm_config_module.llm_manager import LLMManager
+
     if hasattr(LLMManager, "_instance"):
         LLMManager._instance = None  # type: ignore
 
     # Reset VaultConnectionManager if available
     try:
         from rag_config_manager.vault.connection_manager import VaultConnectionManager  # type: ignore
+
         if hasattr(VaultConnectionManager, "_instance"):  # type: ignore
             VaultConnectionManager._instance = None  # type: ignore
     except ImportError:
@@ -141,6 +143,7 @@ def reset_singletons() -> Generator[None, None, None]:
         LLMManager._instance = None  # type: ignore
     try:
         from rag_config_manager.vault.connection_manager import VaultConnectionManager  # type: ignore
+
         if hasattr(VaultConnectionManager, "_instance"):  # type: ignore
             VaultConnectionManager._instance = None  # type: ignore
     except ImportError:
