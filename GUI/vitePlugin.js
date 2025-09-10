@@ -3,8 +3,8 @@ export function removeHiddenMenuItems(str) {
   const correctJson = badJson.replace(/(['"])?([a-z0-9A-Z_]+)(['"])?:/g, '"$2": ');
 
  const isHiddenFeaturesEnabled = 
-    process.env.REACT_APP_ENABLE_HIDDEN_FEATURES?.toLowerCase().trim() == 'true' ||
-    process.env.REACT_APP_ENABLE_HIDDEN_FEATURES?.toLowerCase().trim() == '1';
+    process.env.REACT_APP_ENABLE_HIDDEN_FEATURES?.toLowerCase().trim() === 'true' ||
+    process.env.REACT_APP_ENABLE_HIDDEN_FEATURES?.toLowerCase().trim() === '1';
 
   const json = removeHidden(JSON.parse(correctJson), isHiddenFeaturesEnabled);
   
