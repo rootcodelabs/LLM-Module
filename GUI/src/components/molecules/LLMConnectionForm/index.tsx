@@ -306,7 +306,9 @@ budget, the LLM will respond with an “inactive” status</p>
                 pattern: {
                   value: /^\d+(\.\d{1,2})?$/,
                   message: 'Please enter a valid budget amount'
-                }
+                },
+                validate: value => 
+                  value > 0 || 'Monthly Budget must be a positive number'
               }}
               render={({ field }) => (
                 <FormInput
