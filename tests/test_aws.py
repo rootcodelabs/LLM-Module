@@ -1,18 +1,13 @@
 import pytest
 import dspy  # type: ignore
-from typing import Any
+from typing import Any, Dict
 from pathlib import Path
 from src.llm_config_module.llm_manager import LLMManager
 from src.llm_config_module.types import LLMProvider
-from vault_test_helpers import should_skip_aws_test
 
 
-@pytest.mark.skipif(
-    should_skip_aws_test(),
-    reason="AWS Bedrock not available in vault or vault not accessible",
-)
-def test_aws_llm_inference():
-    """Test AWS Bedrock inference using vault-provided credentials."""
+def test_aws_llm_inference(vault_env_vars: Dict[str, str]) -> None:
+    """Test AWS Bedrock inference using Testcontainers vault."""
     cfg_path = (
         Path(__file__).parent.parent
         / "src"
@@ -28,7 +23,12 @@ def test_aws_llm_inference():
     # Initialize with production environment to use vault credentials
     manager = LLMManager(str(cfg_path), environment="production")
 
-    # Check if AWS Bedrock provider is available and enabled
+    # Check if AWS Bedrock provider is available from vault test data
+    providers = manager.get_available_providers()
+
+    if "aws" not in providers:
+        pytest.skip("AWS Bedrock not available in vault test data")
+
     is_aws_available = manager.is_provider_available(LLMProvider.AWS_BEDROCK)
 
     if not is_aws_available:

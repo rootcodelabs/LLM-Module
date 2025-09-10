@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Test script for LLM Config Module with Vault integration."""
+"""Test script for LLM Config Module with Vault integration using Testcontainers."""
 
-import os
 import sys
 from pathlib import Path
 import pytest
+from typing import Dict
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -22,13 +22,12 @@ logger.add(
 )
 
 
-def test_production_environment():
-    """Test LLM manager with production environment."""
+def test_production_environment(vault_env_vars: Dict[str, str]) -> None:
+    """Test LLM manager with production environment using Testcontainers."""
     logger.info("Testing LLM Manager with production environment...")
 
-    # Set vault environment variables
-    os.environ["VAULT_ADDR"] = "http://localhost:8200"
-    os.environ["VAULT_TOKEN"] = "myroot"
+    # Reset singleton for fresh test
+    LLMManager.reset_instance()
 
     # Initialize LLM Manager for production
     llm_manager = LLMManager(environment="production")
@@ -41,19 +40,19 @@ def test_production_environment():
 
     # Assert that we got providers as a dictionary
     assert isinstance(providers, dict), "Providers should be a dictionary"
+    assert len(providers) > 0, "Should have at least one provider configured"
 
 
-def test_development_environment():
-    """Test LLM manager with development environment."""
+def test_development_environment(vault_env_vars: Dict[str, str]) -> None:
+    """Test LLM manager with development environment using Testcontainers."""
     logger.info("Testing LLM Manager with development environment...")
 
-    # Set vault environment variables
-    os.environ["VAULT_ADDR"] = "http://localhost:8200"
-    os.environ["VAULT_TOKEN"] = "myroot"
+    # Reset singleton for fresh test
+    LLMManager.reset_instance()
 
-    # For development environment tests, we'll use a dummy connection ID
-    # In a real scenario, this would be provided by the API
-    test_connection_id = "test-connection-1"
+    # For development environment, test with valid connection ID from test data
+    # Use the Azure connection ID that we know works from our Testcontainers vault data
+    test_connection_id = "conn_azure_prod_01"  # Based on our Testcontainers vault data
 
     try:
         # Initialize LLM Manager for development
@@ -69,52 +68,43 @@ def test_development_environment():
 
         # Assert that we got providers as a dictionary
         assert isinstance(providers, dict), "Providers should be a dictionary"
+        assert "azure_openai" in providers, (
+            "Azure OpenAI provider should be available for conn_azure_prod_01 connection"
+        )
 
     except Exception as e:
-        # If the test connection doesn't exist, that's expected - just skip
-        logger.info(f"Development test skipped (expected if no test connection): {e}")
-        pytest.skip(f"Development environment test skipped: {e}")
+        logger.error(f"Development test failed unexpectedly: {e}")
+        raise
 
 
-def main():
-    """Main test function."""
-    logger.info("Starting LLM Config Module Vault integration tests...")
+def test_invalid_connection_id(vault_env_vars: Dict[str, str]) -> None:
+    """Test that invalid connection_id fails properly."""
+    logger.info("Testing LLM Manager with invalid connection ID...")
 
-    # Check if vault is running
-    try:
-        import requests
+    # Reset singleton for fresh test
+    LLMManager.reset_instance()
 
-        response = requests.get("http://localhost:8200/v1/sys/health", timeout=5)
-        if response.status_code not in [200, 429, 472, 473, 501, 503]:
-            logger.error(
-                "Vault is not responding properly. Please ensure Vault is running."
-            )
-            return
-    except Exception as e:
-        logger.error(f"Cannot connect to Vault: {e}")
-        logger.info("Please ensure Vault is running with: docker-compose up vault")
-        return
+    with pytest.raises(Exception):  # Should fail with invalid connection
+        LLMManager(environment="development", connection_id="invalid-connection-12345")
 
-    logger.success("Vault is running and accessible")
+    logger.success("Invalid connection ID properly rejected")
 
-    # When running as a script (not via pytest), we can call the test functions
-    if __name__ == "__main__":
-        logger.info("Running tests manually...")
 
-        try:
-            test_production_environment()
-            logger.success("Production test completed successfully!")
-        except Exception as e:
-            logger.error(f"Production test failed: {e}")
+def test_missing_connection_id(vault_env_vars: Dict[str, str]) -> None:
+    """Test that missing connection_id in development fails properly."""
+    logger.info("Testing LLM Manager with missing connection ID...")
 
-        try:
-            test_development_environment()
-            logger.success("Development test completed successfully!")
-        except Exception as e:
-            logger.error(f"Development test failed: {e}")
+    # Reset singleton for fresh test
+    LLMManager.reset_instance()
 
-        logger.success("Manual test execution completed!")
+    with pytest.raises(Exception):  # Should fail without connection_id
+        LLMManager(environment="development")
+
+    logger.success("Missing connection ID properly rejected")
 
 
 if __name__ == "__main__":
-    main()
+    logger.info(
+        "This test file is designed to run with pytest and Testcontainers fixtures"
+    )
+    logger.info("Run with: pytest tests/test_llm_vault_integration.py -v")

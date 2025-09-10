@@ -1,18 +1,13 @@
 import pytest
 import dspy  # type: ignore
-from typing import Any
+from typing import Any, Dict
 from pathlib import Path
 from src.llm_config_module.llm_manager import LLMManager
 from src.llm_config_module.types import LLMProvider
-from vault_test_helpers import should_skip_azure_test
 
 
-@pytest.mark.skipif(
-    should_skip_azure_test(),
-    reason="Azure OpenAI not available in vault or vault not accessible",
-)
-def test_azure_llm_inference():
-    """Test that Azure OpenAI can generate text."""
+def test_azure_llm_inference(vault_env_vars: Dict[str, str]) -> None:
+    """Test Azure OpenAI inference using Testcontainers vault."""
     cfg_path = (
         Path(__file__).parent.parent
         / "src"
@@ -28,7 +23,12 @@ def test_azure_llm_inference():
     # Initialize with production environment to use vault credentials
     llm_manager = LLMManager(str(cfg_path), environment="production")
 
-    # Check if Azure OpenAI provider is available and enabled
+    # Check if Azure OpenAI provider is available from vault test data
+    providers = llm_manager.get_available_providers()
+
+    if "azure" not in providers:
+        pytest.skip("Azure OpenAI not available in vault test data")
+
     is_azure_available = llm_manager.is_provider_available(LLMProvider.AZURE_OPENAI)
 
     if not is_azure_available:
