@@ -63,13 +63,11 @@ const FormMultiselect: FC<FormMultiselectProps> = (
       }
       const index = selectedItems.findIndex((item) => item.value === selectedItem.value);
       const items = [];
-      if (index > 0) {
+      if (index >= 0) {
         items.push(
           ...selectedItems.slice(0, index),
           ...selectedItems.slice(index + 1)
         );
-      } else if (index === 0) {
-        items.push(...selectedItems.slice(1));
       } else {
         items.push(...selectedItems, selectedItem);
       }
