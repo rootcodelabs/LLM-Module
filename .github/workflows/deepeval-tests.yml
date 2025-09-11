@@ -37,14 +37,14 @@ jobs:
       continue-on-error: true
       run: |
         cd tests
-        uv run python -m pytest deepeval/standard_tests.py -v --tb=short
+        uv run python -m pytest deepeval_tests/standard_tests.py -v --tb=short
         echo "PYTEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
     - name: Generate evaluation report
       id: generate_report
       run: |
         cd tests
-        uv run python deepeval/report_generator.py
+        uv run python deepeval_tests/report_generator.py
 
     - name: Read test report
       id: read_report
