@@ -4,11 +4,11 @@ from typing import Dict, Any
 from pathlib import Path
 import sys
 from deepeval.test_case import LLMTestCase
+from deepeval.metrics.answer_relevancy.answer_relevancy import AnswerRelevancyMetric
 from deepeval.metrics import (
     ContextualPrecisionMetric,
     ContextualRecallMetric,
     ContextualRelevancyMetric,
-    AnswerRelevancyMetric,
     FaithfulnessMetric,
 )
 
@@ -42,7 +42,7 @@ class TestRAGSystem:
         with open(data_path, "r", encoding="utf-8") as f:
             cls.test_data = json.load(f)
 
-    def _create_test_case(
+    def create_test_case(
         self, data_item: Dict[str, Any], provider: str = "anthropic"
     ) -> LLMTestCase:
         """Create a DeepEval test case from data item."""
@@ -59,7 +59,7 @@ class TestRAGSystem:
         )
         return llm_test_case
 
-    @pytest.mark.parametrize(
+    @pytest.mark.parametrize(  
         "test_item",
         [
             item
@@ -74,12 +74,13 @@ class TestRAGSystem:
     )
     def test_contextual_precision(self, test_item: Dict[str, Any]):
         """Test contextual precision - whether reranker ranks relevant nodes higher."""
-        test_case: LLMTestCase = self._create_test_case(test_item)
+        test_case: LLMTestCase = self.create_test_case(test_item)
         self.contextual_precision.measure(test_case)
-
-        assert self.contextual_precision.score >= 0.7, (
+        score: float|None = self.contextual_precision.score
+        assert score is not None, "Contextual Precision score is None."
+        assert score >= 0.7, (
             f"Contextual Precision failed for query: '{test_item['input']}'. "
-            f"Score: {self.contextual_precision.score}, "
+            f"Score: {score}, "
             f"Reason: {self.contextual_precision.reason}"
         )
 
@@ -98,12 +99,13 @@ class TestRAGSystem:
     )
     def test_contextual_recall(self, test_item: Dict[str, Any]):
         """Test contextual recall - whether embedding model retrieves relevant information."""
-        test_case: LLMTestCase = self._create_test_case(test_item)
+        test_case: LLMTestCase = self.create_test_case(test_item)
         self.contextual_recall.measure(test_case)
-
-        assert self.contextual_recall.score >= 0.7, (
+        score: float|None = self.contextual_recall.score
+        assert score is not None, "Contextual Recall score is None."
+        assert score >= 0.7, (
             f"Contextual Recall failed for query: '{test_item['input']}'. "
-            f"Score: {self.contextual_recall.score}, "
+            f"Score: {score}, "
             f"Reason: {self.contextual_recall.reason}"
         )
 
@@ -122,12 +124,13 @@ class TestRAGSystem:
     )
     def test_contextual_relevancy(self, test_item: Dict[str, Any]):
         """Test contextual relevancy - whether retriever gets right amount of info without irrelevancies."""
-        test_case = self._create_test_case(test_item)
+        test_case = self.create_test_case(test_item)
         self.contextual_relevancy.measure(test_case)
-
-        assert self.contextual_relevancy.score >= 0.7, (
+        score: float|None = self.contextual_relevancy.score
+        assert score is not None, "Contextual Relevancy score is None."
+        assert score >= 0.7, (
             f"Contextual Relevancy failed for query: '{test_item['input']}'. "
-            f"Score: {self.contextual_relevancy.score}, "
+            f"Score: {score}, "
             f"Reason: {self.contextual_relevancy.reason}"
         )
 
@@ -146,12 +149,14 @@ class TestRAGSystem:
     )
     def test_answer_relevancy(self, test_item: Dict[str, Any]):
         """Test answer relevancy - whether LLM outputs relevant responses based on context."""
-        test_case: LLMTestCase = self._create_test_case(test_item)
+        test_case: LLMTestCase = self.create_test_case(test_item)
         self.answer_relevancy.measure(test_case)
 
-        assert self.answer_relevancy.score >= 0.7, (
+        score: float|None = self.answer_relevancy.score
+        assert score is not None, "Answer Relevancy score is None."
+        assert score   >= 0.7, (
             f"Answer Relevancy failed for query: '{test_item['input']}'. "
-            f"Score: {self.answer_relevancy.score}, "
+            f"Score: {score}, "
             f"Reason: {self.answer_relevancy.reason}"
         )
 
@@ -170,12 +175,13 @@ class TestRAGSystem:
     )
     def test_faithfulness(self, test_item: Dict[str, Any]):
         """Test faithfulness - whether LLM outputs don't hallucinate or contradict context."""
-        test_case: LLMTestCase = self._create_test_case(test_item)
+        test_case: LLMTestCase = self.create_test_case(test_item)
         self.faithfulness.measure(test_case)
-
-        assert self.faithfulness.score >= 0.7, (
+        score: float|None = self.faithfulness.score
+        assert score is not None, "Faithfulness score is None."
+        assert score >= 0.7, (
             f"Faithfulness failed for query: '{test_item['input']}'. "
-            f"Score: {self.faithfulness.score}, "
+            f"Score: {score}, "
             f"Reason: {self.faithfulness.reason}"
         )
 
@@ -204,7 +210,7 @@ def run_comprehensive_evaluation() -> Dict[str, Any]:
 
     # Run evaluation on all test cases
     for i, test_item in enumerate(test_instance.test_data):
-        test_case: LLMTestCase = test_instance._create_test_case(test_item)
+        test_case: LLMTestCase = test_instance.create_test_case(test_item)
 
         # Evaluate with all metrics
         metrics: list[tuple[str, Any]] = [
