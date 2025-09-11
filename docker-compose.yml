@@ -258,11 +258,43 @@ services:
       timeout: 5s
       retries: 5
 
+  # LLM Orchestration Service
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - PYTHONPATH=/app/src
+    volumes:
+      # Mount configuration files
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      # Mount logs directory for persistence
+      - llm_orchestration_logs:/app/logs
+    networks:
+      - bykstack
+    depends_on:
+      - vault
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
 volumes:
   loki-data:
     name: loki-data
   grafana-data:
     name: grafana-data
+  llm_orchestration_logs:
+    name: llm_orchestration_logs
   qdrant_data:
     name: qdrant_data
   rag-search-db:

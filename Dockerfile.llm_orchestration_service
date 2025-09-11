@@ -1,0 +1,78 @@
+# Dockerfile for LLM Orchestration Service
+# Multi-stage build for optimized production image
+
+# Stage 1: Build environment with uv
+FROM python:3.12-slim AS builder
+
+# Set environment variables for uv
+ENV UV_CACHE_DIR=/opt/uv-cache \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
+# Install system dependencies for building
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv using the official installer (as per CONTRIBUTING.md)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add uv to PATH
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy uv configuration files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv
+RUN uv sync --frozen --no-dev
+
+# Stage 2: Runtime environment
+FROM python:3.12-slim AS runtime
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src"
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set working directory
+WORKDIR /app
+
+# Copy virtual environment from builder stage
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy source code
+COPY src/ src/
+
+# Copy configuration files (will be mounted as volumes in production)
+COPY src/llm_config_module/config/llm_config.yaml src/llm_config_module/config/
+
+# Create logs directory
+RUN mkdir -p logs && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose the application port
+EXPOSE 8100
+
+# Health check using the FastAPI health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8100/health || exit 1
+
+# Default command to run the LLM orchestration service
+CMD ["uvicorn", "src.llm_orchestration_service_api:app", "--host", "0.0.0.0", "--port", "8100"]
