@@ -1,16 +1,21 @@
-LLM Connections API Endpoints
+# LLM Connections API Endpoints
 
-Base URL
+## Base URL
+```
 /ruuter-private/llm/connections
+```
 
-1. Create LLM Connection
+---
 
-Endpoint
+## 1. Create LLM Connection
 
+### Endpoint
+```http
 POST /ruuter-private/llm/connections/create
+```
 
-Request Body
-
+### Request Body
+```json
 {
   "llm_platform": "OpenAI",
   "llm_model": "GPT-4o",
@@ -21,10 +26,10 @@ Request Body
   "monthly_budget": 1000.00,
   "deployment_environment": "Testing"
 }
+```
 
-
-Response (201)
-
+### Response (201 Created)
+```json
 {
   "id": 1,
   "llm_platform": "OpenAI",
@@ -37,16 +42,19 @@ Response (201)
   "created_at": "2025-09-02T10:15:30.000Z",
   "updated_at": "2025-09-02T10:15:30.000Z"
 }
+```
 
-2. Update LLM Connection
+---
 
-Endpoint
+## 2. Update LLM Connection
 
+### Endpoint
+```http
 POST /ruuter-private/llm/connections/update
+```
 
-
-Request Body
-
+### Request Body
+```json
 {
   "llm_platform": "Azure AI",
   "llm_model": "GPT-4o-mini",
@@ -54,10 +62,10 @@ Request Body
   "deployment_environment": "Production",
   "status": "inactive"
 }
+```
 
-
-Response (200)
-
+### Response (200 OK)
+```json
 {
   "id": 1,
   "llm_platform": "Azure AI",
@@ -68,44 +76,49 @@ Response (200)
   "created_at": "2025-09-02T10:15:30.000Z",
   "updated_at": "2025-09-02T11:00:00.000Z"
 }
+```
 
-3. Delete LLM Connection
+---
 
-Endpoint
+## 3. Delete LLM Connection
 
+### Endpoint
+```http
 POST /ruuter-private/llm/connections/delete
+```
 
-
-Response (200)
-
+### Response (200 OK)
+```json
 {
   "operation_successful": true,
   "message": "LLM Connection deleted successfully",
   "status_code": 200
 }
+```
 
-4. List All LLM Connections
+---
 
-Endpoint
+## 4. List All LLM Connections
 
+### Endpoint
+```http
 GET /ruuter-private/llm/connections/list
+```
 
+### Query Parameters (Optional for filtering)
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `llm_platform` | `string` | Filter by LLM platform |
+| `llm_model` | `string` | Filter by LLM model |
+| `deployment_environment` | `string` | Filter by environment (Testing / Production) |
 
-Query Params (optional for filtering)
-
-llm_platform → filter by LLM platform
-
-llm_model → filter by LLM model
-
-deployment_environment → filter by environment (Testing / Production)
-
-Example
-
+### Example Request
+```http
 GET /ruuter-private/llm/connections/list?llm_platform=OpenAI&deployment_environment=Testing&model=GPT4
+```
 
-
-Response (200)
-
+### Response (200 OK)
+```json
 [
   {
     "id": 1,
@@ -120,16 +133,19 @@ Response (200)
     "updated_at": "2025-09-02T10:15:30.000Z"
   }
 ]
+```
 
-5. Get Single LLM Connection
+---
 
-Endpoint
+## 5. Get Single LLM Connection
 
+### Endpoint
+```http
 GET /ruuter-private/llm/connections/overview
+```
 
-
-Response (200)
-
+### Response (200 OK)
+```json
 {
   "id": 1,
   "llm_platform": "OpenAI",
@@ -142,24 +158,27 @@ Response (200)
   "created_at": "2025-09-02T10:15:30.000Z",
   "updated_at": "2025-09-02T10:15:30.000Z"
 }
+```
 
+---
+# Inference Results API Endpoints
 
-
-Inference Results API Endpoints
-
-
-Base URL
+## Base URL
+```
 /ruuter-private/inference/results
+```
 
-1. Store Inference Result
+---
 
-Endpoint
+## 1. Store Inference Result
 
+### Endpoint
+```http
 POST /ruuter-private/inference/results/store
+```
 
-
-Request Body
-
+### Request Body
+```json
 {
   "llm_connection_id": 1,
   "user_question": "What are the benefits of using LLMs?",
@@ -181,10 +200,10 @@ Request Body
   },
   "final_answer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation."
 }
+```
 
-
-Response (201)
-
+### Response (201 Created)
+```json
 {
   "id": 10,
   "llm_connection_id": 1,
@@ -208,3 +227,4 @@ Response (201)
   "final_answer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation.",
   "created_at": "2025-09-02T12:15:00.000Z"
 }
+```
