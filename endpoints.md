@@ -17,14 +17,14 @@ POST /ruuter-private/llm/connections/create
 ### Request Body
 ```json
 {
-  "llm_platform": "OpenAI",
-  "llm_model": "GPT-4o",
-  "llm_api_key": "your-api-key",
-  "embedding_platform": "OpenAI",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_api_key": "your-embedding-api-key",
-  "monthly_budget": 1000.00,
-  "deployment_environment": "Testing"
+  "llmPlatform": "OpenAI",
+  "llmModel": "GPT-4o",
+  "llmApiKey": "your-api-key",
+  "embeddingPlatform": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  "embeddingApiKey": "your-embedding-api-key",
+  "monthlyBudget": 1000.00,
+  "deploymentEnvironment": "Testing"
 }
 ```
 
@@ -32,15 +32,15 @@ POST /ruuter-private/llm/connections/create
 ```json
 {
   "id": 1,
-  "llm_platform": "OpenAI",
-  "llm_model": "GPT-4o",
-  "embedding_platform": "OpenAI",
-  "embedding_model": "text-embedding-3-small",
-  "monthly_budget": 1000.00,
-  "deployment_environment": "Testing",
+  "llmPlatform": "OpenAI",
+  "llmModel": "GPT-4o",
+  "embeddingPlatform": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  "monthlyBudget": 1000.00,
+  "deploymentEnvironment": "Testing",
   "status": "active",
-  "created_at": "2025-09-02T10:15:30.000Z",
-  "updated_at": "2025-09-02T10:15:30.000Z"
+  "createdAt": "2025-09-02T10:15:30.000Z",
+  "updatedAt": "2025-09-02T10:15:30.000Z"
 }
 ```
 
@@ -56,10 +56,10 @@ POST /ruuter-private/llm/connections/update
 ### Request Body
 ```json
 {
-  "llm_platform": "Azure AI",
-  "llm_model": "GPT-4o-mini",
-  "monthly_budget": 2000.00,
-  "deployment_environment": "Production",
+  "llmPlatform": "Azure AI",
+  "llmModel": "GPT-4o-mini",
+  "monthlyBudget": 2000.00,
+  "deploymentEnvironment": "Production",
   "status": "inactive"
 }
 ```
@@ -68,13 +68,13 @@ POST /ruuter-private/llm/connections/update
 ```json
 {
   "id": 1,
-  "llm_platform": "Azure AI",
-  "llm_model": "GPT-4o-mini",
-  "monthly_budget": 2000.00,
-  "deployment_environment": "Production",
+  "llmPlatform": "Azure AI",
+  "llmModel": "GPT-4o-mini",
+  "monthlyBudget": 2000.00,
+  "deploymentEnvironment": "Production",
   "status": "inactive",
-  "created_at": "2025-09-02T10:15:30.000Z",
-  "updated_at": "2025-09-02T11:00:00.000Z"
+  "createdAt": "2025-09-02T10:15:30.000Z",
+  "updatedAt": "2025-09-02T11:00:00.000Z"
 }
 ```
 
@@ -90,9 +90,9 @@ POST /ruuter-private/llm/connections/delete
 ### Response (200 OK)
 ```json
 {
-  "operation_successful": true,
+  "operationSuccessful": true,
   "message": "LLM Connection deleted successfully",
-  "status_code": 200
+  "statusCode": 200
 }
 ```
 
@@ -108,13 +108,13 @@ GET /ruuter-private/llm/connections/list
 ### Query Parameters (Optional for filtering)
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `llm_platform` | `string` | Filter by LLM platform |
-| `llm_model` | `string` | Filter by LLM model |
-| `deployment_environment` | `string` | Filter by environment (Testing / Production) |
+| `llmPlatform` | `string` | Filter by LLM platform |
+| `llmModel` | `string` | Filter by LLM model |
+| `deploymentEnvironment` | `string` | Filter by environment (Testing / Production) |
 
 ### Example Request
 ```http
-GET /ruuter-private/llm/connections/list?llm_platform=OpenAI&deployment_environment=Testing&model=GPT4
+GET /ruuter-private/llm/connections/list?llmPlatform=OpenAI&deploymentEnvironment=Testing&model=GPT4
 ```
 
 ### Response (200 OK)
@@ -122,15 +122,15 @@ GET /ruuter-private/llm/connections/list?llm_platform=OpenAI&deployment_environm
 [
   {
     "id": 1,
-    "llm_platform": "OpenAI",
-    "llm_model": "GPT-4o",
-    "embedding_platform": "OpenAI",
-    "embedding_model": "text-embedding-3-small",
-    "monthly_budget": 1000.00,
-    "deployment_environment": "Testing",
+    "llmPlatform": "OpenAI",
+    "llmModel": "GPT-4o",
+    "embeddingPlatform": "OpenAI",
+    "embeddingModel": "text-embedding-3-small",
+    "monthlyBudget": 1000.00,
+    "deploymentEnvironment": "Testing",
     "status": "active",
-    "created_at": "2025-09-02T10:15:30.000Z",
-    "updated_at": "2025-09-02T10:15:30.000Z"
+    "createdAt": "2025-09-02T10:15:30.000Z",
+    "updatedAt": "2025-09-02T10:15:30.000Z"
   }
 ]
 ```
@@ -148,15 +148,15 @@ GET /ruuter-private/llm/connections/overview
 ```json
 {
   "id": 1,
-  "llm_platform": "OpenAI",
-  "llm_model": "GPT-4o",
-  "embedding_platform": "OpenAI",
-  "embedding_model": "text-embedding-3-small",
-  "monthly_budget": 1000.00,
-  "deployment_environment": "Testing",
+  "llmPlatform": "OpenAI",
+  "llmModel": "GPT-4o",
+  "embeddingPlatform": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  "monthlyBudget": 1000.00,
+  "deploymentEnvironment": "Testing",
   "status": "active",
-  "created_at": "2025-09-02T10:15:30.000Z",
-  "updated_at": "2025-09-02T10:15:30.000Z"
+  "createdAt": "2025-09-02T10:15:30.000Z",
+  "updatedAt": "2025-09-02T10:15:30.000Z"
 }
 ```
 
@@ -180,25 +180,25 @@ POST /ruuter-private/inference/results/store
 ### Request Body
 ```json
 {
-  "llm_connection_id": 1,
-  "user_question": "What are the benefits of using LLMs?",
-  "refined_questions": [
+  "llmConnectionId": 1,
+  "userQuestion": "What are the benefits of using LLMs?",
+  "refinedQuestions": [
     "How do LLMs improve productivity?",
     "What are practical use cases of LLMs?"
   ],
-  "conversation_history": [
+  "conversationHistory": [
     { "role": "user", "content": "Hello" },
     { "role": "assistant", "content": "Hi! How can I help you?" }
   ],
-  "ranked_chunks": [
+  "rankedChunks": [
     { "id": "chunk_1", "content": "LLMs help in summarization", "rank": 1 },
     { "id": "chunk_2", "content": "They improve Q&A systems", "rank": 2 }
   ],
-  "embedding_scores": {
+  "embeddingScores": {
     "chunk_1": 0.92,
     "chunk_2": 0.85
   },
-  "final_answer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation."
+  "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation."
 }
 ```
 
@@ -206,25 +206,97 @@ POST /ruuter-private/inference/results/store
 ```json
 {
   "id": 10,
-  "llm_connection_id": 1,
-  "user_question": "What are the benefits of using LLMs?",
-  "refined_questions": [
+  "llmConnectionId": 1,
+  "userQuestion": "What are the benefits of using LLMs?",
+  "refinedQuestions": [
     "How do LLMs improve productivity?",
     "What are practical use cases of LLMs?"
   ],
-  "conversation_history": [
+  "conversationHistory": [
     { "role": "user", "content": "Hello" },
     { "role": "assistant", "content": "Hi! How can I help you?" }
   ],
-  "ranked_chunks": [
+  "rankedChunks": [
     { "id": "chunk_1", "content": "LLMs help in summarization", "rank": 1 },
     { "id": "chunk_2", "content": "They improve Q&A systems", "rank": 2 }
   ],
-  "embedding_scores": {
+  "embeddingScores": {
     "chunk_1": 0.92,
     "chunk_2": 0.85
   },
-  "final_answer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation.",
-  "created_at": "2025-09-02T12:15:00.000Z"
+  "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation.",
+  "createdAt": "2025-09-02T12:15:00.000Z"
+}
+```
+
+## 2. View/get Inference Result
+
+### Endpoint
+```http
+POST /ruuter-private/inference/results/view
+```
+
+### Request Body
+```json
+
+{
+  "llmConnectionId": 1,
+  "message": "What are the benefits of using LLMs?"
+}
+```
+
+### Response (200 OK)
+```json
+{
+  "chatId": 10,
+  "llmServiceActive": true,
+  "questionOutOfLlmScope": true,
+  "content": "Random answer with citations
+  - https://gov.ee/sample1,
+  - https://gov.ee/sample1"
+  
+}
+```
+
+## 3. Inquiry from chatbot to llm ochestration service
+
+### Endpoint
+```http
+POST /ruuter-private/rag/inquiry
+```
+
+### Request Body
+```json
+
+{
+    "chatId": "chat-12345",
+    "message": "I need help with my electricity bill.",
+    "authorId": "12345",
+    "conversationHistory": [
+        {
+            "authorRole": "user",
+            "message": "Hi, I have a billing issue",
+            "timestamp": "2025-04-29T09:00:00Z"
+        },
+        {
+            "authorRole": "bot",
+            "message": "Sure, can you tell me more about the issue?",
+            "timestamp": "2025-04-29T09:00:05Z"
+        }
+    ],
+    "url": "id.ee"
+}
+```
+
+### Response (200 OK)
+```json
+{
+    "chatId": "chat-12345",
+    "llmServiceActive": true,
+    "questionOutOfLlmScope" : false,
+    "inputGuardFailed" : true,
+    "content": "This is a random answer payload. \n\n with citations. \n\n References
+    - https://gov.ee/sample1,
+    - https://gov.ee/sample2"
 }
 ```
