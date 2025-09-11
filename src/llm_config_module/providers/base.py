@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-import dspy  # type: ignore[import-untyped]
+import dspy
 
 from llm_config_module.exceptions import InvalidConfigurationError
 

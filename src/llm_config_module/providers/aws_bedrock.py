@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 
-import dspy  # type: ignore[import-untyped]
+import dspy
 
 from llm_config_module.providers.base import BaseLLMProvider
 from llm_config_module.exceptions import ProviderInitializationError
@@ -81,15 +81,15 @@ class AWSBedrockProvider(BaseLLMProvider):
 
         try:
             # Use DSPY's generate method
-            response = self._client.generate(prompt, **kwargs)  # type: ignore[attr-defined]
+            response = self._client.generate(prompt, **kwargs)
 
             # Simple response handling - convert to string regardless of format
             if isinstance(response, str):
                 return response
-            elif isinstance(response, list) and len(response) > 0:  # type: ignore[arg-type]
-                return str(response[0])  # type: ignore[return-value]
+            elif isinstance(response, list) and len(response) > 0:
+                return str(response[0])
             else:
-                return str(response)  # type: ignore[arg-type]
+                return str(response)
 
         except Exception as e:
             raise RuntimeError(f"Failed to generate response: {e}") from e

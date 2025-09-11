@@ -381,12 +381,12 @@ class ConfigurationLoader:
                 return re.sub(pattern, replace_env_var, obj)
             elif isinstance(obj, dict):
                 result: Dict[str, Any] = {}
-                for key, value in obj.items():  # type: ignore[misc]
-                    result[str(key)] = substitute_env_vars(value)  # type: ignore[arg-type]
+                for key, value in obj.items():
+                    result[str(key)] = substitute_env_vars(value)
                 return result
             elif isinstance(obj, list):
                 result_list: List[Any] = []
-                for item in obj:  # type: ignore[misc]
+                for item in obj:
                     result_list.append(substitute_env_vars(item))
                 return result_list
             else:
