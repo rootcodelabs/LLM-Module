@@ -5,10 +5,22 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.12.10"
 dependencies = [
+    "azure-identity>=1.24.0",
+    "boto3>=1.40.25",
+    "dspy>=3.0.3",
+    "openai>=1.106.1",
     "numpy>=2.3.2",
     "pre-commit>=4.3.0",
     "pyright>=1.1.404",
     "pytest>=8.4.1",
+    "pyyaml>=6.0.2",
+    "ruff>=0.12.12",
+    "python-dotenv>=1.1.1",
+    "loguru>=0.7.3",
+    "requests>=2.32.5",
+    "pydantic>=2.11.7",
+    "testcontainers>=4.13.0",
+    "hvac>=2.3.0",
 ]
 
 [tool.pyright]
