@@ -2,7 +2,6 @@ import os
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 import anthropic
-import openai
 
 load_dotenv()
 
@@ -177,36 +176,21 @@ class DummyLLMOrchestrator:
 
         if provider == "anthropic":
             self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        elif provider == "openai":
-            self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         else:
             raise ValueError("Provider must be 'anthropic' or 'openai'")
 
     def _generate_with_anthropic(self, prompt: str) -> str:
         """Generate response using Anthropic Claude."""
         try:
-            response = self.client.messages.create(
+            response = self.client.messages.create(  # type: ignore
                 model="claude-3-7-sonnet-20250219",
                 max_tokens=1024,
                 temperature=0.7,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return response.content[0].text
+            return response.content[0].text  # type: ignore
         except Exception as e:
             return f"Error generating response with Anthropic: {str(e)}"
-
-    def _generate_with_openai(self, prompt: str) -> str:
-        """Generate response using OpenAI GPT."""
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
-                temperature=0.7,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"Error generating response with OpenAI: {str(e)}"
 
     def _mock_nvidia_nemo_guardrail(self, response: str) -> bool:
         """Mock NVIDIA NeMO output guardrail check."""
@@ -242,14 +226,14 @@ Question: {question}
 
 Answer:"""
 
-        # Step 3: Generate response with LLM
+        # Step 3: Generate response with LLMs
         max_attempts = 2
+        response: str = ""
         for attempt in range(max_attempts):
             if self.provider == "anthropic":
-                response = self._generate_with_anthropic(prompt)
+                response: str = self._generate_with_anthropic(prompt)
             else:
-                response = self._generate_with_openai(prompt)
-            print(response)
+                response: str = "Unsupported provider."
             # Step 4: Check with NVIDIA NeMO guardrail
             if self._mock_nvidia_nemo_guardrail(response):
                 break
@@ -258,7 +242,7 @@ Answer:"""
                     "I'm sorry, I cannot provide a suitable response at this time."
                 )
 
-        result = {"response": response}
+        result: dict[str, str | list[str]] = {"response": response}
         if include_contexts:
             result["retrieval_context"] = contexts
 

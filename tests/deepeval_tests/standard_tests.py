@@ -59,7 +59,7 @@ class TestRAGSystem:
         )
         return llm_test_case
 
-    @pytest.mark.parametrize(  
+    @pytest.mark.parametrize(
         "test_item",
         [
             item
@@ -76,7 +76,7 @@ class TestRAGSystem:
         """Test contextual precision - whether reranker ranks relevant nodes higher."""
         test_case: LLMTestCase = self.create_test_case(test_item)
         self.contextual_precision.measure(test_case)
-        score: float|None = self.contextual_precision.score
+        score: float | None = self.contextual_precision.score
         assert score is not None, "Contextual Precision score is None."
         assert score >= 0.7, (
             f"Contextual Precision failed for query: '{test_item['input']}'. "
@@ -101,7 +101,7 @@ class TestRAGSystem:
         """Test contextual recall - whether embedding model retrieves relevant information."""
         test_case: LLMTestCase = self.create_test_case(test_item)
         self.contextual_recall.measure(test_case)
-        score: float|None = self.contextual_recall.score
+        score: float | None = self.contextual_recall.score
         assert score is not None, "Contextual Recall score is None."
         assert score >= 0.7, (
             f"Contextual Recall failed for query: '{test_item['input']}'. "
@@ -126,7 +126,7 @@ class TestRAGSystem:
         """Test contextual relevancy - whether retriever gets right amount of info without irrelevancies."""
         test_case = self.create_test_case(test_item)
         self.contextual_relevancy.measure(test_case)
-        score: float|None = self.contextual_relevancy.score
+        score: float | None = self.contextual_relevancy.score
         assert score is not None, "Contextual Relevancy score is None."
         assert score >= 0.7, (
             f"Contextual Relevancy failed for query: '{test_item['input']}'. "
@@ -152,9 +152,9 @@ class TestRAGSystem:
         test_case: LLMTestCase = self.create_test_case(test_item)
         self.answer_relevancy.measure(test_case)
 
-        score: float|None = self.answer_relevancy.score
+        score: float | None = self.answer_relevancy.score
         assert score is not None, "Answer Relevancy score is None."
-        assert score   >= 0.7, (
+        assert score >= 0.7, (
             f"Answer Relevancy failed for query: '{test_item['input']}'. "
             f"Score: {score}, "
             f"Reason: {self.answer_relevancy.reason}"
@@ -177,7 +177,7 @@ class TestRAGSystem:
         """Test faithfulness - whether LLM outputs don't hallucinate or contradict context."""
         test_case: LLMTestCase = self.create_test_case(test_item)
         self.faithfulness.measure(test_case)
-        score: float|None = self.faithfulness.score
+        score: float | None = self.faithfulness.score
         assert score is not None, "Faithfulness score is None."
         assert score >= 0.7, (
             f"Faithfulness failed for query: '{test_item['input']}'. "
