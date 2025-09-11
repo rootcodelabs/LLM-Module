@@ -97,9 +97,7 @@ def populated_vault(vault_client: hvac.Client) -> None:
 
     for path, data in test_data.items():
         try:
-            vault_client.secrets.kv.v2.create_or_update_secret(
-                path=path, secret=data
-            )
+            vault_client.secrets.kv.v2.create_or_update_secret(path=path, secret=data)
             logger.debug(f"Created test secret at {path}")
         except Exception as e:
             logger.error(f"Failed to create secret at {path}: {e}")
