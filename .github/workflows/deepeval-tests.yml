@@ -44,7 +44,7 @@ jobs:
       id: generate_report
       run: |
         cd tests
-        python deepeval/report_generator.py
+        uv run python deepeval/report_generator.py
 
     - name: Read test report
       id: read_report
