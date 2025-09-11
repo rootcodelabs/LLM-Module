@@ -6,6 +6,7 @@ import pytest
 from pathlib import Path
 from typing import Dict, Generator
 from testcontainers.vault import VaultContainer  # type: ignore
+from testcontainers.core.wait_strategies import LogMessageWaitStrategy  # type: ignore
 from loguru import logger
 import hvac  # type: ignore
 
@@ -17,10 +18,20 @@ sys.path.insert(0, str(src_path))
 
 @pytest.fixture(scope="session")
 def vault_container() -> Generator[VaultContainer, None, None]:
-    """Create a Vault container for testing."""
-    with VaultContainer() as vault:
-        # Vault container is automatically ready when context manager exits
-        yield vault
+    """Create a Vault container for testing with modern wait strategies."""
+    container = VaultContainer()
+
+    container.waiting_for(
+        LogMessageWaitStrategy("Vault server started!")
+        .with_startup_timeout(60)
+        .with_poll_interval(0.5)
+    )
+
+    container.start()
+    try:
+        yield container
+    finally:
+        container.stop()
 
 
 @pytest.fixture(scope="session")
