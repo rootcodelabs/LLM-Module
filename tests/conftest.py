@@ -20,13 +20,13 @@ sys.path.insert(0, str(src_path))
 def vault_container() -> Generator[VaultContainer, None, None]:
     """Create a Vault container for testing with modern wait strategies."""
     container = VaultContainer()
-    
+
     container.waiting_for(
         LogMessageWaitStrategy("Vault server started!")
         .with_startup_timeout(60)
         .with_poll_interval(0.5)
     )
-    
+
     container.start()
     try:
         yield container
