@@ -34,6 +34,6 @@ CREATE TABLE inference_results (
 
 CREATE TABLE inference_results_references (
     id SERIAL PRIMARY KEY,
-    conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    conversation_id INT NOT NULL REFERENCES inference_results(id) ON DELETE CASCADE,
     reference_url TEXT NOT NULL
 );
