@@ -6,6 +6,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from loguru import logger
+import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
 from models.request_models import OrchestrationRequest, OrchestrationResponse
@@ -104,14 +105,8 @@ async def global_exception_handler(request: object, exc: Exception) -> JSONRespo
 
 
 if __name__ == "__main__":
-    try:
-        import uvicorn  # type: ignore[import-untyped]
-    except ImportError:
-        logger.error("uvicorn not installed. Please install with: pip install uvicorn")
-        raise
-
     logger.info("Starting LLM Orchestration Service API server on port 8100")
-    uvicorn.run(  # type: ignore[attr-defined]
+    uvicorn.run(
         "llm_orchestration_service_api:app",
         host="0.0.0.0",
         port=8100,

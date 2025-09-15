@@ -1,16 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Mapping, Sequence, Optional, Dict
+from typing import Any, Iterable, List, Mapping, Sequence, Optional, Dict, Union, Protocol
 
 import logging
-import dspy  # type: ignore
+import dspy
 
 from llm_config_module import LLMManager, LLMProvider
 
 
 LOGGER = logging.getLogger(__name__)
 
+# Protocol for DSPy History objects
+class DSPyHistoryProtocol(Protocol):
+    messages: Any
 
+DSPyOutput = Union[str, Sequence[str], Sequence[Any], None]
+HistoryList = Sequence[Mapping[str, str]]
+# Use Protocol for DSPy History objects instead of Any
+HistoryLike = Union[HistoryList, DSPyHistoryProtocol]
+
+# 1. SIGNATURE: Defines the interface for the DSPy module
 class PromptRefineSig(dspy.Signature):
     """Produce N distinct, concise rewrites of the user's question using chat history.
 
@@ -22,20 +31,19 @@ class PromptRefineSig(dspy.Signature):
     - Return exactly N items.
     """
 
-    history = dspy.InputField(desc="Recent conversation history (turns).")  # type: ignore
-    question = dspy.InputField(desc="The user's latest question to refine.")  # type: ignore
-    n = dspy.InputField(desc="Number of rewrites to produce (N).")  # type: ignore
+    history = dspy.InputField(desc="Recent conversation history (turns).")
+    question = dspy.InputField(desc="The user's latest question to refine.")
+    n = dspy.InputField(desc="Number of rewrites to produce (N).")
 
-    rewrites: List[str] = dspy.OutputField(  # type: ignore
+    rewrites: List[str] = dspy.OutputField(
         desc="Exactly N refined variations of the question, each a single sentence."
     )
 
-
-def _coerce_to_list(value: Any) -> list[str]:
+def _coerce_to_list(value: DSPyOutput) -> list[str]:
     """Coerce model output into a list[str] safely."""
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):  # Handle sequences
         # Ensure elements are strings
-        return [str(x).strip() for x in value if str(x).strip()]  # type: ignore
+        return [str(x).strip() for x in value if str(x).strip()]
     if isinstance(value, str):
         lines = [ln.strip() for ln in value.splitlines() if ln.strip()]
         cleaned: list[str] = []
@@ -65,29 +73,37 @@ def _dedupe_keep_order(items: Iterable[str], limit: int) -> list[str]:
 
 def _validate_inputs(question: str, n: int) -> None:
     """Validate inputs with clear errors (Sonar: no magic, explicit checks)."""
-    if not isinstance(question, str) or not question.strip():  # type: ignore
+    if not question.strip():
         raise ValueError("`question` must be a non-empty string.")
-    if not isinstance(n, int) or n <= 0:  # type: ignore
+    if n <= 0:
         raise ValueError("`n` must be a positive integer.")
 
 
-def _is_history_like(history: Any) -> bool:
+def _is_history_like(history: HistoryLike) -> bool:
     """Accept dspy.History or list[{'role': str, 'content': str}] to stay flexible."""
 
-    if hasattr(history, "messages"):  # likely a dspy.History
+    # Case 1: Object with `messages` attribute (e.g., dspy.History)
+    if hasattr(history, "messages"):
         return True
-    if isinstance(history, Sequence):
-        return all(
-            isinstance(m, Mapping)
-            and "role" in m
-            and "content" in m
-            and isinstance(m["role"], str)
-            and isinstance(m["content"], str)
-            for m in history  # type: ignore[assignment]
-        )
+
+    # Case 2: Sequence of dict-like items
+    if isinstance(history, Sequence) and not isinstance(history, str):
+        return _validate_history_sequence(history)
+
     return False
 
+def _validate_history_sequence(history: Sequence[Mapping[str, str]]) -> bool:
+    """Helper function to validate history sequence structure."""
+    try:
+        for item in history:
+            # Check if required keys exist
+            if "role" not in item or "content" not in item:
+                return False
+        return True
+    except (KeyError, TypeError):
+        return False
 
+# 3. MODULE: Uses the signature + adds logic 
 class PromptRefinerAgent(dspy.Module):
     """Config-driven Prompt Refiner that emits N rewrites from history + question.
 

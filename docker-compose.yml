@@ -244,7 +244,7 @@ services:
       - "8200:8200"         # UI & API
     environment:
       - VAULT_ADDR=http://0.0.0.0:8200
-      - VAULT_API_ADDR=http://localhost:8200
+      - VAULT_API_ADDR=http://vault:8200
       - VAULT_DEV_ROOT_TOKEN_ID=myroot
       - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
     volumes:
@@ -264,14 +264,14 @@ services:
       context: .
       dockerfile: Dockerfile.llm_orchestration_service
     container_name: llm-orchestration-service
-    restart: unless-stopped
+    restart: always
     ports:
       - "8100:8100"
     env_file:
       - .env
     environment:
       - ENVIRONMENT=production
-      - PYTHONPATH=/app/src
+      - VAULT_ADDR=http://vault:8200
     volumes:
       # Mount configuration files
       - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
@@ -282,7 +282,7 @@ services:
     depends_on:
       - vault
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
       interval: 30s
       timeout: 10s
       start_period: 40s

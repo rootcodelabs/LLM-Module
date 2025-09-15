@@ -43,7 +43,6 @@ class LLMOrchestrationService:
             )
 
             # Initialize LLM Manager with configuration
-            # TODO: Remove hardcoded config path when proper configuration management is implemented
             self._initialize_llm_manager(
                 environment=request.environment, connection_id=request.connection_id
             )
@@ -55,14 +54,10 @@ class LLMOrchestrationService:
             )
 
             # TODO: Implement actual LLM processing pipeline
-            # This will include:
-            # 1. Input validation and guard checks
-            # 2. Context preparation from conversation history
-            # 3. LLM provider selection based on configuration
-            # 4. Question scope validation
-            # 5. LLM inference execution
-            # 6. Response post-processing
-            # 7. Citation generation
+            # 3. Chunk retriever
+            # 4. Re-ranker
+            # 5. Response Generator
+            # 6. Output Validator
 
             # For now, return hardcoded response
             response = self._generate_hardcoded_response(request.chatId)
@@ -95,8 +90,6 @@ class LLMOrchestrationService:
             connection_id: Optional connection identifier
         """
         try:
-            # TODO: Implement proper config path resolution based on environment
-            # TODO: Handle connection_id for multi-tenant scenarios
             logger.info(f"Initializing LLM Manager for environment: {environment}")
 
             self.llm_manager = LLMManager(
@@ -118,18 +111,24 @@ class LLMOrchestrationService:
         Args:
             original_message: The original user message to refine
             conversation_history: Previous conversation context
+
+        Raises:
+            ValueError: When LLM Manager is not initialized
+            ValidationError: When prompt refinement output validation fails
+            Exception: For other prompt refinement failures
         """
+        logger.info("Starting prompt refinement process")
+
+        # Check if LLM Manager is initialized
+        if self.llm_manager is None:
+            error_msg = "LLM Manager not initialized, cannot refine prompts"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
         try:
-            logger.info("Starting prompt refinement process")
-
-            if self.llm_manager is None:
-                logger.error("LLM Manager not initialized, cannot refine prompts")
-                return
-
             # Convert conversation history to DSPy format
             history: List[Dict[str, str]] = []
             for item in conversation_history:
-                # Map 'bot' to 'assistant' for consistency with standard chat formats
                 role = "assistant" if item.authorRole == "bot" else item.authorRole
                 history.append({"role": role, "content": item.message})
 
@@ -141,10 +140,19 @@ class LLMOrchestrationService:
                 history=history, question=original_message
             )
 
-            # Validate the output schema using Pydantic
-            validated_output = PromptRefinerOutput(**refinement_result)
+            # Validate the output schema using Pydantic - this will raise ValidationError if invalid
+            try:
+                validated_output = PromptRefinerOutput(**refinement_result)
+            except Exception as validation_error:
+                logger.error(
+                    f"Prompt refinement output validation failed: {str(validation_error)}"
+                )
+                logger.error(f"Invalid refinement result: {refinement_result}")
+                raise ValueError(
+                    f"Prompt refinement validation failed: {str(validation_error)}"
+                ) from validation_error
 
-            # Log the complete structured output as JSON
+
             output_json = validated_output.model_dump()
             logger.info(
                 f"Prompt refinement output: {json.dumps(output_json, indent=2)}"
@@ -152,10 +160,12 @@ class LLMOrchestrationService:
 
             logger.info("Prompt refinement completed successfully")
 
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Prompt refinement failed: {str(e)}")
-            logger.info(f"Continuing with original message: {original_message}")
-            # Don't raise exception - continue with original message
+            logger.error(f"Failed to refine message: {original_message}")
+            raise RuntimeError(f"Prompt refinement process failed: {str(e)}") from e
 
     def _generate_hardcoded_response(self, chat_id: str) -> OrchestrationResponse:
         """
