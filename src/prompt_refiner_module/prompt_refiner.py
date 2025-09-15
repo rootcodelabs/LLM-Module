@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Mapping, Sequence, Optional, Dict, Union, Protocol
+from typing import (
+    Any,
+    Iterable,
+    List,
+    Mapping,
+    Sequence,
+    Optional,
+    Dict,
+    Union,
+    Protocol,
+)
 
 import logging
 import dspy
@@ -10,14 +20,17 @@ from llm_config_module import LLMManager, LLMProvider
 
 LOGGER = logging.getLogger(__name__)
 
+
 # Protocol for DSPy History objects
 class DSPyHistoryProtocol(Protocol):
     messages: Any
+
 
 DSPyOutput = Union[str, Sequence[str], Sequence[Any], None]
 HistoryList = Sequence[Mapping[str, str]]
 # Use Protocol for DSPy History objects instead of Any
 HistoryLike = Union[HistoryList, DSPyHistoryProtocol]
+
 
 # 1. SIGNATURE: Defines the interface for the DSPy module
 class PromptRefineSig(dspy.Signature):
@@ -38,6 +51,7 @@ class PromptRefineSig(dspy.Signature):
     rewrites: List[str] = dspy.OutputField(
         desc="Exactly N refined variations of the question, each a single sentence."
     )
+
 
 def _coerce_to_list(value: DSPyOutput) -> list[str]:
     """Coerce model output into a list[str] safely."""
@@ -92,6 +106,7 @@ def _is_history_like(history: HistoryLike) -> bool:
 
     return False
 
+
 def _validate_history_sequence(history: Sequence[Mapping[str, str]]) -> bool:
     """Helper function to validate history sequence structure."""
     try:
@@ -103,7 +118,8 @@ def _validate_history_sequence(history: Sequence[Mapping[str, str]]) -> bool:
     except (KeyError, TypeError):
         return False
 
-# 3. MODULE: Uses the signature + adds logic 
+
+# 3. MODULE: Uses the signature + adds logic
 class PromptRefinerAgent(dspy.Module):
     """Config-driven Prompt Refiner that emits N rewrites from history + question.
 

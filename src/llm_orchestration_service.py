@@ -152,7 +152,6 @@ class LLMOrchestrationService:
                     f"Prompt refinement validation failed: {str(validation_error)}"
                 ) from validation_error
 
-
             output_json = validated_output.model_dump()
             logger.info(
                 f"Prompt refinement output: {json.dumps(output_json, indent=2)}"

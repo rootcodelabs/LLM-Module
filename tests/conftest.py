@@ -97,9 +97,7 @@ def populated_vault(vault_client: hvac.Client) -> None:
 
     for path, data in test_data.items():
         try:
-            vault_client.secrets.kv.v2.create_or_update_secret(
-                path=path, secret=data
-            )
+            vault_client.secrets.kv.v2.create_or_update_secret(path=path, secret=data)
             logger.debug(f"Created test secret at {path}")
         except Exception as e:
             logger.error(f"Failed to create secret at {path}: {e}")
@@ -140,7 +138,9 @@ def reset_singletons() -> Generator[None, None, None]:
 
     # Reset VaultConnectionManager if available
     try:
-        from src.rag_config_manager.vault.connection_manager import ConnectionManager as VaultConnectionManager
+        from src.rag_config_manager.vault.connection_manager import (
+            ConnectionManager as VaultConnectionManager,
+        )
 
         if hasattr(VaultConnectionManager, "_instance"):
             VaultConnectionManager._instance = None
@@ -153,7 +153,9 @@ def reset_singletons() -> Generator[None, None, None]:
     if hasattr(LLMManager, "_instance"):
         LLMManager._instance = None
     try:
-        from src.rag_config_manager.vault.connection_manager import ConnectionManager as VaultConnectionManager
+        from src.rag_config_manager.vault.connection_manager import (
+            ConnectionManager as VaultConnectionManager,
+        )
 
         if hasattr(VaultConnectionManager, "_instance"):
             VaultConnectionManager._instance = None

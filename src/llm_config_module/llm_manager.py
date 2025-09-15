@@ -164,6 +164,7 @@ class LLMManager:
         """
         dspy_client = self.get_dspy_client(provider)
         dspy.configure(lm=dspy_client)
+
     def get_available_providers(self) -> Dict[LLMProvider, str]:
         """Get information about available providers.
 

@@ -24,7 +24,9 @@ from llm_config_module.exceptions import ConfigurationError, InvalidConfiguratio
 DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
 
 # Type alias for configuration values that can be processed
-ConfigValue = Union[str, Dict[str, "ConfigValue"], List["ConfigValue"], int, float, bool, None]
+ConfigValue = Union[
+    str, Dict[str, "ConfigValue"], List["ConfigValue"], int, float, bool, None
+]
 
 
 class ConfigurationLoader:
@@ -402,7 +404,9 @@ class ConfigurationLoader:
             return cast(Dict[str, Any], result)
         else:
             # This should never happen given our input type, but provide a fallback
-            raise ConfigurationError("Environment variable substitution resulted in non-dictionary type")
+            raise ConfigurationError(
+                "Environment variable substitution resulted in non-dictionary type"
+            )
 
     def _parse_configuration(self, config: Dict[str, Any]) -> LLMConfiguration:
         """Parse the processed configuration into structured objects.

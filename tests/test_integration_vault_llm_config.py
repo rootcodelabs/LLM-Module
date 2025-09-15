@@ -44,7 +44,9 @@ class TestVaultIntegration:
         self, vault_env_vars: Dict[str, str]
     ) -> None:
         """Test that development environment requires connection_id."""
-        with pytest.raises(ConfigurationError, match=r".*connection_id is required.*development"):
+        with pytest.raises(
+            ConfigurationError, match=r".*connection_id is required.*development"
+        ):
             LLMManager(
                 config_path=str(self.cfg_path),
                 environment="development",
@@ -81,7 +83,10 @@ class TestVaultIntegration:
 
     def test_invalid_connection_id_fails(self, vault_env_vars: Dict[str, str]) -> None:
         """Test that invalid connection_id causes failure."""
-        with pytest.raises(ConfigurationError, match=r".*(Connection not found|Failed to discover providers)"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r".*(Connection not found|Failed to discover providers)",
+        ):
             LLMManager(
                 config_path=str(self.cfg_path),
                 environment="development",
