@@ -2,14 +2,15 @@ import BackArrowButton from "assets/BackArrowButton";
 import LLMConnectionForm, { LLMConnectionFormData } from "components/molecules/LLMConnectionForm";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useToast } from 'hooks/useToast';
+import { useDialog } from 'hooks/useDialog';
 import { createLLMConnection } from 'services/llmConnections';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
-import { ToastTypes } from 'enums/commonEnums';
+import { ButtonAppearanceTypes } from 'enums/commonEnums';
+import { Button } from 'components';
 
 const CreateLLMConnection = () => {
     const navigate = useNavigate();
-    const toast = useToast();
+    const { open: openDialog, close: closeDialog } = useDialog();
     const queryClient = useQueryClient();
     
     const createConnectionMutation = useMutation({
@@ -20,20 +21,35 @@ const CreateLLMConnection = () => {
           queryKey: llmConnectionsQueryKeys.all()
         });
         
-        toast.open({
-          type: ToastTypes.SUCCESS,
-          title: 'Success',
-          message: 'LLM connection created successfully!',
+        openDialog({
+          title: 'Connection Succeeded',
+          content: <p>The connection couldn’t be established either due to invalid API credentials or misconfiguration in the deployment platform</p>,
+          footer: (
+            <Button
+              appearance={ButtonAppearanceTypes.PRIMARY}
+              onClick={() => {
+                closeDialog();
+                navigate('/llm-connections');
+              }}
+            >
+              View LLM Connections
+            </Button>
+          ),
         });
-        
-        navigate('/llm-connections');
       },
       onError: (error: any) => {
         console.error('Error creating LLM connection:', error);
-        toast.open({
-          type: ToastTypes.ERROR,
-          title: 'Error',
-          message: error?.message || 'Failed to create LLM connection. Please try again.',
+        openDialog({
+          title: 'Connection Failed',
+          content: <p>{'The provided LLM configuration is invalid or misconfigured.'}</p>,
+          footer: (
+            <Button
+              appearance={ButtonAppearanceTypes.PRIMARY}
+              onClick={closeDialog}
+            >
+              Go Back
+            </Button>
+          ),
         });
       },
     });
