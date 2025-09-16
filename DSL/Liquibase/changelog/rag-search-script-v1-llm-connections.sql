@@ -12,13 +12,11 @@ CREATE TABLE llm_connections (
     
     -- Budget and Environment
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
-    environment VARCHAR(50) NOT NULL CHECK (environment IN ('Testing', 'Production')),
+    environment VARCHAR(50) NOT NULL,
     
     -- Metadata
-    status VARCHAR(50) DEFAULT 'active',      -- active / inactive
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+    connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
+    created_at TIMESTAMP DEFAULT NOW());
 
 CREATE TABLE inference_results (
     id SERIAL PRIMARY KEY,

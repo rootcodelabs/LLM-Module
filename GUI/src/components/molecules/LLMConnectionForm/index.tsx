@@ -21,6 +21,7 @@ export type LLMConnectionFormData = {
 type LLMConnectionFormProps = {
   onSubmit: (data: LLMConnectionFormData) => void;
   onCancel: () => void;
+  onDelete: () => void;
   defaultValues?: Partial<LLMConnectionFormData>;
   isEditing?: boolean;
   readOnly?: boolean;
@@ -29,6 +30,7 @@ type LLMConnectionFormProps = {
 const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
   onSubmit,
   onCancel,
+  onDelete,
   defaultValues,
   isEditing = false,
   readOnly = false,
@@ -146,7 +148,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       <form onSubmit={handleSubmit(handleFormSubmit)}>
         <div className="form-section">
           <h3 className="form-section-title">LLM Configuration</h3>
-          
+
           <div className="form-row">
             <p className='form-label'>LLM Platform</p>
             <p className='form-description'> Cloud / local platform in which your model is hosted</p>
@@ -172,9 +174,9 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           </div>
 
           <div className="form-row">
-             <p className='form-label'>LLM Model</p>
+            <p className='form-label'>LLM Model</p>
             <p className='form-description'>The LLM model that you want to use</p>
-            
+
             <Controller
               name="llmModel"
               control={control}
@@ -197,9 +199,9 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           </div>
 
           <div className="form-row">
-             <p className='form-label'>LLM API Key</p>
+            <p className='form-label'>LLM API Key</p>
             <p className='form-description'>The API key of the LLM model</p>
-            
+
             <Controller
               name="llmApiKey"
               control={control}
@@ -219,11 +221,11 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
 
         <div className="form-section">
           <h3 className="form-section-title">Embedding Model Configuration</h3>
-          
+
           <div className="form-row">
-              <p className='form-label'>Embedding Model Platform</p>
+            <p className='form-label'>Embedding Model Platform</p>
             <p className='form-description'>This is the cloud / local platform in which your embedding model is hosted</p>
-            
+
             <Controller
               name="embeddingModelPlatform"
               control={control}
@@ -245,9 +247,9 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           </div>
 
           <div className="form-row">
-              <p className='form-label'>Embedding Model</p>
+            <p className='form-label'>Embedding Model</p>
             <p className='form-description'>The embedding model that will be used for searching your knowledge base</p>
-            
+
             <Controller
               name="embeddingModel"
               control={control}
@@ -270,9 +272,9 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           </div>
 
           <div className="form-row">
-              <p className='form-label'>Embedding Model API Key</p>
+            <p className='form-label'>Embedding Model API Key</p>
             <p className='form-description'>API key of your embedding model</p>
-            
+
             <Controller
               name="embeddingApiKey"
               control={control}
@@ -292,23 +294,23 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
 
         <div className="form-section">
           <h3 className="form-section-title">Budget & Deployment</h3>
-          
+
           <div className="form-row">
-              <p className='form-label'>Monthly Budget</p>
+            <p className='form-label'>Monthly Budget</p>
             <p className='form-description'>Total monthly budget including embedding model and LLM model. If the LLM integration usage cost exceeds the below
-budget, the LLM will respond with an “inactive” status</p>
-            
+              budget, the LLM will respond with an “inactive” status</p>
+
             <Controller
               name="monthlyBudget"
               control={control}
-              rules={{ 
+              rules={{
                 required: 'Monthly Budget is required',
                 pattern: {
                   value: /^\d+(\.\d{1,2})?$/,
                   message: 'Please enter a valid budget amount'
                 },
-                validate: value => 
-                  value > 0 || 'Monthly Budget must be a positive number'
+                validate: value =>
+                  Number(value) > 0 || 'Monthly Budget must be a positive number'
               }}
               render={({ field }) => (
                 <FormInput
@@ -352,25 +354,31 @@ budget, the LLM will respond with an “inactive” status</p>
             />
           </div>
           <Track className="form-footer" gap={16} justify="end">
-          <div className="flex-grid">
-            <Button
-              appearance="secondary"
-              onClick={onCancel}
-              type="button"
-            >
-              {t('global.cancel') || 'Cancel'}
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={!isDirty || !isValid}
-              appearance="primary"
-            >
-              {isEditing ? ('Update') : ('Create')}
-            </Button>
-          </div>
-        </Track>
+            <div className="flex-grid">
+              <Button
+                appearance="secondary"
+                onClick={onCancel}
+                type="button"
+              >
+                {t('global.cancel') || 'Cancel'}
+              </Button>
+              {isEditing && (<Button
+                appearance="error"
+                onClick={onDelete}
+              >
+                Delete
+              </Button>)}
+              <Button
+                type="submit"
+                disabled={!isDirty || !isValid}
+                appearance="primary"
+              >
+                {isEditing ? ('Update') : ('Create')}
+              </Button>
+            </div>
+          </Track>
         </div>
-        
+
       </form>
     </div>
   );
