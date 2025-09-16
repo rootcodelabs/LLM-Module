@@ -16,7 +16,7 @@ from llm_config_module.config.schema import (
     AWSBedrockConfig,
     VaultConfig,
 )
-from .vault_resolver import VaultSecretResolver
+from llm_config_module.config.vault_resolver import VaultSecretResolver
 from llm_config_module.types import LLMProvider
 from llm_config_module.exceptions import ConfigurationError, InvalidConfigurationError
 

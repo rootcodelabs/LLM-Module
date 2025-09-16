@@ -6,10 +6,11 @@ from loguru import logger
 
 from rag_config_manager.vault.client import VaultClient
 from rag_config_manager.models import (
-    Connection,
-    ConnectionMetadata,
     AzureOpenAIConnection,
     AWSConnection,
+    QdrantConnection,
+    Connection,
+    ConnectionMetadata,
     ProviderType,
     Environment,
     UsageStats,
@@ -79,6 +80,8 @@ class ConnectionManager:
                 connection_obj = AzureOpenAIConnection(**connection_data)
             elif provider == ProviderType.AWS_BEDROCK:
                 connection_obj = AWSConnection(**connection_data)
+            elif provider == ProviderType.QDRANT:
+                connection_obj = QdrantConnection(**connection_data)
             else:
                 raise InvalidConnectionDataError(f"Unsupported provider: {provider}")
 
@@ -403,7 +406,7 @@ class ConnectionManager:
                 return None
 
             # List all users by checking the root secrets path
-            users_path = "secret/users"
+            users_path = "users"  # Updated to match actual vault structure
             user_ids = self.vault.list_secrets(users_path)
 
             if not user_ids:
@@ -431,3 +434,40 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Error finding production connection for {provider}: {e}")
             return None
+
+    def get_all_connections(self) -> List[Connection]:
+        """Get all connections across all users.
+
+        Returns:
+            List of all connections found in vault
+        """
+        all_connections: List[Connection] = []
+
+        try:
+            # List all users
+            users_path = "users"
+            user_ids = self.vault.list_secrets(users_path)
+
+            if not user_ids:
+                logger.debug("No users found in vault")
+                return all_connections
+
+            # Get connections for each user
+            for user_id in user_ids:
+                user_id = user_id.rstrip("/")  # Remove trailing slash
+                try:
+                    user_connections = self.list_user_connections(user_id)
+                    if user_connections:
+                        all_connections.extend(user_connections)
+                        logger.debug(
+                            f"Found {len(user_connections)} connections for user {user_id}"
+                        )
+                except Exception as e:
+                    logger.debug(f"Could not list connections for user {user_id}: {e}")
+
+            logger.info(f"Found total of {len(all_connections)} connections in vault")
+            return all_connections
+
+        except Exception as e:
+            logger.error(f"Failed to get all connections: {e}")
+            return []

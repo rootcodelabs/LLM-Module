@@ -145,7 +145,7 @@ class PromptRefinerAgent(dspy.Module):
         default_n: int = 5,
         llm_manager: Optional[LLMManager] = None,
     ) -> None:
-        super().__init__()  # type: ignore
+        super().__init__()
         if default_n <= 0:
             raise ValueError("`default_n` must be a positive integer.")
 
@@ -159,8 +159,7 @@ class PromptRefinerAgent(dspy.Module):
             self._manager = LLMManager(config_path)
             LOGGER.debug("PromptRefinerAgent created new LLMManager instance.")
 
-        self._manager.configure_dspy(provider)
-
+        self._provider = provider  # keep for contexts
         provider_info = self._manager.get_provider_info(provider)
         LOGGER.debug(
             "PromptRefinerAgent configured with provider '%s'.",
@@ -189,7 +188,9 @@ class PromptRefinerAgent(dspy.Module):
             )
 
         # Primary prediction
-        result = self._predictor(history=history, question=question, n=k)
+        # run inside task-local context
+        with self._manager.use_task_local(self._provider):
+            result = self._predictor(history=history, question=question, n=k)
         rewrites = _coerce_to_list(getattr(result, "rewrites", []))
         deduped = _dedupe_keep_order(rewrites, k)
 
@@ -199,11 +200,12 @@ class PromptRefinerAgent(dspy.Module):
         # If short, ask for a few more variants to top up
         missing = k - len(deduped)
         if missing > 0:
-            follow = self._predictor(
-                history=history,
-                question=f"Create {missing} additional, *new* paraphrases of: {question}",
-                n=missing,
-            )
+            with self._manager.use_task_local(self._provider):
+                follow = self._predictor(
+                    history=history,
+                    question=f"Create {missing} additional, *new* paraphrases of: {question}",
+                    n=missing,
+                )
             extra = _coerce_to_list(getattr(follow, "rewrites", []))
             combined = _dedupe_keep_order(deduped + extra, k)
             return combined

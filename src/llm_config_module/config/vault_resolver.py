@@ -50,6 +50,9 @@ class VaultSecretResolver:
         """
         available_providers: Dict[str, Connection] = {}
 
+        # Define LLM providers (not vector databases or other infrastructure)
+        llm_provider_types = {"azure_openai", "aws_bedrock", "openai", "anthropic"}
+
         try:
             if environment == "production":
                 logger.info("Searching for production connections...")
@@ -60,10 +63,14 @@ class VaultSecretResolver:
                     conn
                     for conn in all_connections
                     if conn.metadata.environment == "production"
+                    and conn.metadata.provider.value
+                    in llm_provider_types  # Filter for LLM providers only
                 ]
 
                 if not production_connections:
-                    raise ConfigurationError("No production connections found in vault")
+                    raise ConfigurationError(
+                        "No production LLM connections found in vault"
+                    )
 
                 # Group by provider - use the first connection found for each provider
                 for connection in production_connections:
@@ -84,10 +91,17 @@ class VaultSecretResolver:
                 connection = self._find_connection_by_id(connection_id)
                 if connection:
                     provider_name = connection.metadata.provider.value
-                    available_providers[provider_name] = connection
-                    logger.info(
-                        f"Found {environment} provider: {provider_name} (connection: {connection_id})"
-                    )
+                    if (
+                        provider_name in llm_provider_types
+                    ):  # Filter for LLM providers only
+                        available_providers[provider_name] = connection
+                        logger.info(
+                            f"Found {environment} provider: {provider_name} (connection: {connection_id})"
+                        )
+                    else:
+                        logger.info(
+                            f"Skipping non-LLM provider: {provider_name} (connection: {connection_id})"
+                        )
                 else:
                     raise ConfigurationError(f"Connection not found: {connection_id}")
 
@@ -99,12 +113,12 @@ class VaultSecretResolver:
 
             if not available_providers:
                 raise ConfigurationError(
-                    f"No providers available for {environment} environment"
+                    f"No LLM providers available for {environment} environment"
                     + (f" with connection_id {connection_id}" if connection_id else "")
                 )
 
             logger.info(
-                f"Discovered {len(available_providers)} providers for {environment}: {list(available_providers.keys())}"
+                f"Discovered {len(available_providers)} LLM providers for {environment}: {list(available_providers.keys())}"
             )
             return available_providers
 
@@ -315,6 +329,14 @@ class VaultSecretResolver:
             Connection object or None if not found
         """
         try:
+            # Define LLM providers (not vector databases or other infrastructure)
+            llm_provider_types = {"azure_openai", "aws_bedrock", "openai", "anthropic"}
+
+            # Ensure we're only looking for LLM providers
+            if provider not in llm_provider_types:
+                logger.debug(f"Provider {provider} is not an LLM provider, skipping")
+                return None
+
             # Get all connections and filter for production environment and provider
             all_connections = self._get_all_connections()
 
@@ -355,6 +377,7 @@ class VaultSecretResolver:
                 "endpoint": connection_data.get("endpoint", ""),
                 "api_key": connection_data.get("api_key", ""),
                 "deployment_name": connection_data.get("deployment_name", ""),
+                "api_version": connection_data.get("api_version", "2024-02-01"),
             }
 
         elif provider == "aws_bedrock":
@@ -362,6 +385,30 @@ class VaultSecretResolver:
                 "region": connection_data.get("region", ""),
                 "access_key_id": connection_data.get("access_key_id", ""),
                 "secret_access_key": connection_data.get("secret_access_key", ""),
+            }
+
+        elif provider == "qdrant":
+            return {
+                "host": connection_data.get("host", "localhost"),
+                "port": connection_data.get("port", 6333),
+                "collection_name": connection_data.get(
+                    "collection_name", "document_chunks"
+                ),
+                "timeout": connection_data.get("timeout", 30.0),
+                "api_key": connection_data.get("api_key"),  # Optional for Qdrant
+            }
+
+        elif provider == "openai":
+            return {
+                "api_key": connection_data.get("api_key", ""),
+                "organization": connection_data.get("organization"),
+                "base_url": connection_data.get("base_url"),
+            }
+
+        elif provider == "anthropic":
+            return {
+                "api_key": connection_data.get("api_key", ""),
+                "base_url": connection_data.get("base_url"),
             }
 
         else:
