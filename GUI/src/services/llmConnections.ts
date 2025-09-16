@@ -83,7 +83,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     embedding_model: connectionData.embeddingModel,
     embedding_api_key: connectionData.embeddingApiKey,
     monthly_budget: parseFloat(connectionData.monthlyBudget),
-    deployment_environment: connectionData.deploymentEnvironment,
+    deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
   });
   return data?.response;
 }
@@ -100,8 +100,8 @@ export async function updateLLMConnection(
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     embedding_api_key: connectionData.embeddingApiKey,
-    monthly_budget: connectionData.monthlyBudget,
-    deployment_environment: connectionData.deploymentEnvironment,
+    monthly_budget: parseFloat(connectionData.monthlyBudget),
+    deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
   });
   return data?.response;
 }
