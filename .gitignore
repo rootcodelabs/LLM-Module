@@ -5,4 +5,4 @@ __pycache__/
 .pytest_cache/
 .env
 tim-db
-data_sets/
+data_sets
