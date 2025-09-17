@@ -101,7 +101,6 @@ class ConnectionManager:
                 metadata=metadata, connection_data=connection_obj.model_dump()
             )
 
-            # Store in Vault
             path = self._get_user_connection_path(user_id, provider, metadata.id)
             # Convert Pydantic model to dict - this will handle the serialization in VaultClient
             connection_dict = connection.model_dump(mode="json")
@@ -128,7 +127,6 @@ class ConnectionManager:
             Connection object or None if not found
         """
         try:
-            # Try all providers since we don't know the provider from connection_id alone
             for provider in ProviderType:
                 path = self._get_user_connection_path(user_id, provider, connection_id)
                 data = self.vault.get_secret(path)
