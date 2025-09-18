@@ -21,6 +21,9 @@ dependencies = [
     "pydantic>=2.11.7",
     "testcontainers>=4.13.0",
     "hvac>=2.3.0",
+    "deepeval>=3.5.2",
+    "anthropic>=0.68.0",
+    "deepteam>=0.2.5",
 ]
 
 [tool.pyright]
