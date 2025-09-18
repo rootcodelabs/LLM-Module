@@ -1,0 +1,130 @@
+name: DeepEval RAG System Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/deepeval-tests.yml'
+
+jobs:
+  deepeval-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: '.python-version'
+          
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        
+      - name: Install dependencies (locked)
+        run: uv sync --frozen
+        
+      - name: Run DeepEval tests
+        id: run_tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: uv run python -m pytest tests/deepeval_tests/standard_tests.py -v --tb=short
+          
+      - name: Generate evaluation report
+        if: always()
+        run: python tests/deepeval_tests/report_generator.py
+          
+      - name: Comment PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            try {
+              const reportContent = fs.readFileSync('test_report.md', 'utf8');
+              
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number
+              });
+              
+              const existingComment = comments.data.find(
+                comment => comment.user.login === 'github-actions[bot]' &&
+                comment.body.includes('RAG System Evaluation Report')
+              );
+              
+              if (existingComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: reportContent
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: reportContent
+                });
+              }
+              
+            } catch (error) {
+              console.error('Failed to post test results:', error);
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## RAG System Evaluation Report\n\n**Error generating test report**\n\nFailed to read or post test results. Check workflow logs for details.\n\nError: ${error.message}`
+              });
+            }
+            
+      - name: Check test results and fail if needed
+        if: always()
+        run: |
+          if [ -f "pytest_captured_results.json" ]; then
+            python -c "
+import json
+import sys
+
+try:
+    with open('pytest_captured_results.json', 'r') as f:
+        results = json.load(f)
+    
+    total_tests = results.get('total_tests', 0)
+    passed_tests = results.get('passed_tests', 0)
+    
+    if total_tests == 0:
+        print('ERROR: No tests were executed')
+        sys.exit(1)
+    
+    pass_rate = (passed_tests / total_tests) * 100
+    
+    print(f'DeepEval Test Results:')
+    print(f'Total Tests: {total_tests}')
+    print(f'Passed Tests: {passed_tests}')
+    print(f'Pass Rate: {pass_rate:.1f}%')
+    
+    if pass_rate < 70:
+        print(f'TEST FAILURE: Pass rate {pass_rate:.1f}% is below threshold 70%')
+        print('RAG system performance is below acceptable standards.')
+        sys.exit(1)
+    else:
+        print(f'TEST SUCCESS: Pass rate {pass_rate:.1f}% meets threshold 70%')
+        
+except Exception as e:
+    print(f'ERROR: Failed to parse test results: {e}')
+    sys.exit(1)
+            "
+          else
+            echo "ERROR: No test results file found"
+            exit 1
+          fi

@@ -1,0 +1,112 @@
+name: DeepTeam Red Team Security Tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'mocks/**'
+      - 'data/**'
+      - '.github/workflows/deepeval-red-team-tests.yml'
+  workflow_dispatch:
+    inputs:
+      attack_intensity:
+        description: 'Attack intensity level'
+        required: false
+        default: 'standard'
+        type: choice
+        options:
+          - light
+          - standard
+          - intensive
+
+jobs:
+  deepteam-red-team-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # Extended timeout for comprehensive red team testing
+    strategy:
+      fail-fast: true 
+      matrix:
+        test_category:
+          - single_turn
+          - multi_turn
+          - comprehensive
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: '.python-version'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install dependencies (locked)
+        run: uv sync --frozen
+      - name: Run Security Tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: uv run python -m pytest tests/deepeval_tests/red_team_tests.py -v
+      - name: Generate Security Report
+        if: always() # Added: run even if tests failed
+        run: python tests/deepeval_tests/red_team_report_generator.py
+        
+      - name: Comment PR with Security Results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            try {
+              const resultsData = fs.readFileSync('pytest_captured_results.json', 'utf8');
+              const results = JSON.parse(resultsData);
+              
+              const totalTests = results.total_tests || 0;
+              const passedTests = results.passed_tests || 0;
+              const failedTests = results.failed_tests || 0;
+              const passRate = totalTests > 0 ? (passedTests / totalTests * 100) : 0;
+              
+              const status = passRate >= 70 ? 'SECURE' : 'VULNERABLE';
+              const testCategory = '${{ matrix.test_category }}';
+              
+              let comment = `## Security Test Results - ${testCategory.replace('_', ' ').toUpperCase()}\n\n**Status**: ${status}\n**Pass Rate**: ${passRate.toFixed(1)}% (${passedTests}/${totalTests} tests)\n**Failed Tests**: ${failedTests}\n\n`;
+              
+              if (results.vulnerability_scores) {
+                comment += `### Vulnerability Assessment\n\n`;
+                const vulnEntries = Object.entries(results.vulnerability_scores);
+                if (vulnEntries.length > 0) {
+                  for (const [vuln, data] of vulnEntries) {
+                    const vulnScore = (data.score * 100).toFixed(1);
+                    const vulnStatus = data.score >= 0.7 ? 'PASS' : 'FAIL';
+                    comment += `- **${vuln}**: ${vulnStatus} - ${vulnScore}% (${data.passed}/${data.total})\n`;
+                  }
+                  comment += `\n`;
+                }
+              }
+              
+              if (passRate < 70) {
+                comment += `**Security vulnerabilities detected!** This PR introduces or fails to address security issues.\n\n`;
+              } else {
+                comment += `All security tests passed for this category.\n\n`;
+              }
+              
+              comment += `<details><summary>Test Details</summary>\n\n- **Test Duration**: ${(results.total_duration || 0) / 60} minutes\n- **Test Category**: ${testCategory}\n- **Attack Intensity**: ${{ github.event.inputs.attack_intensity || 'standard' }}\n\n</details>`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+              
+            } catch (error) {
+              console.error('Failed to post security results:', error);
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## Security Test Results - ${{ matrix.test_category }}\n\n**Error generating security report**\n\nFailed to parse test results. Check workflow logs for details.\n\nError: ${error.message}`
+              });
+            }
