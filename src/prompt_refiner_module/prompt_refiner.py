@@ -130,7 +130,7 @@ class PromptRefinerAgent(dspy.Module):
     ----------
     config_path : str, optional
         Path to the YAML configuration file. If None, uses default config.
-    provider : LLLProvider, optional
+    provider : LLMProvider, optional
         Specific provider to use. If None, uses default provider from config.
     default_n : int
         Fallback number of rewrites when `n` not provided in `forward`.
