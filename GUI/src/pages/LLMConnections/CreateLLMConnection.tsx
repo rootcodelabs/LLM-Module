@@ -16,7 +16,6 @@ const CreateLLMConnection = () => {
     const createConnectionMutation = useMutation({
       mutationFn: createLLMConnection,
       onSuccess: async () => {
-        // Invalidate and refetch LLM connections
         await queryClient.invalidateQueries({
           queryKey: llmConnectionsQueryKeys.all()
         });
