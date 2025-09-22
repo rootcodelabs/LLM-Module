@@ -1,6 +1,8 @@
 import { connect } from 'http2';
 import apiDev from './api-dev';
 import { llmConnectionsEndpoints } from 'utils/endpoints';
+import { removeCommasFromNumber } from 'utils/commonUtilts';
+import { parse } from 'path';
 
 export interface LLMConnection {
   id: number;
@@ -82,7 +84,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     embedding_api_key: connectionData.embeddingApiKey,
-    monthly_budget: parseFloat(connectionData.monthlyBudget),
+    monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
   });
   return data?.response;
@@ -100,7 +102,7 @@ export async function updateLLMConnection(
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     embedding_api_key: connectionData.embeddingApiKey,
-    monthly_budget: parseFloat(connectionData.monthlyBudget),
+    monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
   });
   return data?.response;
