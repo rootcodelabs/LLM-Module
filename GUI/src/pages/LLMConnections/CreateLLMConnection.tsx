@@ -22,7 +22,7 @@ const CreateLLMConnection = () => {
         
         openDialog({
           title: 'Connection Succeeded',
-          content: <p>The connection couldn’t be established either due to invalid API credentials or misconfiguration in the deployment platform</p>,
+          content: <p>The provide LLM configuration is successfully configured</p>,
           footer: (
             <Button
               appearance={ButtonAppearanceTypes.PRIMARY}
@@ -40,7 +40,7 @@ const CreateLLMConnection = () => {
         console.error('Error creating LLM connection:', error);
         openDialog({
           title: 'Connection Failed',
-          content: <p>{'The provided LLM configuration is invalid or misconfigured.'}</p>,
+          content: <p>{'The connection couldn’t be established either due to invalid API credentials or misconfiguration in the deployment platform'}</p>,
           footer: (
             <Button
               appearance={ButtonAppearanceTypes.PRIMARY}
