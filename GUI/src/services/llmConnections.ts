@@ -1,8 +1,6 @@
-import { connect } from 'http2';
 import apiDev from './api-dev';
 import { llmConnectionsEndpoints } from 'utils/endpoints';
 import { removeCommasFromNumber } from 'utils/commonUtilts';
-import { parse } from 'path';
 
 export interface LLMConnection {
   id: number;
@@ -16,6 +14,9 @@ export interface LLMConnection {
   createdAt: string;
   updatedAt: string;
   totalPages?: number;
+  budgetStatus: 'within_budget' | 'over_budget' | 'close_to_exceed';
+  usedBudget?: number; 
+
 }
 
 export interface LLMConnectionsResponse {
@@ -29,6 +30,7 @@ export interface LLMConnectionFilters {
   sortBy?: string;
   sortOrder?: string;
   llmPlatform?: string;
+  llmModel?: string;
   embeddingPlatform?: string;
   environment?: string;
   status?: string;
@@ -63,6 +65,9 @@ export async function fetchLLMConnectionsPaginated(filters: LLMConnectionFilters
   if (filters.pageSize) queryParams.append('pageSize', filters.pageSize.toString());
   if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
   if (filters.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
+  if (filters.llmPlatform) queryParams.append('llmPlatform', filters.llmPlatform);
+  if (filters.llmModel) queryParams.append('llmModel', filters.llmModel);
+  if (filters.environment) queryParams.append('environment', filters.environment);
   
   const url = `${llmConnectionsEndpoints.FETCH_LLM_CONNECTIONS_PAGINATED()}?${queryParams.toString()}`;
   const { data } = await apiDev.get(url);

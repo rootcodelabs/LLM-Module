@@ -10,7 +10,7 @@ type InputProps = PropsWithChildren<InputHTMLAttributes<HTMLInputElement>> & {
   hideLabel?: boolean;
   maxLength?: number;
   error?: string;
-  placeholder?:string | DefaultTFuncReturn;
+  placeholder?: string | DefaultTFuncReturn;
   prefix?: string;
   formatAsNumber?: boolean; // New prop for number formatting
 };
@@ -28,10 +28,10 @@ const FormInput = forwardRef<HTMLInputElement, InputProps>(
       if (formatAsNumber) {
         // Remove any existing commas for processing
         const cleanValue = removeCommasFromNumber(newValue);
-        
+
         // Only allow positive numbers and decimal points
         const numericValue = cleanValue.replace(/[^\d.]/g, '');
-        
+
         // Prevent multiple decimal points
         const parts = numericValue.split('.');
         if (parts.length > 2) {
@@ -71,8 +71,7 @@ const FormInput = forwardRef<HTMLInputElement, InputProps>(
           <div className="input__input-container">
             {prefix && <span className="input__prefix">{prefix}</span>}
             <input
-              className={clsx('input__field', prefix && 'input__field--with-prefix')}
-              name={name}
+              className={clsx('input__field', prefix && 'input__field--with-prefix', error && 'input__field--error')} name={name}
               maxLength={maxLength}
               id={id}
               ref={ref}
