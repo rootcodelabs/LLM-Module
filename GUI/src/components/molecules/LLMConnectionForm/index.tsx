@@ -514,14 +514,14 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 appearance="error"
                 onClick={onDelete}
               >
-                Delete
+                Delete Connection
               </Button>)}
               <Button
                 type="submit"
                 disabled={!isDirty || !isValid}
                 appearance="primary"
               >
-                {isEditing ? ('Update') : ('Create')}
+                {isEditing ? ('Update Connection') : ('Create Connection')}
               </Button>
             </div>
           </Track>
