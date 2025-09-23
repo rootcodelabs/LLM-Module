@@ -24,7 +24,7 @@ const LLMConnections: FC = () => {
   const [filters, setFilters] = useState<LLMConnectionFilters>({
     pageNumber: 1,
     pageSize: 10,
-    sortBy: 'createdAt',
+    sortBy: 'created_at',
     sortOrder: 'desc',
   });
 
@@ -49,20 +49,12 @@ const LLMConnections: FC = () => {
     let filterUpdate: Partial<LLMConnectionFilters> = {};
     
     if (name === 'sorting') {
-      // Handle legacy sorting format
+      // Handle sorting format - no conversion needed, use snake_case directly
       const sortingValue = value as string;
       const [sortBy, sortOrder] = sortingValue.split(' ');
       
-      // Convert snake_case to camelCase for sorting fields
-      let camelCaseSortBy = sortBy;
-      if (sortBy === 'created_at') camelCaseSortBy = 'createdAt';
-      else if (sortBy === 'updated_at') camelCaseSortBy = 'updatedAt';
-      else if (sortBy === 'llm_platform') camelCaseSortBy = 'llmPlatform';
-      else if (sortBy === 'llm_model') camelCaseSortBy = 'llmModel';
-      else if (sortBy === 'monthly_budget') camelCaseSortBy = 'monthlyBudget';
-      
       filterUpdate = {
-        sortBy: camelCaseSortBy,
+        sortBy: sortBy,
         sortOrder: sortOrder as 'asc' | 'desc'
       };
     } else {
@@ -83,31 +75,46 @@ const LLMConnections: FC = () => {
   // Platform filter options
   const platformOptions = [
     { label: 'All Platforms', value: 'all' },
-    { label: 'OpenAI', value: 'OpenAI' },
-    { label: 'Anthropic', value: 'Anthropic' },
-    { label: 'Azure OpenAI', value: 'Azure OpenAI' },
-    { label: 'Google AI', value: 'Google AI' },
+    { label: 'OpenAI', value: 'openai' },
+    { label: 'Anthropic', value: 'anthropic' },
+    { label: 'Azure OpenAI', value: 'azure' },
+    { label: 'Google AI', value: 'google' },
+    { label: 'AWS Bedrock', value: 'bedrock' },
+    { label: 'Hugging Face', value: 'huggingface' },
+  ];
+
+  // LLM Model filter options - these would ideally come from an API
+  const llmModelOptions = [
+    { label: 'All Models', value: 'all' },
+    { label: 'GPT-4', value: 'gpt-4' },
+    { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
+    { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
+    { label: 'Claude-3 Sonnet', value: 'claude-3-sonnet' },
+    { label: 'Claude-3 Haiku', value: 'claude-3-haiku' },
+    { label: 'Gemini Pro', value: 'gemini-pro' },
   ];
 
   // Environment filter options
   const environmentOptions = [
     { label: 'All Environments', value: 'all' },
-    { label: 'Testing', value: 'Testing' },
-    { label: 'Production', value: 'Production' },
-    { label: 'Development', value: 'Development' },
+    { label: 'Testing', value: 'testing' },
+    { label: 'Production', value: 'production' },
+    { label: 'Development', value: 'development' },
   ];
 
-  // Sort options - converting to new camelCase format
+  // Sort options - using snake_case format for backend
   const sortOptions = [
-    { label: 'Created Date (Newest)', value: 'createdAt desc' },
-    { label: 'Created Date (Oldest)', value: 'createdAt asc' },
-    { label: 'Platform A-Z', value: 'llmPlatform asc' },
-    { label: 'Platform Z-A', value: 'llmPlatform desc' },
-    { label: 'Budget (High to Low)', value: 'monthlyBudget desc' },
-    { label: 'Budget (Low to High)', value: 'monthlyBudget asc' },
+    { label: 'Created Date (Newest)', value: 'created_at desc' },
+    { label: 'Created Date (Oldest)', value: 'created_at asc' },
+    { label: 'Platform A-Z', value: 'llm_platform asc' },
+    { label: 'Platform Z-A', value: 'llm_platform desc' },
+    { label: 'Model A-Z', value: 'llm_model asc' },
+    { label: 'Model Z-A', value: 'llm_model desc' },
+    { label: 'Budget (High to Low)', value: 'monthly_budget desc' },
+    { label: 'Budget (Low to High)', value: 'monthly_budget asc' },
   ];
 
-  const currentSorting = `${filters.sortBy || 'createdAt'} ${filters.sortOrder || 'desc'}`;
+  const currentSorting = `${filters.sortBy || 'created_at'} ${filters.sortOrder || 'desc'}`;
 
   // Find featured connection (first active one)
   const featuredConnection = llmConnections?.[0];
@@ -137,9 +144,19 @@ const LLMConnections: FC = () => {
                     placeholder={'Platform'}
                     options={platformOptions}
                     onSelectionChange={(selection) =>
-                      handleFilterChange('llmPlatform', selection?.value ?? '')
+                      handleFilterChange('llmPlatform', selection?.value === 'all' ? '' : selection?.value)
                     }
                     defaultValue={filters?.llmPlatform || 'all'}
+                  />
+                  <FormSelect
+                    label=""
+                    name="llmModel"
+                    placeholder={'Model'}
+                    options={llmModelOptions}
+                    onSelectionChange={(selection) =>
+                      handleFilterChange('llmModel', selection?.value === 'all' ? '' : selection?.value)
+                    }
+                    defaultValue={filters?.llmModel || 'all'}
                   />
                   <FormSelect
                     label=""
@@ -147,7 +164,7 @@ const LLMConnections: FC = () => {
                     placeholder={'Environment'}
                     options={environmentOptions}
                     onSelectionChange={(selection) =>
-                      handleFilterChange('environment', selection?.value)
+                      handleFilterChange('environment', selection?.value === 'all' ? '' : selection?.value)
                     }
                     defaultValue={filters?.environment || 'all'}
                   />
@@ -169,8 +186,11 @@ const LLMConnections: FC = () => {
                         setFilters({
                           pageNumber: 1,
                           pageSize: 10,
-                          sortBy: 'createdAt',
+                          sortBy: 'created_at',
                           sortOrder: 'desc',
+                          llmPlatform: '',
+                          llmModel: '',
+                          environment: '',
                         });
                         setPageIndex(1);
                       }}
@@ -192,7 +212,7 @@ const LLMConnections: FC = () => {
                       llmConnectionName={`${featuredConnection.llmPlatform} - ${featuredConnection.llmModel}`}
                       isActive={featuredConnection.status === 'active'}
                       deploymentEnv={featuredConnection.environment}
-                      budgetStatus="healthy"
+                      budgetStatus={featuredConnection.budgetStatus}
                       platform={featuredConnection.llmPlatform}
                       model={featuredConnection.llmModel}
                     />
@@ -212,7 +232,7 @@ const LLMConnections: FC = () => {
                           llmConnectionName={`${llmConnection.llmPlatform} - ${llmConnection.llmModel}`}
                           isActive={llmConnection.status === 'active'}
                           deploymentEnv={llmConnection.environment}
-                          budgetStatus="healthy"
+                          budgetStatus={llmConnection.budgetStatus}
                           platform={llmConnection.llmPlatform}
                           model={llmConnection.llmModel}
                         />
