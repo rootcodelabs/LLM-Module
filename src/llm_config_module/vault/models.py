@@ -3,6 +3,9 @@
 from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field, field_validator
 
+# Type alias for cleaner code
+TagsInput = Union[str, List[str], None]
+
 
 class BaseConnectionSecret(BaseModel):
     """Base model for connection secrets stored in Vault."""
@@ -16,17 +19,17 @@ class BaseConnectionSecret(BaseModel):
 
     @field_validator("tags", mode="before")
     @classmethod
-    def parse_tags(
-        cls, value: Union[str, List[Union[str, int, float, None]]]
-    ) -> List[str]:
+    def parse_tags(cls, value: TagsInput) -> List[str]:
         """Convert string tags to list if needed."""
-
-        # Handle string case
+        if value is None:
+            return []
+        
+        # Handle string case - split by comma
         if isinstance(value, str):
             return [tag.strip() for tag in value.split(",") if tag.strip()]
-
-        # Handle list case (no need for isinstance)
-        return [str(tag).strip() for tag in value if tag is not None]
+        
+        # Handle list case - convert all items to strings
+        return [str(tag).strip() for tag in value if str(tag).strip()]
 
 
 class AzureOpenAISecret(BaseConnectionSecret):
