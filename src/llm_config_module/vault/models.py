@@ -23,11 +23,11 @@ class BaseConnectionSecret(BaseModel):
         """Convert string tags to list if needed."""
         if value is None:
             return []
-        
+
         # Handle string case - split by comma
         if isinstance(value, str):
             return [tag.strip() for tag in value.split(",") if tag.strip()]
-        
+
         # Handle list case - convert all items to strings
         return [str(tag).strip() for tag in value if str(tag).strip()]
 
