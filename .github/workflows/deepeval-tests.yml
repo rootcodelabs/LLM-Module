@@ -1,0 +1,113 @@
+name: DeepEval RAG System Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/deepeval-tests.yml'
+
+jobs:
+  deepeval-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+          python-version-file: '.python-version'
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v6
+
+    - name: Install dependencies (locked)
+      run: uv sync --frozen
+
+    - name: Create .env file
+      run: |
+        echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
+        echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+
+    - name: Run DeepEval tests
+      id: run_tests
+      continue-on-error: true
+      run: |
+        cd tests
+        uv run python -m pytest deepeval_tests/standard_tests.py -v --tb=short
+        echo "PYTEST_EXIT_CODE=$?" >> $GITHUB_ENV
+
+    - name: Generate evaluation report
+      id: generate_report
+      run: |
+        cd tests
+        uv run python deepeval_tests/report_generator.py
+
+    - name: Read test report
+      id: read_report
+      run: |
+        if [ -f "tests/test_report.md" ]; then
+          echo "REPORT_EXISTS=true" >> $GITHUB_ENV
+          # Use base64 encoding to handle multiline content safely
+          echo "REPORT_CONTENT<<EOF" >> $GITHUB_ENV
+          cat tests/test_report.md | base64 -w 0 >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+        else
+          echo "REPORT_EXISTS=false" >> $GITHUB_ENV
+          echo "REPORT_CONTENT=Report file not found" >> $GITHUB_ENV
+        fi
+
+    - name: Comment PR with test results
+      uses: actions/github-script@v7
+      if: env.REPORT_EXISTS == 'true'
+      with:
+        script: |
+          const reportContent = Buffer.from(process.env.REPORT_CONTENT, 'base64').toString('utf-8');
+          
+          // Find existing comment
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number
+          });
+          
+          const existingComment = comments.data.find(
+            comment => comment.user.login === 'github-actions[bot]' && 
+                      comment.body.includes('RAG System Evaluation Report')
+          );
+          
+          const commentBody = reportContent;
+          
+          if (existingComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
+
+
+
+    - name: Set job status
+      run: |
+        if [ "$PYTEST_EXIT_CODE" -eq "0" ]; then
+          echo "All tests passed"
+          exit 0
+        else
+          echo "Some tests failed"
+          exit 1
+        fi
