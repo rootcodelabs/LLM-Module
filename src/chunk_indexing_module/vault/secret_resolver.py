@@ -9,13 +9,14 @@ from loguru import logger
 from chunk_indexing_module.vault.vault_client import EmbeddingVaultClient
 from chunk_indexing_module.vault.models import get_embedding_secret_model
 from chunk_indexing_module.vault.exceptions import EmbeddingVaultConnectionError
+from chunk_indexing_module.vault.models import BaseEmbeddingSecret
 
 
 @dataclass
 class CachedEmbeddingSecret:
     """Cached embedding secret with TTL."""
 
-    secret: Any
+    secret: BaseEmbeddingSecret
     expires_at: float
     last_accessed: float = field(default_factory=time.time)
 

@@ -76,21 +76,28 @@ def _safe_parse_json(s: str) -> Dict[str, Any]:
         return {}
 
 
-def _should_flag_out_of_scope(answer_text: str, has_real_context: bool) -> bool:
+def _should_flag_out_of_scope(
+    answer_text: str, has_real_context: bool, require_citation_marker: bool = False
+) -> bool:
     """
     Heuristics to decide out-of-scope when model output is ambiguous:
     - No real context was supplied
-    - No citation markers like [1], [2] present
     - Very short or empty answer
+    - (Optional) No citation markers like [1], [2] present if require_citation_marker is True
+    Args:
+        answer_text: The answer string to check.
+        has_real_context: Whether real context was supplied.
+        require_citation_marker: If True, require at least one [n] citation marker.
     """
     if not has_real_context:
         return True
     if not answer_text.strip():
         return True
-    # Look for at least one numeric citation [n]
-    if not re.search(r"\[\d+\]", answer_text):
-        # If no explicit citations, treat as possibly out-of-scope
-        return True
+    if require_citation_marker:
+        # Look for at least one numeric citation [n]
+        if not re.search(r"\[\d+\]", answer_text):
+            # If no explicit citations, treat as possibly out-of-scope
+            return True
     return False
 
 

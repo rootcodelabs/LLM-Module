@@ -24,9 +24,7 @@ from llm_config_module.exceptions import ConfigurationError, InvalidConfiguratio
 DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
 
 # Type alias for configuration values that can be processed
-ConfigValue = Union[
-    str, Dict[str, "ConfigValue"], List["ConfigValue"], int, float, bool, None
-]
+ConfigValue = Union[str, Dict[str, Any], List[Any], int, float, bool, None]
 
 
 class ConfigurationLoader:
@@ -486,10 +484,8 @@ class ConfigurationLoader:
                 return obj
 
         result = substitute_env_vars(config)
-        # Since we know config is a Dict[str, Any] and substitute_env_vars preserves structure,
-        # the result should also be a Dict[str, Any]
         if isinstance(result, dict):
-            return cast(Dict[str, Any], result)
+            return result
         else:
             # This should never happen given our input type, but provide a fallback
             raise ConfigurationError(

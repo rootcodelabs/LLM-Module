@@ -234,22 +234,6 @@ class LLMOrchestrationService:
             logger.error(f"Failed to refine message: {original_message}")
             raise RuntimeError(f"Prompt refinement process failed: {str(e)}") from e
 
-    def _generate_hardcoded_response(
-        self, chat_id: str, chunk_count: Optional[int] = None
-    ) -> OrchestrationResponse:
-        """
-        Generate hardcoded response for testing purposes (DEPRECATED - use _generate_fallback_response).
-
-        Args:
-            chat_id: Chat session identifier
-            chunk_count: Optional number of retrieved chunks for testing
-
-        Returns:
-            OrchestrationResponse with hardcoded values
-        """
-        # Delegate to the new fallback method
-        return self._generate_fallback_response(chat_id, chunk_count)
-
     def _initialize_hybrid_retriever(self) -> HybridRetriever:
         """
         Initialize hybrid retriever for document retrieval.
