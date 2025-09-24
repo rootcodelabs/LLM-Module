@@ -60,40 +60,6 @@ class AWSBedrockProvider(BaseLLMProvider):
                 f"Failed to initialize {self.provider_name} provider: {e}"
             ) from e
 
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        """Generate response from AWS Bedrock.
-
-        Args:
-            prompt: The input prompt for the LLM.
-            **kwargs: Additional generation parameters.
-
-        Returns:
-            Generated response text.
-
-        Raises:
-            RuntimeError: If the provider is not initialized.
-            Exception: If generation fails.
-        """
-        self._ensure_initialized()
-
-        if self._client is None:
-            raise RuntimeError("Client is not initialized")
-
-        try:
-            # Use DSPY's generate method
-            response = self._client.generate(prompt, **kwargs)
-
-            # Simple response handling - convert to string regardless of format
-            if isinstance(response, str):
-                return response
-            elif isinstance(response, list) and len(response) > 0:
-                return str(response[0])
-            else:
-                return str(response)
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to generate response: {e}") from e
-
     def get_dspy_client(self) -> dspy.LM:
         """Return DSPY-compatible client.
 

@@ -454,6 +454,250 @@ class VaultConnectionCLI:
         except Exception as e:
             logger.error(f"Error testing connection usage: {e}")
 
+    def create_embedding_configuration(self):
+        """Create Azure OpenAI embedding configuration for RAG."""
+        if not self.current_user:
+            self._select_user()
+
+        if not self.current_user:
+            print("User selection is required")
+            return
+
+        print(f"\nCREATING EMBEDDING CONFIGURATION for {self.current_user}")
+        print("=" * 60)
+
+        try:
+            # Get connection details
+            name = input("Configuration Name: ").strip()
+            if not name:
+                print("Configuration name is required")
+                return
+
+            endpoint = input("Azure Embedding Endpoint: ").strip()
+            api_key = input("Azure Embedding API Key: ").strip()
+            deployment_name = input(
+                "Embedding Deployment Name (e.g., text-embedding-3-large): "
+            ).strip()
+            api_version = (
+                input("API Version (default: 2024-02-01): ").strip() or "2024-02-01"
+            )
+
+            if not all([endpoint, api_key, deployment_name]):
+                print("All embedding configuration fields are required")
+                return
+
+            # Get metadata
+            description = (
+                input("Description (optional): ").strip()
+                or f"Azure OpenAI Embedding configuration - {name}"
+            )
+
+            # Environment selection
+            print("\nSelect Environment:")
+            print("1. Development")
+            print("2. Staging")
+            print("3. Production")
+            print("4. Testing")
+
+            env_choice = input("Select environment (1-4, default: 1): ").strip() or "1"
+            env_map = {
+                "1": Environment.DEVELOPMENT,
+                "2": Environment.STAGING,
+                "3": Environment.PRODUCTION,
+                "4": Environment.TESTING,
+            }
+            environment = env_map.get(env_choice, Environment.DEVELOPMENT)
+
+            # Tags
+            tags_input = input("Tags (comma-separated, optional): ").strip()
+            tags = (
+                [tag.strip() for tag in tags_input.split(",") if tag.strip()]
+                if tags_input
+                else ["embedding", "rag"]
+            )
+
+            # Connection data
+            connection_data = {
+                "endpoint": endpoint,
+                "api_key": api_key,
+                "deployment_name": deployment_name,
+                "api_version": api_version,
+                "embedding_dimension": "3072",  # text-embedding-3-large dimension
+            }
+
+            # Store configuration using a custom provider type "EMBEDDING"
+            # Since we need to extend ProviderType, we'll use AZURE_OPENAI for now and add tag
+            connection_id = self.connection_manager.create_connection(
+                user_id=self.current_user,
+                name=name,
+                description=description,
+                provider=ProviderType.AZURE_OPENAI,  # Use AZURE_OPENAI with embedding tag
+                environment=environment,
+                connection_data=connection_data,
+                tags=tags + ["embedding"],
+            )
+
+            if connection_id:
+                logger.success(
+                    f"Successfully created embedding configuration: {connection_id}"
+                )
+                self._display_connection_summary(
+                    connection_id, name, environment.value, tags
+                )
+            else:
+                print("Failed to create embedding configuration")
+
+        except Exception as e:
+            logger.error(f"Error creating embedding configuration: {e}")
+
+    def create_qdrant_configuration(self):
+        """Create Qdrant database configuration for vector storage."""
+        if not self.current_user:
+            self._select_user()
+
+        if not self.current_user:
+            print("User selection is required")
+            return
+
+        print(f"\nCREATING QDRANT CONFIGURATION for {self.current_user}")
+        print("=" * 60)
+
+        try:
+            # Get connection details
+            name = input("Configuration Name: ").strip()
+            if not name:
+                print("Configuration name is required")
+                return
+
+            host = input("Qdrant Host (default: localhost): ").strip() or "localhost"
+            port = input("Qdrant Port (default: 6333): ").strip() or "6333"
+            collection = (
+                input("Collection Name (default: document_chunks): ").strip()
+                or "document_chunks"
+            )
+            timeout = input("Timeout in seconds (default: 30.0): ").strip() or "30.0"
+
+            # Get metadata
+            description = (
+                input("Description (optional): ").strip()
+                or f"Qdrant vector database configuration - {name}"
+            )
+
+            # Environment selection
+            print("\nSelect Environment:")
+            print("1. Development")
+            print("2. Staging")
+            print("3. Production")
+            print("4. Testing")
+
+            env_choice = input("Select environment (1-4, default: 1): ").strip() or "1"
+            env_map = {
+                "1": Environment.DEVELOPMENT,
+                "2": Environment.STAGING,
+                "3": Environment.PRODUCTION,
+                "4": Environment.TESTING,
+            }
+            environment = env_map.get(env_choice, Environment.DEVELOPMENT)
+
+            # Tags
+            tags_input = input("Tags (comma-separated, optional): ").strip()
+            tags = (
+                [tag.strip() for tag in tags_input.split(",") if tag.strip()]
+                if tags_input
+                else ["qdrant", "vector-db", "rag"]
+            )
+
+            # Connection data
+            connection_data = {
+                "host": host,
+                "port": port,
+                "collection": collection,
+                "timeout": timeout,
+            }
+
+            # Store configuration using QDRANT provider
+            connection_id = self.connection_manager.create_connection(
+                user_id=self.current_user,
+                name=name,
+                description=description,
+                provider=ProviderType.QDRANT,
+                environment=environment,
+                connection_data=connection_data,
+                tags=tags + ["qdrant"],
+            )
+
+            if connection_id:
+                logger.success(
+                    f"Successfully created Qdrant configuration: {connection_id}"
+                )
+                self._display_connection_summary(
+                    connection_id, name, environment.value, tags
+                )
+            else:
+                print("Failed to create Qdrant configuration")
+
+        except Exception as e:
+            logger.error(f"Error creating Qdrant configuration: {e}")
+
+    def list_embedding_configurations(self):
+        """List all embedding and Qdrant configurations."""
+        if not self.current_user:
+            self._select_user()
+
+        if not self.current_user:
+            print("User selection is required")
+            return
+
+        print(f"\nLISTING RAG CONFIGURATIONS for {self.current_user}")
+        print("=" * 60)
+
+        try:
+            # List all connections
+            connections = self.connection_manager.list_user_connections(
+                self.current_user
+            )
+
+            if not connections:
+                print("No configurations found.")
+                return
+
+            # Filter for embedding and qdrant configurations
+            embedding_configs = [
+                conn for conn in connections if "embedding" in conn.metadata.tags
+            ]
+            qdrant_configs = [
+                conn for conn in connections if "qdrant" in conn.metadata.tags
+            ]
+
+            print(f"\nEmbedding Configurations ({len(embedding_configs)}):")
+            print("-" * 80)
+            if embedding_configs:
+                print(f"{'ID':<12} {'Name':<20} {'Environment':<12} {'Deployment':<20}")
+                print("-" * 80)
+                for conn in embedding_configs:
+                    deployment = conn.connection_data.get("deployment_name", "N/A")
+                    print(
+                        f"{conn.metadata.id:<12} {conn.metadata.name:<20} {conn.metadata.environment.value:<12} {deployment:<20}"
+                    )
+            else:
+                print("No embedding configurations found.")
+
+            print(f"\nQdrant Configurations ({len(qdrant_configs)}):")
+            print("-" * 80)
+            if qdrant_configs:
+                print(f"{'ID':<12} {'Name':<20} {'Environment':<12} {'Host:Port':<20}")
+                print("-" * 80)
+                for conn in qdrant_configs:
+                    host_port = f"{conn.connection_data.get('host', 'N/A')}:{conn.connection_data.get('port', 'N/A')}"
+                    print(
+                        f"{conn.metadata.id:<12} {conn.metadata.name:<20} {conn.metadata.environment.value:<12} {host_port:<20}"
+                    )
+            else:
+                print("No Qdrant configurations found.")
+
+        except Exception as e:
+            logger.error(f"Error listing RAG configurations: {e}")
+
     def _display_connection_summary(
         self, connection_id: str, name: str, environment: str, tags: list[str]
     ):
@@ -481,9 +725,12 @@ class VaultConnectionCLI:
             print("5. Get Connection Details")
             print("6. Delete Connection")
             print("7. Test Connection Usage")
-            print("8. Exit")
+            print("8. Create Embedding Configuration")
+            print("9. Create Qdrant Configuration")
+            print("10. List RAG Configurations")
+            print("11. Exit")
 
-            choice = input("\nSelect option (1-8): ").strip()
+            choice = input("\nSelect option (1-11): ").strip()
 
             if choice == "1":
                 self._select_user()
@@ -500,6 +747,12 @@ class VaultConnectionCLI:
             elif choice == "7":
                 self.test_connection_usage()
             elif choice == "8":
+                self.create_embedding_configuration()
+            elif choice == "9":
+                self.create_qdrant_configuration()
+            elif choice == "10":
+                self.list_embedding_configurations()
+            elif choice == "11":
                 logger.info("👋 Goodbye!")
                 break
             else:

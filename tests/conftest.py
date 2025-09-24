@@ -131,14 +131,16 @@ def reset_singletons() -> Generator[None, None, None]:
     """Reset singleton instances between tests."""
 
     # Reset LLMManager
-    from llm_config_module.llm_manager import LLMManager
+    from src.llm_config_module.llm_manager import LLMManager
 
     if hasattr(LLMManager, "_instance"):
         LLMManager._instance = None
 
     # Reset VaultConnectionManager if available
     try:
-        from rag_config_manager.vault.connection_manager import VaultConnectionManager
+        from src.rag_config_manager.vault.connection_manager import (
+            ConnectionManager as VaultConnectionManager,
+        )
 
         if hasattr(VaultConnectionManager, "_instance"):
             VaultConnectionManager._instance = None
@@ -151,7 +153,9 @@ def reset_singletons() -> Generator[None, None, None]:
     if hasattr(LLMManager, "_instance"):
         LLMManager._instance = None
     try:
-        from rag_config_manager.vault.connection_manager import VaultConnectionManager
+        from src.rag_config_manager.vault.connection_manager import (
+            ConnectionManager as VaultConnectionManager,
+        )
 
         if hasattr(VaultConnectionManager, "_instance"):
             VaultConnectionManager._instance = None
