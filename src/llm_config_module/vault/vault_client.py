@@ -121,12 +121,6 @@ class VaultAgentClient:
 
             # For Vault health endpoint, we primarily check the HTTP status code
             if hasattr(response, "status_code"):
-                # HTTP 200 = healthy, unsealed, and initialized
-                # HTTP 429 = unsealed and standby
-                # HTTP 472 = data recovery mode replication secondary and active
-                # HTTP 473 = performance standby
-                # HTTP 501 = not initialized
-                # HTTP 503 = sealed
                 is_available = response.status_code == 200
                 logger.debug(
                     f"Vault health check: status_code={response.status_code}, available={is_available}"
