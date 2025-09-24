@@ -13,7 +13,7 @@ type LLMConnectionCardProps = {
   llmConnectionId: number | string;
   llmConnectionName?: string;
   platform?: string;
-  model?: boolean;
+  model?: string;
   isActive?: boolean;
   deploymentEnv?: string;
   budgetStatus?: string;

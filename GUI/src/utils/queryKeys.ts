@@ -1,4 +1,5 @@
 import { PaginationState, SortingState } from '@tanstack/react-table';
+import { LLMConnectionFilters, LegacyLLMConnectionFilters } from 'services/llmConnections';
 
 
 export const authQueryKeys = {
@@ -17,4 +18,14 @@ export const userManagementQueryKeys = {
       (val) => val !== undefined
     );
   },
+};
+
+export const llmConnectionsQueryKeys = {
+  all: () => ['llm-connections'] as const,
+  lists: () => [...llmConnectionsQueryKeys.all(), 'list'] as const,
+  list: (filters: LegacyLLMConnectionFilters) => [...llmConnectionsQueryKeys.lists(), filters] as const,
+  paginatedLists: () => [...llmConnectionsQueryKeys.all(), 'paginated-list'] as const,
+  paginatedList: (filters: LLMConnectionFilters) => [...llmConnectionsQueryKeys.paginatedLists(), filters] as const,
+  details: () => [...llmConnectionsQueryKeys.all(), 'detail'] as const,
+  detail: (id: string | number) => [...llmConnectionsQueryKeys.details(), id] as const,
 };
