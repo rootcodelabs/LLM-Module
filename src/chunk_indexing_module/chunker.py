@@ -97,7 +97,7 @@ class DocumentProcessor:
             # Move start position with overlap
             start = max(start + self.config.chunk_size - self.config.chunk_overlap, end)
 
-        return chunks  # type: ignore
+        return chunks
 
     def _find_sentence_break(
         self, text: str, position: int, search_distance: int
