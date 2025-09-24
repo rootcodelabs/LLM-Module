@@ -15,15 +15,19 @@ from models.request_models import (
 from prompt_refiner_module.prompt_refiner import PromptRefinerAgent
 from chunk_indexing_module.chunk_config import ChunkConfig
 from chunk_indexing_module.hybrid_retrieval import HybridRetriever
+from response_generator_module.response_generator import ResponseGeneratorAgent
+
+# Constants
+UNKNOWN_SOURCE = "Unknown source"
 
 
 class LLMOrchestrationService:
-    """Service class for handling LLM orchestration business logic."""
+    """Stateless service class for handling LLM orchestration business logic."""
 
     def __init__(self) -> None:
-        """Initialize the orchestration service."""
-        self.llm_manager: Optional[LLMManager] = None
-        self.hybrid_retriever: Optional[HybridRetriever] = None
+        """Initialize the stateless orchestration service."""
+        # No instance variables - completely stateless
+        pass
 
     def process_orchestration_request(
         self, request: OrchestrationRequest
@@ -46,45 +50,67 @@ class LLMOrchestrationService:
                 f"authorId: {request.authorId}, environment: {request.environment}"
             )
 
-            # Initialize LLM Manager with configuration
-            self._initialize_llm_manager(
+            # Initialize LLM Manager with configuration (per-request)
+            llm_manager = self._initialize_llm_manager(
                 environment=request.environment, connection_id=request.connection_id
             )
 
-            # Initialize Hybrid Retriever
+            # Initialize Hybrid Retriever (per-request)
+            hybrid_retriever: Optional[HybridRetriever] = None
             try:
-                self._initialize_hybrid_retriever(environment=request.environment)
+                hybrid_retriever = self._initialize_hybrid_retriever()
                 logger.info("Hybrid Retriever initialization successful")
             except Exception as retriever_error:
                 logger.warning(
                     f"Hybrid Retriever initialization failed: {str(retriever_error)}"
                 )
                 logger.warning("Continuing without chunk retrieval capabilities")
-                self.hybrid_retriever = None
+                hybrid_retriever = None
+
+            # Initialize Response Generator
+            response_generator: Optional[ResponseGeneratorAgent] = None
+            try:
+                response_generator = self._initialize_response_generator(llm_manager)
+                logger.info("Response Generator initialization successful")
+            except Exception as generator_error:
+                logger.warning(
+                    f"Response Generator initialization failed: {str(generator_error)}"
+                )
+                logger.warning("Continuing without response generator capabilities")
+                response_generator = None
 
             # Step 2: Refine user prompt using loaded configuration
             refined_output = self._refine_user_prompt(
+                llm_manager=llm_manager,
                 original_message=request.message,
                 conversation_history=request.conversationHistory,
             )
 
             # Step 3: Retrieve relevant chunks using hybrid retrieval
-            try:
-                relevant_chunks = self._retrieve_relevant_chunks(refined_output)
-                logger.info(f"Successfully retrieved {len(relevant_chunks)} chunks")
-            except Exception as retrieval_error:
-                logger.warning(f"Chunk retrieval failed: {str(retrieval_error)}")
-                logger.warning(
-                    "Continuing with response generation without retrieved chunks"
-                )
-                relevant_chunks = []
+            relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]] = []
+            if hybrid_retriever is not None:
+                try:
+                    relevant_chunks = self._retrieve_relevant_chunks(
+                        hybrid_retriever=hybrid_retriever, refined_output=refined_output
+                    )
+                    logger.info(f"Successfully retrieved {len(relevant_chunks)} chunks")
+                except Exception as retrieval_error:
+                    logger.warning(f"Chunk retrieval failed: {str(retrieval_error)}")
+                    logger.warning(
+                        "Continuing with response generation without retrieved chunks"
+                    )
+                    relevant_chunks = []
+            else:
+                logger.info("Hybrid Retriever not available, skipping chunk retrieval")
 
-            # Step 4: Generate response using retrieved chunks
+            # Step 4: Generate response using retrieved chunks and response generator
             try:
                 response = self._generate_rag_response(
+                    llm_manager=llm_manager,
                     request=request,
                     refined_output=refined_output,
                     relevant_chunks=relevant_chunks,
+                    response_generator=response_generator,
                 )
                 logger.info(
                     f"Successfully generated RAG response for chatId: {request.chatId}"
@@ -115,36 +141,44 @@ class LLMOrchestrationService:
 
     def _initialize_llm_manager(
         self, environment: str, connection_id: Optional[str]
-    ) -> None:
+    ) -> LLMManager:
         """
         Initialize LLM Manager with proper configuration.
 
         Args:
             environment: Environment context (production/test/development)
             connection_id: Optional connection identifier
+
+        Returns:
+            LLMManager: Initialized LLM manager instance
         """
         try:
             logger.info(f"Initializing LLM Manager for environment: {environment}")
 
-            self.llm_manager = LLMManager(
+            llm_manager = LLMManager(
                 environment=environment, connection_id=connection_id
             )
 
-            self.llm_manager.ensure_global_config()
+            llm_manager.ensure_global_config()
 
             logger.info("LLM Manager initialized successfully")
+            return llm_manager
 
         except Exception as e:
             logger.error(f"Failed to initialize LLM Manager: {str(e)}")
             raise
 
     def _refine_user_prompt(
-        self, original_message: str, conversation_history: List[ConversationItem]
+        self,
+        llm_manager: LLMManager,
+        original_message: str,
+        conversation_history: List[ConversationItem],
     ) -> PromptRefinerOutput:
         """
         Refine user prompt using loaded LLM configuration and log all variants.
 
         Args:
+            llm_manager: The LLM manager instance to use
             original_message: The original user message to refine
             conversation_history: Previous conversation context
 
@@ -158,12 +192,6 @@ class LLMOrchestrationService:
         """
         logger.info("Starting prompt refinement process")
 
-        # Check if LLM Manager is initialized
-        if self.llm_manager is None:
-            error_msg = "LLM Manager not initialized, cannot refine prompts"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
         try:
             # Convert conversation history to DSPy format
             history: List[Dict[str, str]] = []
@@ -172,7 +200,7 @@ class LLMOrchestrationService:
                 history.append({"role": role, "content": item.message})
 
             # Create prompt refiner using the same LLM manager instance
-            refiner = PromptRefinerAgent(llm_manager=self.llm_manager)
+            refiner = PromptRefinerAgent(llm_manager=llm_manager)
 
             # Generate structured prompt refinement output
             refinement_result = refiner.forward_structured(
@@ -222,38 +250,61 @@ class LLMOrchestrationService:
         # Delegate to the new fallback method
         return self._generate_fallback_response(chat_id, chunk_count)
 
-    def _initialize_hybrid_retriever(self, environment: str = "production") -> None:
+    def _initialize_hybrid_retriever(self) -> HybridRetriever:
         """
-        Initialize Hybrid Retriever with chunk configuration.
+        Initialize hybrid retriever for document retrieval.
 
-        Args:
-            environment: Environment context for configuration
-
-        Raises:
-            Exception: For any initialization errors
+        Returns:
+            HybridRetriever: Initialized hybrid retriever instance
         """
+        logger.info("Initializing hybrid retriever")
+
         try:
-            logger.info("Initializing Hybrid Retriever")
-
-            # Create chunk configuration
+            # Initialize vector store with chunk config
             chunk_config = ChunkConfig()
+            hybrid_retriever = HybridRetriever(cfg=chunk_config)
 
-            # Initialize hybrid retriever
-            self.hybrid_retriever = HybridRetriever(chunk_config)
-
-            logger.info("Hybrid Retriever initialized successfully")
+            logger.info("Hybrid retriever initialized successfully")
+            return hybrid_retriever
 
         except Exception as e:
-            logger.error(f"Failed to initialize Hybrid Retriever: {str(e)}")
+            logger.error(f"Failed to initialize hybrid retriever: {str(e)}")
+            raise
+
+    def _initialize_response_generator(
+        self, llm_manager: LLMManager
+    ) -> ResponseGeneratorAgent:
+        """
+        Initialize Response Generator with the provided LLM manager.
+
+        Args:
+            llm_manager: The LLM manager instance to use for response generation
+
+        Returns:
+            ResponseGeneratorAgent: Initialized response generator instance
+        """
+        logger.info("Initializing response generator")
+
+        try:
+            # Set up DSPy configuration for the response generator
+            with llm_manager.use_task_local():
+                response_generator = ResponseGeneratorAgent()
+
+            logger.info("Response generator initialized successfully")
+            return response_generator
+
+        except Exception as e:
+            logger.error(f"Failed to initialize response generator: {str(e)}")
             raise
 
     def _retrieve_relevant_chunks(
-        self, refined_output: PromptRefinerOutput
+        self, hybrid_retriever: HybridRetriever, refined_output: PromptRefinerOutput
     ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
         """
         Retrieve relevant chunks using hybrid retrieval approach.
 
         Args:
+            hybrid_retriever: The hybrid retriever instance to use
             refined_output: The output from prompt refinement containing original and refined questions
 
         Returns:
@@ -265,15 +316,9 @@ class LLMOrchestrationService:
         """
         logger.info("Starting chunk retrieval process")
 
-        # Check if Hybrid Retriever is initialized
-        if self.hybrid_retriever is None:
-            error_msg = "Hybrid Retriever not initialized, cannot retrieve chunks"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
         try:
             # Use the hybrid retriever to get relevant chunks
-            relevant_chunks = self.hybrid_retriever.retrieve(
+            relevant_chunks = hybrid_retriever.retrieve(
                 original_question=refined_output.original_question,
                 refined_questions=refined_output.refined_questions,
                 topk_dense=40,
@@ -301,14 +346,99 @@ class LLMOrchestrationService:
 
     def _generate_rag_response(
         self,
+        llm_manager: LLMManager,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        response_generator: Optional[ResponseGeneratorAgent] = None,
+    ) -> OrchestrationResponse:
+        """
+        Generate response using retrieved chunks and LLM with ResponseGeneratorAgent.
+
+        Args:
+            llm_manager: The LLM manager instance to use
+            request: The original orchestration request
+            refined_output: The refined prompt output
+            relevant_chunks: List of relevant document chunks
+            response_generator: Optional response generator agent for humanized responses
+
+        Returns:
+            OrchestrationResponse with LLM-generated content
+        """
+        logger.info("Starting RAG response generation")
+
+        try:
+            # Use ResponseGeneratorAgent if available for better humanized responses
+            if response_generator is not None and relevant_chunks:
+                logger.info("Using ResponseGeneratorAgent for humanized response")
+
+                # Set up DSPy context for response generation
+                with llm_manager.use_task_local():
+                    # Generate humanized response using the response generator
+                    generator_result = response_generator.forward(
+                        question=refined_output.original_question,
+                        chunks=relevant_chunks,
+                        max_blocks=10,
+                    )
+
+                # Extract answer and out-of-scope flag
+                answer = generator_result.get("answer", "").strip()
+                question_out_of_scope = generator_result.get(
+                    "questionOutOfLLMScope", False
+                )
+
+                # Add citations for transparency
+                citations: List[str] = []
+                for i, chunk in enumerate(relevant_chunks[:10]):
+                    score = chunk.get("score", 0.0)
+                    metadata = chunk.get("meta", {})
+                    source_file = UNKNOWN_SOURCE
+                    if isinstance(metadata, dict):
+                        source_file = metadata.get("source_file", UNKNOWN_SOURCE)
+                    citations.append(
+                        f"[{i + 1}] {source_file} (relevance: {score:.3f})"
+                    )
+
+                # Add citations section if answer is not out of scope
+                if citations and not question_out_of_scope and answer:
+                    answer += "\n\nReferences:\n" + "\n".join(citations)
+
+                logger.info(
+                    f"Generated humanized response. Out of scope: {question_out_of_scope}"
+                )
+
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=question_out_of_scope,
+                    inputGuardFailed=False,
+                    content=answer,
+                )
+
+            # Fallback to original method if ResponseGeneratorAgent is not available
+            logger.info("Using fallback response generation method")
+            return self._generate_fallback_rag_response(
+                llm_manager, request, refined_output, relevant_chunks
+            )
+
+        except Exception as e:
+            logger.error(f"RAG response generation failed: {str(e)}")
+            raise RuntimeError(
+                f"RAG response generation process failed: {str(e)}"
+            ) from e
+
+    def _generate_fallback_rag_response(
+        self,
+        llm_manager: LLMManager,
         request: OrchestrationRequest,
         refined_output: PromptRefinerOutput,
         relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
     ) -> OrchestrationResponse:
         """
-        Generate response using retrieved chunks and LLM.
+        Fallback RAG response generation when ResponseGeneratorAgent is not available.
 
         Args:
+            llm_manager: The LLM manager instance to use
             request: The original orchestration request
             refined_output: The refined prompt output
             relevant_chunks: List of relevant document chunks
@@ -316,13 +446,7 @@ class LLMOrchestrationService:
         Returns:
             OrchestrationResponse with LLM-generated content
         """
-        logger.info("Starting RAG response generation")
-
-        # Check if LLM Manager is initialized
-        if self.llm_manager is None:
-            error_msg = "LLM Manager not initialized, cannot generate response"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        logger.info("Starting fallback RAG response generation")
 
         try:
             # Prepare context from chunks
@@ -339,9 +463,9 @@ class LLMOrchestrationService:
                     context_sections.append(f"[Context {i + 1}]\n{chunk_text}")
 
                     # Extract source information for citations
-                    source_file = "Unknown source"
+                    source_file = UNKNOWN_SOURCE
                     if isinstance(metadata, dict):
-                        source_file = metadata.get("source_file", "Unknown source")
+                        source_file = metadata.get("source_file", UNKNOWN_SOURCE)
                     citations.append(
                         f"[{i + 1}] {source_file} (relevance: {score:.3f})"
                     )
@@ -373,7 +497,7 @@ Answer:"""
             try:
                 # Use task-local context for the LLM call:
                 generate = dspy.Predict("prompt -> response")
-                with self.llm_manager.use_task_local():
+                with llm_manager.use_task_local():
                     result = generate(prompt=rag_prompt)
                 response_text = str(getattr(result, "response", result))
 

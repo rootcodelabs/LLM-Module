@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 import uvicorn
@@ -12,23 +12,25 @@ from llm_orchestration_service import LLMOrchestrationService
 from models.request_models import OrchestrationRequest, OrchestrationResponse
 
 
-# Global service instance
-orchestration_service: LLMOrchestrationService | None = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     # Startup
     logger.info("Starting LLM Orchestration Service API")
-    global orchestration_service
-    orchestration_service = LLMOrchestrationService()
-    logger.info("LLM Orchestration Service initialized")
+    try:
+        app.state.orchestration_service = LLMOrchestrationService()
+        logger.info("LLM Orchestration Service initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize LLM Orchestration Service: {e}")
+        raise
 
     yield
 
     # Shutdown
     logger.info("Shutting down LLM Orchestration Service API")
+    # Clean up resources if needed
+    if hasattr(app.state, "orchestration_service"):
+        app.state.orchestration_service = None
 
 
 # Create FastAPI application
@@ -41,9 +43,19 @@ app = FastAPI(
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
+def health_check(request: Request) -> dict[str, str]:
     """Health check endpoint."""
-    return {"status": "healthy", "service": "llm-orchestration-service"}
+    service_status = (
+        "initialized"
+        if hasattr(request.app.state, "orchestration_service")
+        and request.app.state.orchestration_service is not None
+        else "not_initialized"
+    )
+    return {
+        "status": "healthy",
+        "service": "llm-orchestration-service",
+        "orchestration_service": service_status,
+    }
 
 
 @app.post(
@@ -53,13 +65,15 @@ async def health_check() -> dict[str, str]:
     summary="Process LLM orchestration request",
     description="Processes a user message through the LLM orchestration pipeline",
 )
-async def orchestrate_llm_request(
+def orchestrate_llm_request(
+    http_request: Request,
     request: OrchestrationRequest,
 ) -> OrchestrationResponse:
     """
     Process LLM orchestration request.
 
     Args:
+        http_request: FastAPI Request object for accessing app state
         request: OrchestrationRequest containing user message and context
 
     Returns:
@@ -71,8 +85,17 @@ async def orchestrate_llm_request(
     try:
         logger.info(f"Received orchestration request for chatId: {request.chatId}")
 
+        # Get the orchestration service from app state
+        if not hasattr(http_request.app.state, "orchestration_service"):
+            logger.error("Orchestration service not found in app state")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        orchestration_service = http_request.app.state.orchestration_service
         if orchestration_service is None:
-            logger.error("Orchestration service not initialized")
+            logger.error("Orchestration service is None")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Service not initialized",
@@ -110,6 +133,5 @@ if __name__ == "__main__":
         "llm_orchestration_service_api:app",
         host="0.0.0.0",
         port=8100,
-        reload=True,
         log_level="info",
     )

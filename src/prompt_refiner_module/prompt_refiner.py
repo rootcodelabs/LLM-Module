@@ -166,8 +166,7 @@ class PromptRefinerAgent(dspy.Module):
             provider_info.get("provider", "unknown"),
         )
 
-        # Use ChainOfThought for better reasoning before output fields
-        self._predictor = dspy.ChainOfThought(PromptRefineSig)
+        self._predictor = dspy.Predict(PromptRefineSig)
 
     def forward(
         self,
