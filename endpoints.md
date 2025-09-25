@@ -548,7 +548,7 @@ POST /ruuter-private/inference/results/view
 }
 ```
 
-## 4. Inquiry from chatbot to llm ochestration service
+## 4. Inquiry from chatbot to llm orchestration service
 
 ### Endpoint
 ```http

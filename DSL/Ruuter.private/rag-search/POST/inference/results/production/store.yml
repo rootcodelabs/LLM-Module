@@ -98,8 +98,3 @@ return_bad_request:
   return: ${data_failed}
   status: 400
   next: end
-
-return_connection_not_found:
-  status: 404
-  return: "error: LLM connection not found"
-  next: end
