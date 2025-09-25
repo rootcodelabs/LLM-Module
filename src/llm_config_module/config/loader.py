@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
 import yaml
 from dotenv import load_dotenv
@@ -16,12 +16,17 @@ from llm_config_module.config.schema import (
     AWSBedrockConfig,
     VaultConfig,
 )
-from .vault_resolver import VaultSecretResolver
+from llm_config_module.vault.secret_resolver import SecretResolver
 from llm_config_module.types import LLMProvider
 from llm_config_module.exceptions import ConfigurationError, InvalidConfigurationError
 
 # Constants
 DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
+
+# Type alias for configuration values that can be processed
+ConfigValue = Union[
+    str, Dict[str, "ConfigValue"], List["ConfigValue"], int, float, bool, None
+]
 
 
 class ConfigurationLoader:
@@ -156,14 +161,14 @@ class ConfigurationLoader:
                 raise
             raise ConfigurationError(f"Failed to resolve vault secrets: {e}") from e
 
-    def _initialize_vault_resolver(self, config: Dict[str, Any]) -> VaultSecretResolver:
+    def _initialize_vault_resolver(self, config: Dict[str, Any]):
         """Initialize vault secret resolver from configuration.
 
         Args:
             config: Configuration dictionary
 
         Returns:
-            Initialized VaultSecretResolver
+            Initialized SecretResolver or None if vault not available
 
         Raises:
             ConfigurationError: If vault configuration is invalid
@@ -172,27 +177,17 @@ class ConfigurationLoader:
         if not vault_config.get("enabled", True):
             raise ConfigurationError("Vault is disabled in configuration")
 
-        vault_url = vault_config.get("url")
-        vault_token = vault_config.get("token")
-
-        if not vault_url or not vault_token:
-            raise ConfigurationError(
-                "Vault URL and token must be provided in configuration or environment variables"
-            )
-
-        return VaultSecretResolver(vault_url, vault_token)
+        # SecretResolver uses Vault Agent, so no need for vault_token from config
+        return SecretResolver()
 
     def _resolve_provider_secrets(
-        self, config: Dict[str, Any], resolver: VaultSecretResolver
+        self, config: Dict[str, Any], resolver: SecretResolver
     ) -> None:
-        """Resolve secrets for available providers using dynamic discovery.
-
-        This method discovers what providers are actually available in vault
-        for the given environment, rather than relying on static configuration.
+        """Resolve secrets for providers using the new vault structure.
 
         Args:
             config: Configuration dictionary to update
-            resolver: Vault secret resolver
+            resolver: Secret resolver instance
 
         Raises:
             ConfigurationError: If secret resolution fails
@@ -208,49 +203,184 @@ class ConfigurationLoader:
                 )
 
         try:
-            # Discover available providers from vault
-            available_providers = resolver.discover_available_providers(
-                environment=self.environment, connection_id=self.connection_id
-            )
+            providers_to_update: Dict[str, Dict[str, Any]] = {}
 
-            # Build configuration for available providers
-            providers_to_process = self._build_provider_configs(
-                config, available_providers
-            )
+            # Process each provider defined in the config
+            for provider_name, provider_config in config["providers"].items():
+                try:
+                    if not isinstance(provider_config, dict):
+                        logger.warning(
+                            f"Provider {provider_name} config is not a dictionary, skipping"
+                        )
+                        continue
+                    provider_config = cast(Dict[str, Any], provider_config)
 
-            if not providers_to_process:
-                raise ConfigurationError(
-                    f"No providers available for {self.environment} environment"
-                    + (
-                        f" with connection_id {self.connection_id}"
-                        if self.connection_id
-                        else ""
+                    # Skip if provider doesn't have models defined
+                    if "models" not in provider_config:
+                        logger.warning(
+                            f"Provider {provider_name} has no models defined, skipping"
+                        )
+                        continue
+
+                    # For production: try to find any available model
+                    # For dev/test: use connection_id to find specific model
+                    if self.environment == "production":
+                        # Find first available model for this provider
+                        available_models = resolver.list_available_models(
+                            provider_name, self.environment
+                        )
+                        if available_models:
+                            # Use the first available model in production
+                            model_name = available_models[0]
+                            secret = resolver.get_secret_for_model(
+                                provider_name, self.environment, model_name
+                            )
+                            if secret:
+                                # Update provider config with secrets
+                                updated_config = self._merge_config_with_secrets(
+                                    provider_config, secret, model_name
+                                )
+                                providers_to_update[provider_name] = updated_config
+                                logger.info(
+                                    f"Configured {provider_name} with model {model_name}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"No secret found for {provider_name} model {model_name}"
+                                )
+                        else:
+                            logger.warning(
+                                f"No available models found for provider {provider_name}"
+                            )
+                    else:
+                        # For dev/test, try to find the specific connection_id
+                        # Try each model to see if we can find the connection
+                        for model_name in provider_config.get("models", {}):
+                            secret = resolver.get_secret_for_model(
+                                provider_name,
+                                self.environment,
+                                model_name,
+                                self.connection_id,
+                            )
+                            if secret:
+                                # Update provider config with secrets
+                                updated_config = self._merge_config_with_secrets(
+                                    provider_config, secret, model_name
+                                )
+                                providers_to_update[provider_name] = updated_config
+                                logger.info(
+                                    f"Configured {provider_name} with connection {self.connection_id}"
+                                )
+                                break
+                        else:
+                            logger.warning(
+                                f"No connection found for {provider_name} with connection_id {self.connection_id}"
+                            )
+
+                except Exception as e:
+                    logger.error(f"Failed to process provider {provider_name}: {e}")
+                    logger.debug(
+                        f"Provider {provider_name} processing error details",
+                        exc_info=True,
                     )
-                )
+                    # Continue to next provider instead of failing completely
+                    continue
 
-            # Update the config to only include available providers
-            config["providers"] = providers_to_process
+            # Check if we have any providers configured
+            if not providers_to_update:
+                if self.environment == "production":
+                    raise ConfigurationError(
+                        "No providers available for production environment. "
+                        "At least one provider must have production models configured."
+                    )
+                else:
+                    raise ConfigurationError(
+                        f"No providers available for {self.environment} environment"
+                        + (
+                            f" with connection_id {self.connection_id}"
+                            if self.connection_id
+                            else ""
+                        )
+                    )
 
-            # Resolve secrets for each available provider
-            self._resolve_secrets_for_providers(config, resolver, providers_to_process)
-
-            # Ensure we still have at least one provider after secret resolution
-            if not config["providers"]:
-                raise ConfigurationError(
-                    "No providers available after secret resolution"
-                )
+            # Update the configuration with only available providers
+            config["providers"] = providers_to_update
 
             # Update default_provider if needed
             self._update_default_provider(config)
 
             logger.info(
-                f"Successfully configured {len(config['providers'])} providers: {list(config['providers'].keys())}"
+                f"Successfully configured {len(providers_to_update)} providers: {list(providers_to_update.keys())}"
             )
 
         except Exception as e:
             if isinstance(e, ConfigurationError):
                 raise
             raise ConfigurationError(f"Failed to resolve provider secrets: {e}") from e
+
+    def _merge_config_with_secrets(
+        self, provider_config: Dict[str, Any], secret: Any, model_name: str
+    ) -> Dict[str, Any]:
+        """Merge provider configuration with secrets from Vault.
+
+        Args:
+            provider_config: Provider configuration from YAML
+            secret: Secret object from Vault (AzureOpenAISecret or AWSBedrockSecret)
+            model_name: Model name being configured
+
+        Returns:
+            Updated provider configuration with secrets and model-specific config
+        """
+        # Start with the original config (provider-level settings)
+        updated_config = provider_config.copy()
+
+        # Set the active model
+        updated_config["model"] = model_name
+
+        # Get model-specific configuration from YAML
+        model_config: Dict[str, Any] = {}
+        if "models" in provider_config and model_name in provider_config["models"]:
+            raw_model_config = provider_config["models"][model_name]
+            if isinstance(raw_model_config, dict):
+                model_config = cast(Dict[str, Any], raw_model_config.copy())
+
+        # Add secret data based on provider type
+        if hasattr(secret, "endpoint"):  # Azure OpenAI
+            updated_config.update(
+                {
+                    "endpoint": secret.endpoint,
+                    "api_key": secret.api_key,
+                    "enabled": True,
+                }
+            )
+            # Merge model-specific config, with secret taking precedence for deployment_name
+            if model_config:
+                # Add model-specific settings (max_tokens, temperature, etc.)
+                updated_config.update(model_config)
+                # Override deployment_name from secret if provided
+                updated_config["deployment_name"] = secret.deployment_name
+
+        elif hasattr(secret, "region"):  # AWS Bedrock
+            updated_config.update(
+                {
+                    "region": secret.region,
+                    "access_key_id": secret.access_key_id,
+                    "secret_access_key": secret.secret_access_key,
+                    "enabled": True,
+                }
+            )
+            if hasattr(secret, "session_token") and secret.session_token:
+                updated_config["session_token"] = secret.session_token
+
+            # Merge model-specific config
+            if model_config:
+                updated_config.update(model_config)
+
+        # Remove the models section since we're now using a single active model
+        if "models" in updated_config:
+            del updated_config["models"]
+
+        return updated_config
 
     def _build_provider_configs(
         self, config: Dict[str, Any], available_providers: Dict[str, Any]
@@ -298,44 +428,6 @@ class ConfigurationLoader:
 
         return providers_to_process
 
-    def _resolve_secrets_for_providers(
-        self,
-        config: Dict[str, Any],
-        resolver: VaultSecretResolver,
-        providers_to_process: Dict[str, Dict[str, Any]],
-    ) -> None:
-        """Resolve secrets for each provider.
-
-        Args:
-            config: Configuration dictionary to update
-            resolver: Vault secret resolver
-            providers_to_process: Providers to process
-        """
-        provider_names = list(providers_to_process.keys())
-
-        for provider_name in provider_names:
-            try:
-                secrets = resolver.resolve_provider_secrets(
-                    provider=provider_name,
-                    environment=self.environment,
-                    connection_id=self.connection_id,
-                )
-
-                # Update provider config with resolved secrets
-                if provider_name in config["providers"]:
-                    provider_dict = cast(
-                        Dict[str, Any], config["providers"][provider_name]
-                    )
-                    provider_dict.update(secrets)
-
-            except Exception as e:
-                # Remove the provider if secret resolution fails
-                logger.error(
-                    f"Failed to resolve secrets for {provider_name}, removing from available providers: {e}"
-                )
-                if provider_name in config["providers"]:
-                    del config["providers"][provider_name]
-
     def _update_default_provider(self, config: Dict[str, Any]) -> None:
         """Update default_provider if it's not available.
 
@@ -368,7 +460,7 @@ class ConfigurationLoader:
             Configuration with environment variables substituted.
         """
 
-        def substitute_env_vars(obj: Any) -> Any:
+        def substitute_env_vars(obj: ConfigValue) -> ConfigValue:
             if isinstance(obj, str):
                 # Pattern to match ${VAR_NAME} or ${VAR_NAME:default_value}
                 pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
@@ -380,19 +472,31 @@ class ConfigurationLoader:
 
                 return re.sub(pattern, replace_env_var, obj)
             elif isinstance(obj, dict):
-                result: Dict[str, Any] = {}
-                for key, value in obj.items():  # type: ignore[misc]
-                    result[str(key)] = substitute_env_vars(value)  # type: ignore[arg-type]
+
+                result: Dict[str, ConfigValue] = {}
+                for key, value in obj.items():
+                    result[str(key)] = substitute_env_vars(value)
                 return result
             elif isinstance(obj, list):
-                result_list: List[Any] = []
-                for item in obj:  # type: ignore[misc]
+
+                result_list: List[ConfigValue] = []
+
+                for item in obj:
                     result_list.append(substitute_env_vars(item))
                 return result_list
             else:
                 return obj
 
-        return substitute_env_vars(config)
+        result = substitute_env_vars(config)
+        # Since we know config is a Dict[str, Any] and substitute_env_vars preserves structure,
+        # the result should also be a Dict[str, Any]
+        if isinstance(result, dict):
+            return cast(Dict[str, Any], result)
+        else:
+            # This should never happen given our input type, but provide a fallback
+            raise ConfigurationError(
+                "Environment variable substitution resulted in non-dictionary type"
+            )
 
     def _parse_configuration(self, config: Dict[str, Any]) -> LLMConfiguration:
         """Parse the processed configuration into structured objects.

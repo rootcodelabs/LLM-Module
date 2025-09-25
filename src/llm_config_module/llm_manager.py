@@ -1,8 +1,9 @@
 """LLM Manager - Main entry point for the LLM Config Module."""
 
 from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
 
-import dspy  # type: ignore[import-untyped]
+import dspy
 
 from llm_config_module.llm_factory import LLMFactory
 from llm_config_module.config.loader import ConfigurationLoader
@@ -22,6 +23,7 @@ class LLMManager:
 
     _instance: Optional["LLMManager"] = None
     _initialized: bool = False
+    _configured: bool = False
 
     def __new__(
         cls,
@@ -163,7 +165,21 @@ class LLMManager:
             provider: Optional specific provider to configure DSPY with.
         """
         dspy_client = self.get_dspy_client(provider)
-        dspy.configure(lm=dspy_client)  # type: ignore[attr-defined]
+        dspy.configure(lm=dspy_client)
+
+    def ensure_global_config(self, provider: Optional[LLMProvider] = None) -> None:
+        """Configure DSPy exactly once per process."""
+        if not self._configured:
+            dspy_client = self.get_dspy_client(provider)
+            dspy.configure(lm=dspy_client)  # one-and-done
+            self._configured = True
+
+    @contextmanager
+    def use_task_local(self, provider: Optional[LLMProvider] = None):
+        """Use a task/thread-local DSPy LM without reconfiguring globally."""
+        lm = self.get_dspy_client(provider)
+        with dspy.context(lm=lm):
+            yield
 
     def get_available_providers(self) -> Dict[LLMProvider, str]:
         """Get information about available providers.
@@ -237,3 +253,4 @@ class LLMManager:
         """
         cls._instance = None
         cls._initialized = False
+        cls._configured = False

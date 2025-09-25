@@ -14,6 +14,7 @@ class ProviderType(str, Enum):
     AWS_BEDROCK = "aws_bedrock"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    QDRANT = "qdrant"
 
 
 class Environment(str, Enum):
@@ -41,6 +42,17 @@ class AWSConnection(BaseModel):
     access_key_id: str
     secret_access_key: str
     session_token: Optional[str] = None
+
+
+class QdrantConnection(BaseModel):
+    """Qdrant connection configuration."""
+
+    host: str = "localhost"
+    port: int = 6333
+    collection: str = "document_chunks"
+    timeout: float = 30.0
+    api_key: Optional[str] = None
+    url: Optional[str] = None
 
 
 class ConnectionMetadata(BaseModel):
@@ -75,6 +87,8 @@ class Connection(BaseModel):
             return AzureOpenAIConnection(**self.connection_data)
         elif self.metadata.provider == ProviderType.AWS_BEDROCK:
             return AWSConnection(**self.connection_data)
+        elif self.metadata.provider == ProviderType.QDRANT:
+            return QdrantConnection(**self.connection_data)
         else:
             return self.connection_data
 
