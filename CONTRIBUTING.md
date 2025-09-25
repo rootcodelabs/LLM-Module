@@ -195,3 +195,11 @@ uv sync --reinstall
 git add pyproject.toml uv.lock
 git commit -m "removed package-name"
 ```
+
+- If you need to remove conflicts in uv.lock
+Copy the version of uv.lock before the conflicts occurred.
+``` bash
+uv synv
+uv lock
+```
+
