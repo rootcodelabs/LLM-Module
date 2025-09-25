@@ -1,5 +1,6 @@
 import { PaginationState, SortingState } from '@tanstack/react-table';
 import { LLMConnectionFilters, LegacyLLMConnectionFilters } from 'services/llmConnections';
+import { InferenceRequest } from 'services/inference';
 
 
 export const authQueryKeys = {
@@ -28,4 +29,10 @@ export const llmConnectionsQueryKeys = {
   paginatedList: (filters: LLMConnectionFilters) => [...llmConnectionsQueryKeys.paginatedLists(), filters] as const,
   details: () => [...llmConnectionsQueryKeys.all(), 'detail'] as const,
   detail: (id: string | number) => [...llmConnectionsQueryKeys.details(), id] as const,
+};
+
+export const inferenceQueryKeys = {
+  all: () => ['inference'] as const,
+  results: () => [...inferenceQueryKeys.all(), 'results'] as const,
+  result: (request: InferenceRequest) => [...inferenceQueryKeys.results(), request] as const,
 };
