@@ -6,7 +6,13 @@ INSERT INTO llm_connections (
     monthly_budget,
     environment,
     connection_status,
-    created_at
+    created_at,
+    deployment_name,
+    target_uri,
+    api_key,
+    secret_key,
+    access_key,
+    embedding_model_api_key
 ) VALUES (
     :llm_platform,
     :llm_model,
@@ -15,5 +21,26 @@ INSERT INTO llm_connections (
     :monthly_budget,
     :environment,
     :connection_status,
-    :created_at::timestamp with time zone
-);
+    :created_at::timestamp with time zone,
+    :deployment_name,
+    :target_uri,
+    :api_key,
+    :secret_key,
+    :access_key,
+    :embedding_model_api_key
+) RETURNING 
+    id, 
+    llm_platform, 
+    llm_model, 
+    embedding_platform, 
+    embedding_model, 
+    monthly_budget, 
+    environment, 
+    connection_status, 
+    created_at,
+    deployment_name,
+    target_uri,
+    api_key,
+    secret_key,
+    access_key,
+    embedding_model_api_key;

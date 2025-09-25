@@ -177,10 +177,17 @@ const ViewLLMConnection = () => {
     llmModel: connectionData.llmModel,
     embeddingModelPlatform: connectionData.embeddingPlatform,
     embeddingModel: connectionData.embeddingModel,
-    llmApiKey: '', // Don't show API keys
-    embeddingApiKey: '', // Don't show API keys
     monthlyBudget: connectionData.monthlyBudget.toString(),
     deploymentEnvironment: connectionData.environment,
+    // Azure credentials (don't show sensitive data, but include structure)
+    deploymentName: connectionData.deploymentName || '',
+    targetUri: connectionData.targetUri || '',
+    apiKey: connectionData.apiKey || '', // Don't show API keys
+    // AWS Bedrock credentials (don't show sensitive data, but include structure)
+    secretKey: connectionData.secretKey || '', // Don't show API keys
+    accessKey: connectionData.accessKey || '', // Don't show API keys
+    // Embedding model credentials (don't show sensitive data, but include structure)
+    embeddingModelApiKey: connectionData.embeddingModelApiKey || '', // Don't show API keys
   };
 
   return (

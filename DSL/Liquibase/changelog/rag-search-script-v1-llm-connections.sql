@@ -17,7 +17,21 @@ CREATE TABLE llm_connections (
     
     -- Metadata
     connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
-    created_at TIMESTAMP DEFAULT NOW());
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    -- Mocked Credentials and Access Info
+    -- Azure
+    deployment_name VARCHAR(150),  -- for Azure deployments
+    target_uri TEXT,                -- for custom endpoints
+    api_key TEXT,                   -- secured api key mocked here
+
+    -- AWS Bedrock
+    secret_key TEXT,
+    access_key TEXT, 
+
+    -- Embedding Model 
+    embedding_model_api_key TEXT
+);
 
 CREATE TABLE inference_results (
     id SERIAL PRIMARY KEY,

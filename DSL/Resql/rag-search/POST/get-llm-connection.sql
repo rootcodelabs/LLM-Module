@@ -7,7 +7,16 @@ SELECT
     monthly_budget,
     environment,
     connection_status,
-    created_at
+    created_at,
+    -- Azure credentials
+    deployment_name,
+    target_uri,
+    api_key,
+    -- AWS Bedrock credentials
+    secret_key,
+    access_key,
+    -- Embedding model credentials
+    embedding_model_api_key
 FROM llm_connections
 WHERE id = :connection_id
   AND connection_status <> 'deleted';

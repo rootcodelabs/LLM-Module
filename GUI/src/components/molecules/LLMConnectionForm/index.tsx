@@ -6,23 +6,24 @@ import FormSelect from 'components/FormElements/FormSelect';
 import Button from 'components/Button';
 import Track from 'components/Track';
 import './LLMConnectionForm.scss';
+import { is } from 'date-fns/locale';
 
 export type LLMConnectionFormData = {
   llmPlatform: string;
   llmModel: string;
   embeddingModelPlatform: string;
   embeddingModel: string;
-  llmApiKey: string;
-  embeddingApiKey: string;
   monthlyBudget: string;
   deploymentEnvironment: string;
-  // AWS Bedrock specific fields
+  // AWS Bedrock credentials
   accessKey?: string;
   secretKey?: string;
-  // Azure specific fields
+  // Azure credentials
   deploymentName?: string;
-  endpoint?: string;
-  azureApiKey?: string;
+  targetUri?: string;
+  apiKey?: string;
+  // Embedding model credentials
+  embeddingModelApiKey?: string;
 };
 
 type LLMConnectionFormProps = {
@@ -54,17 +55,17 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       llmModel: '',
       embeddingModelPlatform: '',
       embeddingModel: '',
-      llmApiKey: '',
-      embeddingApiKey: '',
+      embeddingModelApiKey: '',
       monthlyBudget: '',
-      deploymentEnvironment: 'development',
-      // AWS Bedrock specific fields
+      deploymentEnvironment: 'testing',
+      // AWS Bedrock credentials
       accessKey: '',
       secretKey: '',
-      // Azure specific fields
+      // Azure credentials
       deploymentName: '',
-      endpoint: '',
-      azureApiKey: '',
+      targetUri: '',
+      apiKey: '',
+      // Embedding model credentials
       ...defaultValues,
     },
     mode: 'onChange',
@@ -161,7 +162,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter AWS Access Key"
                     error={errors.accessKey?.message}
                     {...field}
@@ -179,7 +180,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter AWS Secret Key"
                     error={errors.secretKey?.message}
                     {...field}
@@ -213,7 +214,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               <p className='form-label'>Endpoint / Target URI</p>
               <p className='form-description'>Azure OpenAI service endpoint URL</p>
               <Controller
-                name="endpoint"
+                name="targetUri"
                 control={control}
                 rules={{ 
                   required: 'Endpoint is required for Azure OpenAI',
@@ -226,7 +227,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   <FormInput
                     label=""
                     placeholder="https://your-resource.openai.azure.com/"
-                    error={errors.endpoint?.message}
+                    error={errors.targetUri?.message}
                     {...field}
                   />
                 )}
@@ -236,15 +237,15 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               <p className='form-label'>API Key</p>
               <p className='form-description'>Azure OpenAI API key</p>
               <Controller
-                name="azureApiKey"
+                name="apiKey"
                 control={control}
                 rules={{ required: 'API Key is required for Azure OpenAI' }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter Azure OpenAI API key"
-                    error={errors.azureApiKey?.message}
+                    error={errors.apiKey?.message}
                     {...field}
                   />
                 )}
@@ -252,42 +253,22 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             </div>
           </>
         );
-      case 'huggingface':
-        return (
-          <div className="form-row">
-            <p className='form-label'>LLM API Key</p>
-            <p className='form-description'>Hugging Face API token for model access</p>
-            <Controller
-              name="llmApiKey"
-              control={control}
-              rules={{ required: 'API Key is required for Hugging Face' }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  type="password"
-                  placeholder="Enter Hugging Face API token"
-                  error={errors.llmApiKey?.message}
-                  {...field}
-                />
-              )}
-            />
-          </div>
-        );
+      
       default:
         return (
           <div className="form-row">
             <p className='form-label'>LLM API Key</p>
             <p className='form-description'>The API key of the LLM model</p>
             <Controller
-              name="llmApiKey"
+              name="apiKey"
               control={control}
               rules={{ required: 'LLM API Key is required' }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  type="password"
+                  type={isEditing ? 'text' : 'password'}
                   placeholder="Enter your LLM API key"
-                  error={errors.llmApiKey?.message}
+                  error={errors.apiKey?.message}
                   {...field}
                 />
               )}
@@ -421,15 +402,15 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             <p className='form-description'>API key of your embedding model</p>
 
             <Controller
-              name="embeddingApiKey"
+              name="embeddingModelApiKey"
               control={control}
               rules={{ required: 'Embedding API Key is required' }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  type="password"
+                  type={isEditing ? 'text' : 'password'}
                   placeholder="Enter your Embedding API key"
-                  error={errors.embeddingApiKey?.message}
+                  error={errors.embeddingModelApiKey?.message}
                   {...field}
                 />
               )}
@@ -513,6 +494,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               {isEditing && (<Button
                 appearance="error"
                 onClick={onDelete}
+                type='button'
               >
                 Delete Connection
               </Button>)}

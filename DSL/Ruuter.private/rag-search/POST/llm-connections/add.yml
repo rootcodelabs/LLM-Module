@@ -26,6 +26,27 @@ declaration:
       - field: deployment_environment
         type: string
         description: "Deployment environment (Testing or Production)"
+      # Azure credentials
+      - field: deployment_name
+        type: string
+        description: "Azure deployment name"
+      - field: target_uri
+        type: string
+        description: "Custom endpoint URI"
+      - field: api_key
+        type: string
+        description: "API key"
+      # AWS Bedrock credentials
+      - field: secret_key
+        type: string
+        description: "AWS secret key"
+      - field: access_key
+        type: string
+        description: "AWS access key"
+      # Embedding model credentials
+      - field: embedding_model_api_key
+        type: string
+        description: "Embedding model API key"
 
 extract_request_data:
   assign:
@@ -35,6 +56,12 @@ extract_request_data:
     embedding_model: ${incoming.body.embedding_model}
     monthly_budget: ${incoming.body.monthly_budget}
     deployment_environment: ${incoming.body.deployment_environment}
+    deployment_name: ${incoming.body.deployment_name || ""}
+    target_uri: ${incoming.body.target_uri || ""}
+    api_key: ${incoming.body.api_key || ""}
+    secret_key: ${incoming.body.secret_key || ""}
+    access_key: ${incoming.body.access_key || ""}
+    embedding_model_api_key: ${incoming.body.embedding_model_api_key || ""}
     created_at: ${new Date().toISOString()}
   next: validate_environment
 
@@ -57,6 +84,12 @@ add_llm_connection:
       environment: ${deployment_environment}
       connection_status: "active"
       created_at: ${new Date().toISOString()}
+      deployment_name: ${deployment_name}
+      target_uri: ${target_uri}
+      api_key: ${api_key}
+      secret_key: ${secret_key}
+      access_key: ${access_key}
+      embedding_model_api_key: ${embedding_model_api_key}
   result: connection_result
   next: return_success
 

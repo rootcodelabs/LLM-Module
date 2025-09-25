@@ -1,6 +1,7 @@
 import apiDev from './api-dev';
 import { llmConnectionsEndpoints } from 'utils/endpoints';
 import { removeCommasFromNumber } from 'utils/commonUtilts';
+import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
 
 export interface LLMConnection {
   id: number;
@@ -15,8 +16,16 @@ export interface LLMConnection {
   updatedAt: string;
   totalPages?: number;
   budgetStatus: 'within_budget' | 'over_budget' | 'close_to_exceed';
-  usedBudget?: number; 
-
+  usedBudget?: number;
+  // Azure credentials
+  deploymentName?: string;
+  targetUri?: string;
+  apiKey?: string;
+  // AWS Bedrock credentials
+  secretKey?: string;
+  accessKey?: string;
+  // Embedding model credentials
+  embeddingModelApiKey?: string;
 }
 
 export interface LLMConnectionsResponse {
@@ -52,10 +61,17 @@ export interface LLMConnectionFormData {
   llmModel: string;
   embeddingModelPlatform: string;
   embeddingModel: string;
-  llmApiKey: string;
-  embeddingApiKey: string;
   monthlyBudget: string;
   deploymentEnvironment: string;
+  // Azure credentials
+  deploymentName?: string;
+  targetUri?: string;
+  apiKey?: string;
+  // AWS Bedrock credentials
+  secretKey?: string;
+  accessKey?: string;
+  // Embedding model credentials
+  embeddingModelApiKey?: string;
 }
 
 export async function fetchLLMConnectionsPaginated(filters: LLMConnectionFilters): Promise<LLMConnection[]> {
@@ -85,12 +101,19 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
   const { data } = await apiDev.post(llmConnectionsEndpoints.CREATE_LLM_CONNECTION(), {
     llm_platform: connectionData.llmPlatform,
     llm_model: connectionData.llmModel,
-    llm_api_key: connectionData.llmApiKey,
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
-    embedding_api_key: connectionData.embeddingApiKey,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
+    // Azure credentials
+    deployment_name: connectionData.deploymentName || null,
+    target_uri: connectionData.targetUri || null,
+    api_key: maskSensitiveKey(connectionData.apiKey) || null,
+    // AWS Bedrock credentials
+    secret_key: maskSensitiveKey(connectionData.secretKey) || null,
+    access_key: maskSensitiveKey(connectionData.accessKey) || null,
+    // Embedding model credentials
+    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || null,
   });
   return data?.response;
 }
@@ -103,12 +126,19 @@ export async function updateLLMConnection(
     connection_id: id,
     llm_platform: connectionData.llmPlatform,
     llm_model: connectionData.llmModel,
-    llm_api_key: connectionData.llmApiKey,
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
-    embedding_api_key: connectionData.embeddingApiKey,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
+    // Azure credentials
+    deployment_name: connectionData.deploymentName || null,
+    target_uri: connectionData.targetUri || null,
+    api_key: maskSensitiveKey(connectionData.apiKey) || null,
+    // AWS Bedrock credentials
+    secret_key: maskSensitiveKey(connectionData.secretKey) || null,
+    access_key: maskSensitiveKey(connectionData.accessKey) || null,
+    // Embedding model credentials
+    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || null,
   });
   return data?.response;
 }
