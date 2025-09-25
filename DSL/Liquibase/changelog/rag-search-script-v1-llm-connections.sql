@@ -12,6 +12,7 @@ CREATE TABLE llm_connections (
     
     -- Budget and Environment
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
+    used_budget NUMERIC(12,2) NOT NULL,
     environment VARCHAR(50) NOT NULL,
     
     -- Metadata
