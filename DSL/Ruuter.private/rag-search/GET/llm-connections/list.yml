@@ -16,18 +16,30 @@ declaration:
         description: "Number of items per page"
       - field: sortBy
         type: string
-        description: "Field to sort by (e.g. 'llmPlatform', 'createdAt')"
+        description: "Field to sort by (e.g. 'llm_platform', 'created_at')"
       - field: sortOrder
         type: string
         description: "Sort order: 'asc' or 'desc'"
+      - field: llmPlatform
+        type: string
+        description: "Filter by LLM platform"
+      - field: llmModel
+        type: string
+        description: "Filter by LLM model"
+      - field: environment
+        type: string
+        description: "Filter by deployment environment"
 
 extract_request_data:
   assign:
     pageNumber: ${Number(incoming.params.pageNumber) ?? 1}
     pageSize: ${Number(incoming.params.pageSize) ?? 10}
-    sortBy: ${incoming.params.sortBy ?? "createdAt"}
+    sortBy: ${incoming.params.sortBy ?? "created_at"}
     sortOrder: ${incoming.params.sortOrder ?? "desc"}
     sorting: ${sortBy + " " + sortOrder}
+    llmPlatform: ${incoming.params.llmPlatform ?? ""}
+    llmModel: ${incoming.params.llmModel ?? ""}
+    environment: ${incoming.params.environment ?? ""}
   next: validate_page_params
 
 validate_page_params:
@@ -46,6 +58,9 @@ get_llm_connections:
       page: ${pageNumber}
       page_size: ${pageSize}
       sorting: ${sorting}
+      llm_platform: ${llmPlatform}
+      llm_model: ${llmModel}
+      environment: ${environment}
   result: connections_result
   next: transform_response
 

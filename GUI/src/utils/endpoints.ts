@@ -20,3 +20,7 @@ export const llmConnectionsEndpoints = {
   UPDATE_LLM_CONNECTION: (): string => `/rag-search/llm-connections/edit`,
   DELETE_LLM_CONNECTION: (): string => `/rag-search/llm-connections/delete`,
 }
+
+export const inferenceEndpoints = {
+  VIEW_INFERENCE_RESULT: (): string => `/rag-search/inference/results/view`,
+}
