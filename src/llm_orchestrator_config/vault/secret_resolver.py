@@ -6,13 +6,13 @@ from typing import Optional, Dict, Any, Union
 from dataclasses import dataclass
 from loguru import logger
 
-from llm_config_module.vault.vault_client import VaultAgentClient
-from llm_config_module.vault.models import (
+from llm_orchestrator_config.vault.vault_client import VaultAgentClient
+from llm_orchestrator_config.vault.models import (
     AzureOpenAISecret,
     AWSBedrockSecret,
     get_secret_model,
 )
-from llm_config_module.vault.exceptions import VaultConnectionError
+from llm_orchestrator_config.vault.exceptions import VaultConnectionError
 
 
 @dataclass

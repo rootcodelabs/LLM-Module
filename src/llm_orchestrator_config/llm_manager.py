@@ -5,12 +5,12 @@ from contextlib import contextmanager
 
 import dspy
 
-from llm_config_module.llm_factory import LLMFactory
-from llm_config_module.config.loader import ConfigurationLoader
-from llm_config_module.config.schema import LLMConfiguration
-from llm_config_module.providers.base import BaseLLMProvider
-from llm_config_module.types import LLMProvider
-from llm_config_module.exceptions import ConfigurationError
+from llm_orchestrator_config.llm_factory import LLMFactory
+from llm_orchestrator_config.config.loader import ConfigurationLoader
+from llm_orchestrator_config.config.schema import LLMConfiguration
+from llm_orchestrator_config.providers.base import BaseLLMProvider
+from llm_orchestrator_config.types import LLMProvider
+from llm_orchestrator_config.exceptions import ConfigurationError
 
 
 class LLMManager:

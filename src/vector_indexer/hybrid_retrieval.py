@@ -6,8 +6,8 @@ from qdrant_client.models import SearchParams
 from rank_bm25 import BM25Okapi
 from rerankers import Reranker
 
-from chunk_indexing_module.chunk_config import ChunkConfig
-from chunk_indexing_module.chunker import ChunkRetriever
+from vector_indexer.chunk_config import ChunkConfig
+from vector_indexer.chunker import ChunkRetriever
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

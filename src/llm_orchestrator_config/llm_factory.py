@@ -2,11 +2,11 @@
 
 from typing import Any, Dict, Type
 
-from llm_config_module.providers.base import BaseLLMProvider
-from llm_config_module.providers.azure_openai import AzureOpenAIProvider
-from llm_config_module.providers.aws_bedrock import AWSBedrockProvider
-from llm_config_module.types import LLMProvider
-from llm_config_module.exceptions import UnsupportedProviderError
+from llm_orchestrator_config.providers.base import BaseLLMProvider
+from llm_orchestrator_config.providers.azure_openai import AzureOpenAIProvider
+from llm_orchestrator_config.providers.aws_bedrock import AWSBedrockProvider
+from llm_orchestrator_config.types import LLMProvider
+from llm_orchestrator_config.exceptions import UnsupportedProviderError
 
 
 class LLMFactory:

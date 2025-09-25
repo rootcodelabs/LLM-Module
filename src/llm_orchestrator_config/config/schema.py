@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
-from llm_config_module.types import LLMProvider
+from llm_orchestrator_config.types import LLMProvider
 
 
 class VaultConfig(BaseModel):

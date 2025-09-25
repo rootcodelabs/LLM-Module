@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import dspy
 
-from llm_config_module.exceptions import InvalidConfigurationError
+from llm_orchestrator_config.exceptions import InvalidConfigurationError
 
 
 class BaseLLMProvider(ABC):

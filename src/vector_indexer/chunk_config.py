@@ -47,7 +47,7 @@ class ChunkConfig:
     def _load_from_vault(self):
         """Load configuration from Vault."""
         try:
-            from chunk_indexing_module.vault.secret_resolver import (
+            from vector_indexer.vault.secret_resolver import (
                 EmbeddingSecretResolver,
             )
 

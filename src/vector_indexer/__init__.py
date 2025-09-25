@@ -1,7 +1,7 @@
 """Chunk retriever module for processing datasets and creating embeddings."""
 
-from chunk_indexing_module.chunk_config import ChunkConfig
-from chunk_indexing_module.chunker import (
+from vector_indexer.chunk_config import ChunkConfig
+from vector_indexer.chunker import (
     ChunkRetriever,
     DocumentProcessor,
     EmbeddingGenerator,

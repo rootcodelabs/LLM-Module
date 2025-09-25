@@ -4,8 +4,8 @@ from typing import Any, Dict, List
 
 import dspy
 
-from llm_config_module.providers.base import BaseLLMProvider
-from llm_config_module.exceptions import ProviderInitializationError
+from llm_orchestrator_config.providers.base import BaseLLMProvider
+from llm_orchestrator_config.exceptions import ProviderInitializationError
 
 
 class AWSBedrockProvider(BaseLLMProvider):

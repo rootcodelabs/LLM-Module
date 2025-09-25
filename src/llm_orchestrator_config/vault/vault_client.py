@@ -1,20 +1,20 @@
-"""Embedding vault client using hvac library."""
+"""Vault Agent client using hvac library."""
 
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from loguru import logger
 import hvac
 
-from chunk_indexing_module.vault.exceptions import (
-    EmbeddingVaultConnectionError,
-    EmbeddingVaultSecretError,
-    EmbeddingVaultTokenError,
+from llm_orchestrator_config.vault.exceptions import (
+    VaultConnectionError,
+    VaultSecretError,
+    VaultTokenError,
 )
 
 
-class EmbeddingVaultClient:
-    """HashiCorp Vault client for embedding configurations using Vault Agent token."""
+class VaultAgentClient:
+    """HashiCorp Vault client using Vault Agent token."""
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class EmbeddingVaultClient:
         mount_point: str = "secret",
         timeout: int = 10,
     ):
-        """Initialize Embedding Vault client.
+        """Initialize Vault Agent client.
 
         Args:
             vault_url: Vault server URL (defaults to VAULT_ADDR env var)
@@ -45,17 +45,17 @@ class EmbeddingVaultClient:
         # Load token from Vault Agent
         self._load_token()
 
-        logger.info(f"Embedding Vault client initialized: {self.vault_url}")
+        logger.info(f"Vault Agent client initialized: {self.vault_url}")
 
     def _load_token(self) -> None:
         """Load token from Vault Agent token file.
 
         Raises:
-            EmbeddingVaultTokenError: If token file is missing or unreadable
+            VaultTokenError: If token file is missing or unreadable
         """
         try:
             if not self.token_path.exists():
-                raise EmbeddingVaultTokenError(
+                raise VaultTokenError(
                     f"Vault Agent token file not found: {self.token_path}"
                 )
 
@@ -63,19 +63,17 @@ class EmbeddingVaultClient:
                 token = f.read().strip()
 
             if not token:
-                raise EmbeddingVaultTokenError("Vault Agent token file is empty")
+                raise VaultTokenError("Vault Agent token file is empty")
 
             # Log token info for debugging (first and last 4 chars only for security)
             token_preview = f"{token[:4]}...{token[-4:]}" if len(token) > 8 else "****"
-            logger.debug(
-                f"Loaded embedding vault token: {token_preview} (length: {len(token)})"
-            )
+            logger.debug(f"Loaded token: {token_preview} (length: {len(token)})")
 
             self.client.token = token
-            logger.debug("Embedding vault token loaded successfully")
+            logger.debug("Vault Agent token loaded successfully")
 
         except (OSError, IOError) as e:
-            raise EmbeddingVaultTokenError(f"Failed to read Vault Agent token: {e}")
+            raise VaultTokenError(f"Failed to read Vault Agent token: {e}")
 
     def is_authenticated(self) -> bool:
         """Check if client is authenticated with Vault.
@@ -86,16 +84,28 @@ class EmbeddingVaultClient:
         try:
             # Check if we have a token
             if not hasattr(self.client, "token") or not self.client.token:
-                logger.debug("No token set on embedding vault client")
+                logger.debug("No token set on client")
                 return False
 
             # Test authentication with a simple lookup_self call
             result = self.client.is_authenticated()
-            logger.debug(f"Embedding vault authentication result: {result}")
+            logger.debug(f"Vault authentication result: {result}")
+
+            # Additional debug - try to get token info
+            try:
+                token_info = cast(Dict[str, Any], self.client.lookup_token())
+                logger.debug(
+                    f"Token info: policies={token_info.get('data', {}).get('policies', [])}"
+                )
+            except Exception as token_e:
+                logger.debug(
+                    f"Could not get token info (this might be normal): {token_e}"
+                )
+
             return result
 
         except Exception as e:
-            logger.warning(f"Embedding vault authentication check failed: {e}")
+            logger.warning(f"Vault authentication check failed: {e}")
             return False
 
     def is_vault_available(self) -> bool:
@@ -106,15 +116,28 @@ class EmbeddingVaultClient:
         """
         try:
             response = self.client.sys.read_health_status()
-            logger.debug(f"Embedding vault health response: {response}")
+            logger.debug(f"Vault health response type: {type(response)}")
+            logger.debug(f"Vault health response: {response}")
 
             # For Vault health endpoint, we primarily check the HTTP status code
             if hasattr(response, "status_code"):
-                # HTTP 200 = healthy, unsealed, and initialized
                 is_available = response.status_code == 200
                 logger.debug(
-                    f"Embedding vault health check: status_code={response.status_code}, available={is_available}"
+                    f"Vault health check: status_code={response.status_code}, available={is_available}"
                 )
+
+                # Try to get additional details from response body if available
+                try:
+                    if hasattr(response, "json") and callable(
+                        getattr(response, "json")
+                    ):
+                        health_data = response.json()
+                        logger.debug(f"Vault health details: {health_data}")
+                except Exception as e:
+                    logger.debug(
+                        f"Could not parse health response body (this is normal): {e}"
+                    )
+
                 return is_available
             else:
                 # Fallback for non-Response objects (direct dict)
@@ -122,42 +145,39 @@ class EmbeddingVaultClient:
                     is_available = response.get(
                         "initialized", False
                     ) and not response.get("sealed", True)
-                    logger.debug(
-                        f"Embedding vault availability check from dict: {is_available}"
-                    )
+                    logger.debug(f"Vault availability check from dict: {is_available}")
                     return is_available
                 else:
                     logger.warning(f"Unexpected response type: {type(response)}")
                     return False
 
         except Exception as e:
-            logger.warning(f"Embedding vault not available: {e}")
+            logger.warning(f"Vault not available: {e}")
             return False
 
     def get_secret(self, path: str) -> Optional[Dict[str, Any]]:
         """Retrieve secret from Vault KV v2 store.
 
         Args:
-            path: Secret path (e.g., "embeddings/connections/azure_openai/production/text-embedding-3-large")
+            path: Secret path (e.g., "llm/connections/azure_openai/production/gpt-4o")
 
         Returns:
             Secret data or None if not found
 
         Raises:
-            EmbeddingVaultConnectionError: If Vault is not available
-            EmbeddingVaultSecretError: If secret retrieval fails
+            VaultConnectionError: If Vault is not available
+            VaultSecretError: If secret retrieval fails
         """
         if not self.is_vault_available():
-            raise EmbeddingVaultConnectionError("Vault is not available")
+            raise VaultConnectionError("Vault is not available")
 
         if not self.is_authenticated():
             # Try to reload token
             self._load_token()
             if not self.is_authenticated():
-                raise EmbeddingVaultConnectionError("Vault authentication failed")
+                raise VaultConnectionError("Vault authentication failed")
 
         try:
-            logger.debug(f"Retrieving embedding secret from path: {path}")
             # Use KV v2 API
             response = self.client.secrets.kv.v2.read_secret_version(
                 path=path,
@@ -166,24 +186,20 @@ class EmbeddingVaultClient:
 
             if response and "data" in response:
                 secret_data = response["data"]["data"]
-                logger.debug(
-                    f"Successfully retrieved embedding secret from path: {path}"
-                )
+                logger.debug(f"Successfully retrieved secret from path: {path}")
                 return secret_data
             else:
-                logger.debug(f"Embedding secret not found at path: {path}")
+                logger.debug(f"Secret not found at path: {path}")
                 return None
 
         except hvac.exceptions.InvalidPath:
-            logger.debug(f"Embedding secret not found at path: {path}")
+            logger.debug(f"Secret not found at path: {path}")
             return None
         except hvac.exceptions.Forbidden as e:
-            raise EmbeddingVaultSecretError(
-                f"Access denied to embedding secret path {path}: {e}"
-            )
+            raise VaultSecretError(f"Access denied to secret path {path}: {e}")
         except Exception as e:
-            logger.error(f"Error retrieving embedding secret from path {path}: {e}")
-            raise EmbeddingVaultSecretError(f"Failed to retrieve embedding secret: {e}")
+            logger.error(f"Error retrieving secret from path {path}: {e}")
+            raise VaultSecretError(f"Failed to retrieve secret: {e}")
 
     def list_secrets(self, path: str) -> Optional[list[str]]:
         """List secrets at the given path.
@@ -195,38 +211,38 @@ class EmbeddingVaultClient:
             List of secret names or None if path doesn't exist
 
         Raises:
-            EmbeddingVaultConnectionError: If Vault is not available
-            EmbeddingVaultSecretError: If listing fails
+            VaultConnectionError: If Vault is not available
+            VaultSecretError: If listing fails
         """
         if not self.is_vault_available():
-            raise EmbeddingVaultConnectionError("Vault is not available")
+            raise VaultConnectionError("Vault is not available")
 
         if not self.is_authenticated():
             self._load_token()
             if not self.is_authenticated():
-                raise EmbeddingVaultConnectionError("Vault authentication failed")
+                raise VaultConnectionError("Vault authentication failed")
 
         try:
             response = self.client.secrets.kv.v2.list_secrets(
                 path=path,
                 mount_point=self.mount_point,
             )
-            logger.debug(f"List embedding secrets response: {response}")
+            logger.debug(f"List secrets response: {response}")
 
             if response and "data" in response:
                 keys = response["data"].get("keys", [])
-                logger.debug(f"Listed {len(keys)} embedding secrets at path: {path}")
+                logger.debug(f"Listed {len(keys)} secrets at path: {path}")
                 return keys
             else:
-                logger.debug(f"No embedding secrets found at path: {path}")
+                logger.debug(f"No secrets found at path: {path}")
                 return None
 
         except hvac.exceptions.InvalidPath:
-            logger.debug(f"Embedding path not found: {path}")
+            logger.debug(f"Path not found: {path}")
             return None
         except Exception as e:
-            logger.error(f"Error listing embedding secrets at path {path}: {e}")
-            raise EmbeddingVaultSecretError(f"Failed to list embedding secrets: {e}")
+            logger.error(f"Error listing secrets at path {path}: {e}")
+            raise VaultSecretError(f"Failed to list secrets: {e}")
 
     def refresh_token(self) -> bool:
         """Refresh token from Vault Agent.
@@ -238,5 +254,5 @@ class EmbeddingVaultClient:
             self._load_token()
             return self.is_authenticated()
         except Exception as e:
-            logger.error(f"Failed to refresh embedding vault token: {e}")
+            logger.error(f"Failed to refresh Vault token: {e}")
             return False

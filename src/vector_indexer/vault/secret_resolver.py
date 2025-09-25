@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from loguru import logger
 
-from chunk_indexing_module.vault.vault_client import EmbeddingVaultClient
-from chunk_indexing_module.vault.models import get_embedding_secret_model
-from chunk_indexing_module.vault.exceptions import EmbeddingVaultConnectionError
-from chunk_indexing_module.vault.models import BaseEmbeddingSecret
+from vector_indexer.vault.vault_client import EmbeddingVaultClient
+from vector_indexer.vault.models import get_embedding_secret_model
+from vector_indexer.vault.exceptions import EmbeddingVaultConnectionError
+from vector_indexer.vault.models import BaseEmbeddingSecret
 
 
 @dataclass

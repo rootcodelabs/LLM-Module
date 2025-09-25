@@ -5,17 +5,17 @@ import json
 import dspy
 from loguru import logger
 
-from llm_config_module.llm_manager import LLMManager
+from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
     ConversationItem,
     PromptRefinerOutput,
 )
-from prompt_refiner_module.prompt_refiner import PromptRefinerAgent
-from chunk_indexing_module.chunk_config import ChunkConfig
-from chunk_indexing_module.hybrid_retrieval import HybridRetriever
-from response_generator_module.response_generator import ResponseGeneratorAgent
+from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
+from vector_indexer.chunk_config import ChunkConfig
+from vector_indexer.hybrid_retrieval import HybridRetriever
+from src.response_generator.response_generate import ResponseGeneratorAgent
 
 # Constants
 UNKNOWN_SOURCE = "Unknown source"

@@ -15,7 +15,7 @@ from typing import (
 import logging
 import dspy
 
-from llm_config_module import LLMManager, LLMProvider
+from llm_orchestrator_config import LLMManager, LLMProvider
 
 
 LOGGER = logging.getLogger(__name__)

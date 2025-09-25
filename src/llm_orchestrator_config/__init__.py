@@ -22,10 +22,10 @@ Example usage:
     azure_llm = manager.get_llm(LLMProvider.AZURE_OPENAI)
 """
 
-from llm_config_module.llm_manager import LLMManager
-from llm_config_module.llm_factory import LLMFactory
-from llm_config_module.types import LLMProvider
-from llm_config_module.exceptions import (
+from llm_orchestrator_config.llm_manager import LLMManager
+from llm_orchestrator_config.llm_factory import LLMFactory
+from llm_orchestrator_config.types import LLMProvider
+from llm_orchestrator_config.exceptions import (
     LLMConfigError,
     ConfigurationError,
     UnsupportedProviderError,
@@ -34,12 +34,12 @@ from llm_config_module.exceptions import (
 )
 
 # Re-export key classes for convenience
-from llm_config_module.providers import (
+from llm_orchestrator_config.providers import (
     BaseLLMProvider,
     AzureOpenAIProvider,
     AWSBedrockProvider,
 )
-from llm_config_module.config import ConfigurationLoader, LLMConfiguration
+from llm_orchestrator_config.config import ConfigurationLoader, LLMConfiguration
 
 __version__ = "0.1.0"
 

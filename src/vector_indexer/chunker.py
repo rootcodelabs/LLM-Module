@@ -15,7 +15,7 @@ from qdrant_client.models import (
     PointStruct,
 )
 
-from chunk_indexing_module.chunk_config import ChunkConfig
+from vector_indexer.chunk_config import ChunkConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
