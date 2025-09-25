@@ -9,7 +9,6 @@ import { fetchLLMConnectionsPaginated, LegacyLLMConnectionFilters } from 'servic
 import { viewInferenceResult, InferenceRequest, InferenceResponse } from 'services/inference';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
 import { ButtonAppearanceTypes } from 'enums/commonEnums';
-import { set } from 'date-fns';
 
 const TestLLM: FC = () => {
   const { t } = useTranslation();
