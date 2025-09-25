@@ -1,0 +1,53 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    restart: always
+    container_name: qdrant
+    ports:
+      - 6333:6333 # http client 
+      - 6334:6334 # grpc client
+    expose:
+      - 6333
+      - 6334
+      - 6335
+    volumes:
+      - test_qdrant_data:/qdrant/storage
+    networks:
+      - test-network
+
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: always
+    ports:
+      - "8100:8100"
+    environment:
+      - ENVIRONMENT=test
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=/agent/out/token
+    volumes:
+      # Mount configuration files
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      # Mount logs directory for persistence
+      - test_llm_orchestration_logs:/app/logs
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+networks:
+  test-network:
+    name: test-network
+    driver: bridge
+
+volumes:
+  test_llm_orchestration_logs:
+    name: test_llm_orchestration_logs
+  test_qdrant_data:
+    name: test_qdrant_data

@@ -11,7 +11,6 @@ import uvicorn
 from llm_orchestration_service import LLMOrchestrationService
 from models.request_models import OrchestrationRequest, OrchestrationResponse
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
