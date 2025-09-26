@@ -77,13 +77,10 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
   // Platform options
   const llmPlatformOptions = [
     { label: 'Azure OpenAI', value: 'azure' },
-    { label: 'AWS Bedrock', value: 'bedrock' },
-    { label: 'Hugging Face', value: 'huggingface' },
-  ];
+    { label: 'AWS Bedrock', value: 'bedrock' }  ];
 
   const embeddingPlatformOptions = [
     { label: 'OpenAI', value: 'openai' },
-    { label: 'Hugging Face', value: 'huggingface' },
     { label: 'Azure OpenAI', value: 'azure' },
   ];
 
@@ -104,13 +101,6 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           { label: 'Claude 3 Opus', value: 'anthropic.claude-3-opus-20240229-v1:0' },
           { label: 'Titan Text G1 - Express', value: 'amazon.titan-text-express-v1' },
           { label: 'Llama 2 70B Chat', value: 'meta.llama2-70b-chat-v1' },
-        ];
-      case 'huggingface':
-        return [
-          { label: 'Llama 2 7B Chat', value: 'meta-llama/Llama-2-7b-chat-hf' },
-          { label: 'Llama 2 13B Chat', value: 'meta-llama/Llama-2-13b-chat-hf' },
-          { label: 'Mistral 7B Instruct', value: 'mistralai/Mistral-7B-Instruct-v0.1' },
-          { label: 'CodeLlama 7B Instruct', value: 'codellama/CodeLlama-7b-Instruct-hf' },
         ];
       default:
         return [{ label: 'Custom Model', value: 'custom' }];
