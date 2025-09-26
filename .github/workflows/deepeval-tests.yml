@@ -1,7 +1,17 @@
 name: DeepEval RAG System Tests
 
 on:
+  push:
+    branches:
+      - deep-eval-bimsara
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/deepeval-tests.yml'
+
   pull_request:
+    branches:
+      - deep-eval-bimsara
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
@@ -20,24 +30,31 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-          python-version-file: '.python-version'
+        python-version-file: '.python-version'
+
     - name: Set up uv
       uses: astral-sh/setup-uv@v6
 
     - name: Install dependencies (locked)
       run: uv sync --frozen
 
-    - name: Create .env file
+    - name: Print first 3 characters of secrets (for debug)
       run: |
-        echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
-        echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+        echo "AZURE_MODEL_API_KEY starts with: ${AZURE_MODEL_API_KEY:0:3}"
+        echo "AZURE_MODEL_ENDPOINT starts with: ${AZURE_MODEL_ENDPOINT:0:3}"
+      env:
+        AZURE_MODEL_API_KEY: ${{ secrets.AZURE_MODEL_API_KEY }}
+        AZURE_MODEL_ENDPOINT: ${{ secrets.AZURE_MODEL_ENDPOINT }}
 
     - name: Run DeepEval tests
       id: run_tests
       continue-on-error: true
+      env:
+        AZURE_MODEL_API_KEY: ${{ secrets.AZURE_MODEL_API_KEY }}
+        AZURE_MODEL_ENDPOINT: ${{ secrets.AZURE_MODEL_ENDPOINT }}
       run: |
         cd tests
-        uv run python -m pytest deepeval_tests/standard_tests.py -v --tb=short
+        uv run python -m pytest test_orchestration_api.py -v --tb=short
         echo "PYTEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
     - name: Generate evaluation report
@@ -51,7 +68,6 @@ jobs:
       run: |
         if [ -f "tests/test_report.md" ]; then
           echo "REPORT_EXISTS=true" >> $GITHUB_ENV
-          # Use base64 encoding to handle multiline content safely
           echo "REPORT_CONTENT<<EOF" >> $GITHUB_ENV
           cat tests/test_report.md | base64 -w 0 >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
@@ -62,45 +78,38 @@ jobs:
         fi
 
     - name: Comment PR with test results
+      if: github.event_name == 'pull_request' && env.REPORT_EXISTS == 'true'
       uses: actions/github-script@v7
-      if: env.REPORT_EXISTS == 'true'
       with:
         script: |
           const reportContent = Buffer.from(process.env.REPORT_CONTENT, 'base64').toString('utf-8');
           
-          // Find existing comment
           const comments = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number
           });
-          
+
           const existingComment = comments.data.find(
-            comment => comment.user.login === 'github-actions[bot]' && 
-                      comment.body.includes('RAG System Evaluation Report')
+            comment => comment.user.login === 'github-actions[bot]' &&
+                       comment.body.includes('RAG System Evaluation Report')
           );
-          
-          const commentBody = reportContent;
-          
+
           if (existingComment) {
-            // Update existing comment
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               comment_id: existingComment.id,
-              body: commentBody
+              body: reportContent
             });
           } else {
-            // Create new comment
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: commentBody
+              body: reportContent
             });
           }
-
-
 
     - name: Set job status
       run: |

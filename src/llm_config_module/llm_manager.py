@@ -171,7 +171,7 @@ class LLMManager:
         """Configure DSPy exactly once per process."""
         if not self._configured:
             dspy_client = self.get_dspy_client(provider)
-            dspy.configure(lm=dspy_client)  # one-and-done
+            dspy.configure(lm=dspy_client)  
             self._configured = True
 
     @contextmanager

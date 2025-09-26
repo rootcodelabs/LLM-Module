@@ -39,6 +39,7 @@ class OrchestrationRequest(BaseModel):
     connection_id: Optional[str] = Field(
         None, description="Optional connection identifier"
     )
+    eval_mode: bool = Field(False, description="Whether to run in evaluation mode")
 
 
 class OrchestrationResponse(BaseModel):
