@@ -119,5 +119,5 @@ def test_azure_env_vars_present() -> None:
     masked_api_key = api_key[:3] + "..." if len(api_key) >= 3 else "***"
     masked_endpoint = endpoint[:3] + "..." if len(endpoint) >= 3 else "***"
 
-    logger.info(f"✅ AZURE_MODEL_API_KEY is set: {masked_api_key}")
+    logger.info(f"✅ hello  AZURE_MODEL_API_KEY is set: {masked_api_key}")
     logger.info(f"✅ AZURE_MODEL_ENDPOINT is set: {masked_endpoint}")
