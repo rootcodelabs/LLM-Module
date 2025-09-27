@@ -11,6 +11,7 @@ from typing import Any, Dict
 import pytest
 from loguru import logger
 from requests import Session, Response
+import os
 
 
 def test_health_endpoint(orchestration_client: Session) -> None:
@@ -98,3 +99,25 @@ def test_rag_stack_services_available(rag_stack: Any) -> None:
     assert orchestration_url.startswith("http://"), f"Unexpected Orchestration URL: {orchestration_url}"
 
     logger.info("✅ RAG stack services availability test passed.")
+
+@pytest.mark.env
+def test_azure_env_vars_present() -> None:
+    """
+    Validate that AZURE_MODEL_API_KEY and AZURE_MODEL_ENDPOINT are set and non-empty,
+    and log masked versions (first 3 characters only).
+    """
+    api_key = os.getenv("AZURE_MODEL_API_KEY")
+    endpoint = os.getenv("AZURE_MODEL_ENDPOINT")
+
+    assert api_key is not None, "AZURE_MODEL_API_KEY is not set in environment!"
+    assert api_key.strip() != "", "AZURE_MODEL_API_KEY is empty!"
+
+    assert endpoint is not None, "AZURE_MODEL_ENDPOINT is not set in environment!"
+    assert endpoint.strip() != "", "AZURE_MODEL_ENDPOINT is empty!"
+
+    # Masked display: show only first 3 characters
+    masked_api_key = api_key[:3] + "..." if len(api_key) >= 3 else "***"
+    masked_endpoint = endpoint[:3] + "..." if len(endpoint) >= 3 else "***"
+
+    logger.info(f"✅ AZURE_MODEL_API_KEY is set: {masked_api_key}")
+    logger.info(f"✅ AZURE_MODEL_ENDPOINT is set: {masked_endpoint}")
