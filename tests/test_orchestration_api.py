@@ -153,7 +153,7 @@ def test_health_endpoint(orchestration_client: Session) -> None:
     assert health_data.get("service") == "llm-orchestration-service", f"Unexpected service: {health_data.get('service')}"
     assert health_data.get("orchestration_service") == "initialized", f"Unexpected orchestration_service: {health_data.get('orchestration_service')}"
 
-    logger.info("✅ Health endpoint test passed.")
+    logger.info("✅ Health endpoint test successfully passed.")
 
 
 def test_orchestrate_endpoint_structure(orchestration_client: Session) -> None:
