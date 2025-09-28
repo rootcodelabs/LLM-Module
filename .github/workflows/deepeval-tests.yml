@@ -54,7 +54,7 @@ jobs:
         AZURE_MODEL_ENDPOINT: ${{ secrets.AZURE_MODEL_ENDPOINT }}
       run: |
         cd tests
-        uv run python -m pytest test_orchestration_api.py -v --tb=short --log-cli-level=INFO
+        uv run python -m pytest test_orchestration_api.py -v --tb=short
         echo "PYTEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
     - name: Generate evaluation report
