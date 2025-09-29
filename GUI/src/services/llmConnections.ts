@@ -5,6 +5,7 @@ import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
 
 export interface LLMConnection {
   id: number;
+  connectionName: string;
   llmPlatform: string;
   llmModel: string;
   embeddingPlatform: string;
@@ -57,6 +58,7 @@ export interface LegacyLLMConnectionFilters {
 }
 
 export interface LLMConnectionFormData {
+  connectionName: string;
   llmPlatform: string;
   llmModel: string;
   embeddingModelPlatform: string;
@@ -99,6 +101,7 @@ export async function getLLMConnection(id: string | number): Promise<LLMConnecti
 
 export async function createLLMConnection(connectionData: LLMConnectionFormData): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.CREATE_LLM_CONNECTION(), {
+    connection_name: connectionData.connectionName,
     llm_platform: connectionData.llmPlatform,
     llm_model: connectionData.llmModel,
     embedding_platform: connectionData.embeddingModelPlatform,
@@ -124,6 +127,7 @@ export async function updateLLMConnection(
 ): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION(), {
     connection_id: id,
+    connection_name: connectionData.connectionName,
     llm_platform: connectionData.llmPlatform,
     llm_model: connectionData.llmModel,
     embedding_platform: connectionData.embeddingModelPlatform,

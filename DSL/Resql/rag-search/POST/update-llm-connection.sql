@@ -1,5 +1,6 @@
 UPDATE llm_connections 
 SET 
+    connection_name = :connection_name,
     llm_platform = :llm_platform,
     llm_model = :llm_model,
     embedding_platform = :embedding_platform,
@@ -18,6 +19,7 @@ SET
 WHERE id = :connection_id
 RETURNING 
     id, 
+    connection_name,
     llm_platform, 
     llm_model, 
     embedding_platform, 

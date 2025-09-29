@@ -1,7 +1,7 @@
 -- Schema for LLM Connections
 CREATE TABLE llm_connections (
     id SERIAL PRIMARY KEY,
-    
+    connection_name VARCHAR(255) NOT NULL DEFAULT '',
     -- LLM Model Configuration
     llm_platform VARCHAR(100) NOT NULL,       -- e.g. Azure AI, OpenAI
     llm_model VARCHAR(100) NOT NULL,          -- e.g. GPT-4o
@@ -12,7 +12,7 @@ CREATE TABLE llm_connections (
     
     -- Budget and Environment
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
-    used_budget NUMERIC(12,2) NOT NULL,
+    used_budget NUMERIC(12,2) DEFAULT 0.00,  -- e.g. 250.00
     environment VARCHAR(50) NOT NULL,
     
     -- Metadata

@@ -1,5 +1,6 @@
 SELECT 
     id,
+    connection_name,
     llm_platform,
     llm_model,
     embedding_platform,
@@ -23,6 +24,8 @@ WHERE connection_status <> 'deleted'
     AND (:llm_model IS NULL OR :llm_model = '' OR llm_model = :llm_model)
     AND (:environment IS NULL OR :environment = '' OR environment = :environment)
 ORDER BY
+    CASE WHEN :sorting = 'connection_name asc' THEN connection_name END ASC,
+    CASE WHEN :sorting = 'connection_name desc' THEN connection_name END DESC,
     CASE WHEN :sorting = 'llm_platform asc' THEN llm_platform END ASC,
     CASE WHEN :sorting = 'llm_platform desc' THEN llm_platform END DESC,
     CASE WHEN :sorting = 'llm_model asc' THEN llm_model END ASC,

@@ -1,4 +1,5 @@
 INSERT INTO llm_connections (
+    connection_name,
     llm_platform,
     llm_model,
     embedding_platform,
@@ -14,6 +15,7 @@ INSERT INTO llm_connections (
     access_key,
     embedding_model_api_key
 ) VALUES (
+    :connection_name,
     :llm_platform,
     :llm_model,
     :embedding_platform,

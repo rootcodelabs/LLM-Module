@@ -8,6 +8,9 @@ declaration:
   namespace: rag-search
   allowlist:
     body:
+      - field: connection_name
+        type: string
+        description: "Connection name for identification"
       - field: llm_platform
         type: string
         description: "LLM platform (e.g., Azure AI, OpenAI)"
@@ -50,6 +53,7 @@ declaration:
 
 extract_request_data:
   assign:
+    connection_name: ${incoming.body.connection_name}
     llm_platform: ${incoming.body.llm_platform}
     llm_model: ${incoming.body.llm_model}
     embedding_platform: ${incoming.body.embedding_platform}
@@ -76,6 +80,7 @@ add_llm_connection:
   args:
     url: "[#RAG_SEARCH_RESQL]/insert-llm-connection"
     body:
+      connection_name: ${connection_name}
       llm_platform: ${llm_platform}
       llm_model: ${llm_model}
       embedding_platform: ${embedding_platform}

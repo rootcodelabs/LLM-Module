@@ -173,6 +173,7 @@ const ViewLLMConnection = () => {
 
   // Convert connection data to form format
   const formData: LLMConnectionFormData = {
+    connectionName: connectionData.connectionName,
     llmPlatform: connectionData.llmPlatform,
     llmModel: connectionData.llmModel,
     embeddingModelPlatform: connectionData.embeddingPlatform,
@@ -198,8 +199,7 @@ const ViewLLMConnection = () => {
             <BackArrowButton />
           </Link>
           <div className="title">
-            {isEditing ? 'Edit LLM Connection' : ''}
-            {/* {connectionData?.llmConnectionName && ` ${connectionData.llmConnectionName}`} */}
+            {connectionData?.connectionName && ` ${connectionData.connectionName}`}
           </div>
         </div>
 

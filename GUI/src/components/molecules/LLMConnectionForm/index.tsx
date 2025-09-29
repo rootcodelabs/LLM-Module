@@ -17,6 +17,7 @@ import {
 import './LLMConnectionForm.scss';
 
 export type LLMConnectionFormData = {
+  connectionName: string;
   llmPlatform: string;
   llmModel: string;
   embeddingModelPlatform: string;
@@ -60,6 +61,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
     formState: { errors, isDirty, isValid },
   } = useForm<LLMConnectionFormData>({
     defaultValues: {
+      connectionName: '',
       llmPlatform: '',
       llmModel: '',
       embeddingModelPlatform: '',
@@ -347,6 +349,25 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       <form onSubmit={handleSubmit(handleFormSubmit)}>
         <div className="form-section">
           <h3 className="form-section-title">LLM Configuration</h3>
+
+          <div className="form-row">
+            <p className='form-label'>Connection Name</p>
+            <p className='form-description'>A unique name to identify this LLM connection</p>
+            <Controller
+              name="connectionName"
+              control={control}
+              rules={{ required: 'Connection Name is required' }}
+              render={({ field }) => (
+                <FormInput
+                  label=""
+                  placeholder="Enter connection name (e.g., Azure GPT-4 Production)"
+                  error={errors.connectionName?.message}
+                  disabled={readOnly}
+                  {...field}
+                />
+              )}
+            />
+          </div>
 
           <div className="form-row">
             <p className='form-label'>LLM Platform</p>

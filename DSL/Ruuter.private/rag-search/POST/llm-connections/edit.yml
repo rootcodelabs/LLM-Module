@@ -11,6 +11,9 @@ declaration:
       - field: connection_id
         type: number
         description: "LLM connection ID"
+      - field: connection_name
+        type: string
+        description: "Connection name for identification"
       - field: llm_platform
         type: string
         description: "LLM platform (e.g., Azure AI, OpenAI)"
@@ -51,6 +54,7 @@ declaration:
 extract_request_data:
   assign:
     connection_id: ${Number(incoming.body.connection_id)}
+    connection_name: ${incoming.body.connection_name}
     llm_platform: ${incoming.body.llm_platform}
     llm_model: ${incoming.body.llm_model}
     embedding_platform: ${incoming.body.embedding_platform}
@@ -93,6 +97,7 @@ update_llm_connection:
     url: "[#RAG_SEARCH_RESQL]/update-llm-connection"
     body:
       connection_id: ${connection_id}
+      connection_name: ${connection_name}
       llm_platform: ${llm_platform}
       llm_model: ${llm_model}
       embedding_platform: ${embedding_platform}

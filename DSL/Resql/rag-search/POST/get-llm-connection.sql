@@ -1,5 +1,6 @@
 SELECT 
     id,
+    connection_name,
     llm_platform,
     llm_model,
     embedding_platform,
