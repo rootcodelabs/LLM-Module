@@ -9,6 +9,8 @@ export function maskSensitiveKey(key: string | null | undefined, showChars: numb
   if (!key || typeof key !== 'string' || key.trim() === '') {
     return null;
   }
+
+  const MIN_ASTERISKS = 6; // Minimum number of asterisks to show in the middle
   
   const trimmedKey = key.trim();
   
@@ -19,7 +21,7 @@ export function maskSensitiveKey(key: string | null | undefined, showChars: numb
   
   const start = trimmedKey.substring(0, showChars);
   const end = trimmedKey.substring(trimmedKey.length - showChars);
-  const middleLength = Math.max(6, trimmedKey.length - (showChars * 2)); // Minimum 6 asterisks
+  const middleLength = Math.max(MIN_ASTERISKS, trimmedKey.length - (showChars * 2)); // Minimum 6 asterisks
   
   return `${start}${'*'.repeat(middleLength)}${end}`;
 }
