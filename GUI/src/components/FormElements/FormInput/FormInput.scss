@@ -32,6 +32,32 @@
 
   &__input-container {
     position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  &__replace-button {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: get-color(sapphire-blue-10);
+    color: get-color(white);
+    border: none;
+    border-radius: $veera-radius-s;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 2;
+    
+    &:hover {
+      background-color: get-color(sapphire-blue-8);
+    }
+    
+    &:focus {
+      outline: 2px solid get-color(sapphire-blue-10);
+      outline-offset: 2px;
+    }
   }
 
   &__prefix {
@@ -100,6 +126,11 @@
     // Add left padding when prefix is present
     &--with-prefix {
       padding-left: 30px;
+    }
+    
+    // Add right padding when replace button is present
+    &--with-replace-button {
+      padding-right: 70px;
     }
   }
 

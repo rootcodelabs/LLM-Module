@@ -129,15 +129,6 @@ const TestLLM: FC = () => {
           {inferenceResult && (
             <div className="inference-results-container">
             <div className="result-item">
-              <strong>Chat ID:</strong> {inferenceResult.chatId}
-            </div>
-            <div className="result-item">
-              <strong>LLM Service Active:</strong> {inferenceResult.llmServiceActive ? 'Yes' : 'No'}
-            </div>
-            <div className="result-item">
-              <strong>Question Out of LLM Scope:</strong> {inferenceResult.questionOutOfLlmScope ? 'Yes' : 'No'}
-            </div>
-            <div className="result-item">
               <strong>Response:</strong>
               <div className="response-content">
                 {inferenceResult.content}
