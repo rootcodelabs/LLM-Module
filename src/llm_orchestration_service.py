@@ -408,7 +408,7 @@ class LLMOrchestrationService:
             )
 
         except Exception as e:
-            logger.error(f"RAG response generation failed: {str(e)}")
+            logger.error(f"RAG Response generation failed: {str(e)}")
             # Standardized technical issue; no second LLM call, no citations
             return OrchestrationResponse(
                 chatId=request.chatId,
