@@ -2,9 +2,10 @@
 
 import time
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import field
 from datetime import datetime
 from loguru import logger
+from pydantic import BaseModel
 
 from vector_indexer.vault.vault_client import EmbeddingVaultClient
 from vector_indexer.vault.models import get_embedding_secret_model
@@ -12,8 +13,7 @@ from vector_indexer.vault.exceptions import EmbeddingVaultConnectionError
 from vector_indexer.vault.models import BaseEmbeddingSecret
 
 
-@dataclass
-class CachedEmbeddingSecret:
+class CachedEmbeddingSecret(BaseModel):
     """Cached embedding secret with TTL."""
 
     secret: BaseEmbeddingSecret

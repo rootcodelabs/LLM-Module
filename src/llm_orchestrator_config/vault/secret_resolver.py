@@ -3,7 +3,7 @@
 import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Union
-from dataclasses import dataclass
+from pydantic import BaseModel
 from loguru import logger
 
 from llm_orchestrator_config.vault.vault_client import VaultAgentClient
@@ -15,8 +15,7 @@ from llm_orchestrator_config.vault.models import (
 from llm_orchestrator_config.vault.exceptions import VaultConnectionError
 
 
-@dataclass
-class CachedSecret:
+class CachedSecret(BaseModel):
     """Cached secret with TTL information."""
 
     data: Union[AzureOpenAISecret, AWSBedrockSecret]

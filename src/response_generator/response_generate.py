@@ -1,9 +1,10 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Tuple
-import json
 import re
 import dspy
 import logging
+
+from src.llm_orchestrator_config.llm_cochestrator_constants import OUT_OF_SCOPE_MESSAGE
 
 # Configure logging
 logging.basicConfig(
@@ -12,29 +13,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class HumanizeRAGSig(dspy.Signature):
+class ResponseGeneratorSignature(dspy.Signature):
     """Produce a grounded answer from the provided context ONLY.
-
-    OUTPUT STRICTLY AS COMPACT JSON:
-    {
-      "answer": string,                     # human-friendly answer without citations
-      # (no citations in answer; they are in separate field)
-      "questionOutOfLLMScope": boolean      # true if context insufficient to answer
-    }
 
     Rules:
     - Use ONLY the provided context blocks; do not invent facts.
     - If the context is insufficient, set questionOutOfLLMScope=true and say so briefly.
-    - Do not reference context blocks that do not support your answer.
-    - Keep the answer concise and clear; bullets are fine.
-    - Respond in JSON only (no extra prose).
+    - Do not include citations in the 'answer' field.
     """
 
-    question = dspy.InputField()
-    context_blocks = dspy.InputField()
-    citations = dspy.InputField()
-    answer_json = dspy.OutputField(
-        desc="A JSON object string with keys: answer, questionOutOfLLMScope."
+    question: str = dspy.InputField()
+    context_blocks: List[str] = dspy.InputField()
+    citations: List[str] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="Human-friendly answer without citations")
+    questionOutOfLLMScope: bool = dspy.OutputField(
+        desc="True if context is insufficient to answer"
     )
 
 
@@ -68,14 +61,6 @@ def build_context_and_citations(
     return blocks, labels, has_real_context
 
 
-def _safe_parse_json(s: str) -> Dict[str, Any]:
-    try:
-        return json.loads(s)
-    except Exception as e:
-        logger.warning(f"Failed to parse JSON: {e}. Raw string: '{s}...'")
-        return {}
-
-
 def _should_flag_out_of_scope(
     answer_text: str, has_real_context: bool, require_citation_marker: bool = False
 ) -> bool:
@@ -84,20 +69,13 @@ def _should_flag_out_of_scope(
     - No real context was supplied
     - Very short or empty answer
     - (Optional) No citation markers like [1], [2] present if require_citation_marker is True
-    Args:
-        answer_text: The answer string to check.
-        has_real_context: Whether real context was supplied.
-        require_citation_marker: If True, require at least one [n] citation marker.
     """
     if not has_real_context:
         return True
-    if not answer_text.strip():
+    if not (answer_text or "").strip():
         return True
-    if require_citation_marker:
-        # Look for at least one numeric citation [n]
-        if not re.search(r"\[\d+\]", answer_text):
-            # If no explicit citations, treat as possibly out-of-scope
-            return True
+    if require_citation_marker and not re.search(r"\[\d+\]", answer_text or ""):
+        return True
     return False
 
 
@@ -107,9 +85,38 @@ class ResponseGeneratorAgent(dspy.Module):
     Returns a dict: {"answer": str, "questionOutOfLLMScope": bool}
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_retries: int = 2) -> None:
         super().__init__()
-        self._predictor = dspy.Predict(HumanizeRAGSig)
+        self._predictor = dspy.Predict(ResponseGeneratorSignature)
+        self._max_retries = max(0, int(max_retries))
+
+    def _predict_once(
+        self, question: str, context_blocks: List[str], citation_labels: List[str]
+    ) -> dspy.Prediction:
+        """Single LM call. Returns Prediction object."""
+        result = self._predictor(
+            question=question, context_blocks=context_blocks, citations=citation_labels
+        )
+        logger.info(f"LLM output - answer: {getattr(result, 'answer', '')[:200]}...")
+        logger.info(
+            f"LLM output - out_of_scope: {getattr(result, 'questionOutOfLLMScope', None)}"
+        )
+        return result
+
+    def _validate_prediction(self, pred: dspy.Prediction) -> bool:
+        """Validate that prediction has required fields with correct types."""
+        try:
+            answer = getattr(pred, "answer", None)
+            out_of_scope = getattr(pred, "questionOutOfLLMScope", None)
+
+            if not isinstance(answer, str):
+                return False
+            if not isinstance(out_of_scope, bool):
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"Validation failed: {e}")
+            return False
 
     def forward(
         self, question: str, chunks: List[Dict[str, Any]], max_blocks: int = 10
@@ -119,46 +126,48 @@ class ResponseGeneratorAgent(dspy.Module):
             chunks, use_top_k=max_blocks
         )
 
-        result = self._predictor(
-            question=question, context_blocks=context_blocks, citations=citation_labels
-        )
+        # First attempt
+        pred = self._predict_once(question, context_blocks, citation_labels)
+        valid = self._validate_prediction(pred)
 
-        raw = getattr(result, "answer_json", "") or ""
-        parsed = _safe_parse_json(raw)
-        logger.info(f"LLM raw output: {raw}")
+        # Retry logic if validation fails
+        attempts = 0
+        while not valid and attempts < self._max_retries:
+            attempts += 1
+            logger.warning(f"Retry attempt {attempts}/{self._max_retries}")
 
-        # If model returned valid JSON with required keys, trust it (with a safety fallback)
-        if "answer" in parsed and "questionOutOfLLMScope" in parsed:
-            # Validate types
-            ans = parsed.get("answer")
-            scope = parsed.get("questionOutOfLLMScope")
-            if not isinstance(ans, str):
-                ans = "" if ans is None else str(ans)
-            if not isinstance(scope, bool):
-                scope = _should_flag_out_of_scope(ans, has_real_context)
-            # If model claims in-scope but our heuristics disagree (e.g., no citations), flip to True
-            if scope is False and _should_flag_out_of_scope(ans, has_real_context):
-                scope = True
-                logger.warning("Flipping out-of-scope to True based on heuristics.")
-
-            logger.info(f"Successfully parsed LLM response. Out of scope: {scope}.")
-            return {"answer": ans.strip(), "questionOutOfLLMScope": scope}
-
-        # Fallbacks if parsing failed or structure wrong
-        logger.warning(
-            "Failed to parse LLM response or structure was incorrect. Using fallback."
-        )
-        # Try to use the raw string as the answer
-        fallback_answer = raw.strip() if isinstance(raw, str) else ""
-        scope_flag = _should_flag_out_of_scope(fallback_answer, has_real_context)
-        if not fallback_answer:
-            fallback_answer = (
-                "I don’t have enough grounded information in the provided context to answer. "
-                "Please provide more details or additional sources."
+            # Re-invoke with fresh rollout to avoid cache
+            pred = self._predictor(
+                question=question,
+                context_blocks=context_blocks,
+                citations=citation_labels,
+                config={"rollout_id": attempts, "temperature": 0.1},
             )
-            scope_flag = True
+            valid = self._validate_prediction(pred)
+
+        # If still invalid after retries, apply fallback
+        if not valid:
             logger.warning(
-                "Fallback answer is empty; using default out-of-scope message."
+                "Failed to obtain valid prediction after retries. Using fallback."
             )
+            answer = getattr(pred, "answer", "")
+            if not isinstance(answer, str):
+                answer = str(answer) if answer else ""
 
-        return {"answer": fallback_answer, "questionOutOfLLMScope": scope_flag}
+            scope_flag = _should_flag_out_of_scope(answer, has_real_context)
+            if not answer or scope_flag:
+                answer = OUT_OF_SCOPE_MESSAGE
+                scope_flag = True
+
+            return {"answer": answer, "questionOutOfLLMScope": scope_flag}
+
+        # Valid prediction with required fields
+        ans: str = getattr(pred, "answer", "")
+        scope: bool = bool(getattr(pred, "questionOutOfLLMScope", False))
+
+        # Final sanity check: if scope is False but heuristics say it's out-of-scope, flip it
+        if scope is False and _should_flag_out_of_scope(ans, has_real_context):
+            logger.warning("Flipping out-of-scope to True based on heuristics.")
+            scope = True
+
+        return {"answer": ans.strip(), "questionOutOfLLMScope": scope}

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import uuid
-from dataclasses import dataclass
+from pydantic import BaseModel
 import logging
 
 from openai import AzureOpenAI
@@ -22,8 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class TextChunk:
+class TextChunk(BaseModel):
     """Represents a text chunk with metadata."""
 
     text: str

@@ -1,38 +1,22 @@
 from __future__ import annotations
 
-from typing import (
-    Any,
-    Iterable,
-    List,
-    Mapping,
-    Sequence,
-    Optional,
-    Dict,
-    Union,
-    Protocol,
-)
-
+from typing import Any, Sequence, Optional, Dict, Union, Protocol, cast
 import logging
 import dspy
 
 from llm_orchestrator_config import LLMManager, LLMProvider
 
-
 LOGGER = logging.getLogger(__name__)
 
 
-# Protocol for DSPy History objects
 class DSPyHistoryProtocol(Protocol):
     messages: Any
 
 
-DSPyOutput = Union[str, Sequence[str], Sequence[Any], None]
-HistoryList = Sequence[Mapping[str, str]]
-# Use Protocol for DSPy History objects instead of Any
+HistoryList = Sequence[Dict[str, str]]
 HistoryLike = Union[HistoryList, DSPyHistoryProtocol]
 
 
-# 1. SIGNATURE: Defines the interface for the DSPy module
 class PromptRefineSig(dspy.Signature):
     """Produce N distinct, concise rewrites of the user's question using chat history.
 
@@ -41,52 +25,20 @@ class PromptRefineSig(dspy.Signature):
     - Resolve pronouns with context when safe; avoid changing semantics.
     - Prefer explicit, searchable phrasing (entities, dates, units).
     - Make each rewrite meaningfully distinct.
-    - Return exactly N items.
+    - Return exactly N items as a valid JSON list.
     """
 
-    history = dspy.InputField(desc="Recent conversation history (turns).")
-    question = dspy.InputField(desc="The user's latest question to refine.")
-    n = dspy.InputField(desc="Number of rewrites to produce (N).")
+    history: str = dspy.InputField(desc="Recent conversation history (turns).")
+    question: str = dspy.InputField(desc="The user's latest question to refine.")
+    n: int = dspy.InputField(desc="Number of rewrites to produce (N).")
 
-    rewrites: List[str] = dspy.OutputField(
+    rewrites: list[str] = dspy.OutputField(
         desc="Exactly N refined variations of the question, each a single sentence."
     )
 
 
-def _coerce_to_list(value: DSPyOutput) -> list[str]:
-    """Coerce model output into a list[str] safely."""
-    if isinstance(value, (list, tuple)):  # Handle sequences
-        # Ensure elements are strings
-        return [str(x).strip() for x in value if str(x).strip()]
-    if isinstance(value, str):
-        lines = [ln.strip() for ln in value.splitlines() if ln.strip()]
-        cleaned: list[str] = []
-        for ln in lines:
-            s = ln.lstrip("•*-—-").strip()
-            while s and (s[0].isdigit() or s[0] in ".)]"):
-                s = s[1:].lstrip()
-            if s:
-                cleaned.append(s)
-        return cleaned
-    return []
-
-
-def _dedupe_keep_order(items: Iterable[str], limit: int) -> list[str]:
-    """Deduplicate case-insensitively, keep order, truncate to limit."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for it in items:
-        key = it.strip().rstrip(".").lower()
-        if key and key not in seen:
-            seen.add(key)
-            out.append(it.strip().rstrip("."))
-            if len(out) >= limit:
-                break
-    return out
-
-
 def _validate_inputs(question: str, n: int) -> None:
-    """Validate inputs with clear errors (Sonar: no magic, explicit checks)."""
+    """Validate input parameters."""
     if not question.strip():
         raise ValueError("`question` must be a non-empty string.")
     if n <= 0:
@@ -94,24 +46,18 @@ def _validate_inputs(question: str, n: int) -> None:
 
 
 def _is_history_like(history: HistoryLike) -> bool:
-    """Accept dspy.History or list[{'role': str, 'content': str}] to stay flexible."""
-
-    # Case 1: Object with `messages` attribute (e.g., dspy.History)
+    """Check if history is in valid format."""
     if hasattr(history, "messages"):
         return True
-
-    # Case 2: Sequence of dict-like items
     if isinstance(history, Sequence) and not isinstance(history, str):
         return _validate_history_sequence(history)
-
     return False
 
 
-def _validate_history_sequence(history: Sequence[Mapping[str, str]]) -> bool:
-    """Helper function to validate history sequence structure."""
+def _validate_history_sequence(history: Sequence[Dict[str, str]]) -> bool:
+    """Validate that history sequence has proper structure."""
     try:
         for item in history:
-            # Check if required keys exist
             if "role" not in item or "content" not in item:
                 return False
         return True
@@ -119,23 +65,42 @@ def _validate_history_sequence(history: Sequence[Mapping[str, str]]) -> bool:
         return False
 
 
-# 3. MODULE: Uses the signature + adds logic
+def _format_history(history: HistoryLike) -> str:
+    """Convert history to a string format suitable for the LM."""
+    if hasattr(history, "messages"):
+        # Handle DSPy History object
+        messages = getattr(history, "messages", [])
+        return "\n".join(
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
+            for msg in messages
+        )
+    elif isinstance(history, Sequence):
+        return "\n".join(
+            f"{turn.get('role', 'unknown')}: {turn.get('content', '')}"
+            for turn in history
+        )
+    return str(history)
+
+
+def _dedupe_keep_order(items: list[str], limit: int) -> list[str]:
+    """Deduplicate case-insensitively, keep order, truncate to limit."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for it in items:
+        # Normalize for comparison
+        key = it.strip().rstrip(".?!").lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(it.strip())
+            if len(out) >= limit:
+                break
+    return out
+
+
 class PromptRefinerAgent(dspy.Module):
     """Config-driven Prompt Refiner that emits N rewrites from history + question.
 
-    This module uses the LLMManager to access configured providers and configures
-    DSPy globally via the manager's configure_dspy method.
-
-    Parameters
-    ----------
-    config_path : str, optional
-        Path to the YAML configuration file. If None, uses default config.
-    provider : LLLProvider, optional
-        Specific provider to use. If None, uses default provider from config.
-    default_n : int
-        Fallback number of rewrites when `n` not provided in `forward`.
-    llm_manager : LLMManager, optional
-        Existing LLMManager instance to reuse. If provided, config_path is ignored.
+    Uses DSPy 2.5+ best practices with proper structured outputs and adapters.
     """
 
     def __init__(
@@ -144,6 +109,7 @@ class PromptRefinerAgent(dspy.Module):
         provider: Optional[LLMProvider] = None,
         default_n: int = 5,
         llm_manager: Optional[LLMManager] = None,
+        use_json_adapter: bool = True,
     ) -> None:
         super().__init__()
         if default_n <= 0:
@@ -151,32 +117,39 @@ class PromptRefinerAgent(dspy.Module):
 
         self._default_n = int(default_n)
 
-        # Use existing LLMManager if provided, otherwise create new one
         if llm_manager is not None:
             self._manager = llm_manager
             LOGGER.debug("PromptRefinerAgent using provided LLMManager instance.")
         else:
             self._manager = LLMManager(config_path)
-            LOGGER.debug("PromptRefinerAgent created new LLMManager instance.")
 
-        self._provider = provider  # keep for contexts
-        provider_info = self._manager.get_provider_info(provider)
-        LOGGER.debug(
-            "PromptRefinerAgent configured with provider '%s'.",
-            provider_info.get("provider", "unknown"),
-        )
+        self._provider = provider
+        self._use_json_adapter = use_json_adapter
 
-        self._predictor = dspy.Predict(PromptRefineSig)
+        # Use ChainOfThought for better reasoning about how to rewrite
+        self._predictor = dspy.ChainOfThought(PromptRefineSig)
+
+    def _get_adapter_context(self):
+        """Return appropriate adapter context manager."""
+        if self._use_json_adapter:
+            return dspy.context(adapter=dspy.JSONAdapter())
+        return dspy.context(adapter=dspy.ChatAdapter())
 
     def forward(
         self,
-        history: Sequence[Mapping[str, str]] | Any,
+        history: Sequence[Dict[str, str]] | Any,
         question: str,
         n: int | None = None,
     ) -> list[str]:
-        """Return up to N refined variants (exactly N when possible).
+        """Generate N refined versions of the question.
 
-        `history` can be a DSPy History or a list of {role, content}.
+        Args:
+            history: Conversation history (DSPy History or list of dicts)
+            question: Original question to refine
+            n: Number of rewrites (defaults to default_n)
+
+        Returns:
+            List of refined question strings
         """
         k = int(n) if n is not None else self._default_n
         _validate_inputs(question, k)
@@ -186,55 +159,65 @@ class PromptRefinerAgent(dspy.Module):
                 "`history` must be a dspy.History or a sequence of {'role','content'}."
             )
 
-        # Primary prediction
-        # run inside task-local context
-        with self._manager.use_task_local(self._provider):
-            result = self._predictor(history=history, question=question, n=k)
-        rewrites = _coerce_to_list(getattr(result, "rewrites", []))
-        deduped = _dedupe_keep_order(rewrites, k)
+        # Format history for the LM
+        history_str = _format_history(history)
 
-        if len(deduped) == k:
-            return deduped
-
-        # If short, ask for a few more variants to top up
-        missing = k - len(deduped)
-        if missing > 0:
+        # Use appropriate adapter and provider
+        with self._get_adapter_context():
             with self._manager.use_task_local(self._provider):
-                follow = self._predictor(
-                    history=history,
-                    question=f"Create {missing} additional, *new* paraphrases of: {question}",
-                    n=missing,
-                )
-            extra = _coerce_to_list(getattr(follow, "rewrites", []))
-            combined = _dedupe_keep_order(deduped + extra, k)
-            return combined
+                result = self._predictor(history=history_str, question=question, n=k)
 
-        return deduped
+        # Extract rewrites - DSPy should handle parsing automatically
+        rewrites = cast(Optional[list[str]], getattr(result, "rewrites", None))
+
+        # If rewrites is already a list, use it directly
+        if isinstance(rewrites, list):
+            # Clean up the rewrites
+            cleaned = [str(r).strip() for r in rewrites if str(r).strip()]
+            deduped = _dedupe_keep_order(cleaned, k)
+
+            # If we got enough, return them
+            if len(deduped) >= k:
+                return deduped[:k]
+
+            # If not enough, try one more time with explicit instruction
+            LOGGER.warning(
+                f"Only got {len(deduped)} rewrites, expected {k}. Retrying..."
+            )
+
+            with self._get_adapter_context():
+                with self._manager.use_task_local(self._provider):
+                    # Use a fresh rollout to bypass cache
+                    retry_result = self._predictor(
+                        history=history_str,
+                        question=question,
+                        n=k,
+                        config={"rollout_id": 1, "temperature": 0.8},
+                    )
+
+            retry_rewrites = cast(list[str], getattr(retry_result, "rewrites", []))
+            all_rewrites = cleaned + [str(r).strip() for r in retry_rewrites]
+            deduped = _dedupe_keep_order(all_rewrites, k)
+            return deduped[:k]
+
+        # Fallback: if parsing failed or result is not a list
+        LOGGER.error(
+            f"Failed to get proper list output. Got type: {type(rewrites)}, "
+            f"value: {str(rewrites)}"
+        )
+        # Return original question as fallback
+        return [question]
 
     def forward_structured(
         self,
-        history: Sequence[Mapping[str, str]] | Any,
+        history: Sequence[Dict[str, str]] | Any,
         question: str,
         n: int | None = None,
     ) -> Dict[str, Any]:
-        """Return structured output with original question and refined variants.
-
-        Returns dictionary in format:
-        {
-            "original_question": "original question text",
-            "refined_questions": ["variant1", "variant2", ...]
-        }
-
-        Args:
-            history: Conversation history (DSPy History or list of {role, content})
-            question: Original user question to refine
-            n: Number of variants to generate (uses default_n if None)
+        """Generate refined questions and return structured output.
 
         Returns:
-            Dictionary with original_question and refined_questions
+            Dict with 'original_question' and 'refined_questions' keys
         """
-        # Get refined variants using existing forward method
-        refined_variants = self.forward(history, question, n)
-
-        # Return structured format
-        return {"original_question": question, "refined_questions": refined_variants}
+        refined = self.forward(history, question, n)
+        return {"original_question": question, "refined_questions": refined}

@@ -38,9 +38,7 @@ class AzureOpenAISecret(BaseConnectionSecret):
     endpoint: str = Field(..., description="Azure OpenAI endpoint URL")
     api_key: str = Field(..., description="Azure OpenAI API key")
     deployment_name: str = Field(..., description="Azure deployment name")
-    api_version: str = Field(
-        default="2024-05-01-preview", description="Azure OpenAI API version"
-    )
+    api_version: str = Field(..., description="Azure OpenAI API version")
 
 
 class AWSBedrockSecret(BaseConnectionSecret):
@@ -53,7 +51,7 @@ class AWSBedrockSecret(BaseConnectionSecret):
 
 
 # Type mapping for provider secrets
-PROVIDER_SECRET_MODELS: Dict[str, type] = {
+PROVIDER_SECRET_DATA_MODELS: Dict[str, type] = {
     "azure_openai": AzureOpenAISecret,
     "aws_bedrock": AWSBedrockSecret,
 }
@@ -71,6 +69,6 @@ def get_secret_model(provider: str) -> type:
     Raises:
         ValueError: If provider is not supported
     """
-    if provider not in PROVIDER_SECRET_MODELS:
+    if provider not in PROVIDER_SECRET_DATA_MODELS:
         raise ValueError(f"Unsupported provider: {provider}")
-    return PROVIDER_SECRET_MODELS[provider]
+    return PROVIDER_SECRET_DATA_MODELS[provider]
