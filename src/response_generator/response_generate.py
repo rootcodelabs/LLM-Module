@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ResponseGeneratorSignature(dspy.Signature):
+class ResponseGenerator(dspy.Signature):
     """Produce a grounded answer from the provided context ONLY.
 
     Rules:
@@ -87,7 +87,7 @@ class ResponseGeneratorAgent(dspy.Module):
 
     def __init__(self, max_retries: int = 2) -> None:
         super().__init__()
-        self._predictor = dspy.Predict(ResponseGeneratorSignature)
+        self._predictor = dspy.Predict(ResponseGenerator)
         self._max_retries = max(0, int(max_retries))
 
     def _predict_once(

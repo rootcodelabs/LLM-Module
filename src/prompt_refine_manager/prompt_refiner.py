@@ -17,7 +17,7 @@ HistoryList = Sequence[Dict[str, str]]
 HistoryLike = Union[HistoryList, DSPyHistoryProtocol]
 
 
-class PromptRefineSig(dspy.Signature):
+class PromptRefiner(dspy.Signature):
     """Produce N distinct, concise rewrites of the user's question using chat history.
 
     Constraints:
@@ -127,7 +127,7 @@ class PromptRefinerAgent(dspy.Module):
         self._use_json_adapter = use_json_adapter
 
         # Use ChainOfThought for better reasoning about how to rewrite
-        self._predictor = dspy.ChainOfThought(PromptRefineSig)
+        self._predictor = dspy.Predict(PromptRefiner)
 
     def _get_adapter_context(self):
         """Return appropriate adapter context manager."""
