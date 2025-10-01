@@ -1,7 +1,8 @@
 """Type definitions for the LLM Config Module."""
 
-from typing import Any, Dict, Protocol, Union
+from typing import Any, Dict, Union
 from enum import Enum
+from pydantic import BaseModel, Field
 
 
 class LLMProvider(str, Enum):
@@ -11,12 +12,12 @@ class LLMProvider(str, Enum):
     AWS_BEDROCK = "aws_bedrock"
 
 
-class LLMResponse(Protocol):
-    """Protocol for LLM response objects."""
+class LLMResponse(BaseModel):
+    """Pydantic model for LLM response objects."""
 
-    content: str
-    usage: Dict[str, Any]
-    model: str
+    content: str = Field(..., description="Response content from the LLM")
+    usage: Dict[str, Any] = Field(..., description="Token usage information")
+    model: str = Field(..., description="Model name that generated the response")
 
 
 # Type aliases for better readability

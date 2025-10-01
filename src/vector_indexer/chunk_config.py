@@ -1,21 +1,20 @@
 """Configuration module for chunk retriever."""
 
-from dataclasses import dataclass
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 from typing import Dict, Any, Optional
 import os
 
 
-@dataclass
-class ChunkConfig:
+class ChunkConfig(BaseModel):
     """Configuration for chunk retrieval and embedding operations."""
 
     # Dataset configuration
     dataset_path: str = "data/datasets"
 
     # Chunking configuration
-    chunk_size: int = 1000
-    chunk_overlap: int = 100
-    batch_size: int = 10
+    chunk_size: int = Field(default=1000, gt=0, description="Size of text chunks")
+    chunk_overlap: int = Field(default=100, ge=0, description="Overlap between chunks")
+    batch_size: int = Field(default=10, gt=0, description="Batch size for processing")
 
     # Azure OpenAI Embedding configuration (separate from chat models)
     azure_embedding_endpoint: str = ""
@@ -30,12 +29,35 @@ class ChunkConfig:
     qdrant_timeout: float = 30.0
 
     # Embedding configuration
-    embedding_dimension: int = 3072  # text-embedding-3-large dimension
+    embedding_dimension: int = Field(
+        default=3072, gt=0, description="Embedding dimension"
+    )
 
     # Vault configuration
     use_vault: bool = False
     environment: str = "production"
     connection_id: Optional[str] = None
+
+    model_config = {
+        "validate_assignment": True,
+        "extra": "allow",  # Allow extra fields for backward compatibility
+        "arbitrary_types_allowed": True,
+    }
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_chunk_overlap(cls, v: int, info: ValidationInfo) -> int:
+        """Validate that chunk_overlap is less than chunk_size."""
+        if info.data and "chunk_size" in info.data:
+            chunk_size: int = info.data["chunk_size"]
+            if v >= chunk_size:
+                raise ValueError("chunk_overlap must be less than chunk_size")
+        return v
+
+    def __init__(self, **kwargs: Any):
+        """Initialize ChunkConfig with Pydantic validation."""
+        super().__init__(**kwargs)
+        self.__post_init__()
 
     def __post_init__(self):
         """Load configuration from environment variables or Vault."""
@@ -118,28 +140,14 @@ class ChunkConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
-        return {
-            "dataset_path": self.dataset_path,
-            "chunk_size": self.chunk_size,
-            "chunk_overlap": self.chunk_overlap,
-            "batch_size": self.batch_size,
-            "azure_embedding_endpoint": self.azure_embedding_endpoint,
-            "azure_embedding_api_key": self.azure_embedding_api_key,
-            "azure_embedding_deployment_name": self.azure_embedding_deployment_name,
-            "azure_embedding_api_version": self.azure_embedding_api_version,
-            "qdrant_host": self.qdrant_host,
-            "qdrant_port": self.qdrant_port,
-            "qdrant_collection": self.qdrant_collection,
-            "qdrant_timeout": self.qdrant_timeout,
-            "embedding_dimension": self.embedding_dimension,
-        }
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "ChunkConfig":
         """Create configuration from dictionary."""
         return cls(**config_dict)
 
-    def validate(self) -> None:
+    def validate_config(self) -> None:
         """Validate configuration parameters."""
         # Only check for these values when not using vault or when vault loading failed
         if not self.azure_embedding_endpoint:

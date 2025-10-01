@@ -137,7 +137,7 @@ class EmbeddingGenerator:
             config: Configuration for embedding generation.
         """
         self.config = config
-        config.validate()
+        config.validate_config()
 
         if not config.azure_embedding_endpoint:
             raise ValueError("Azure embedding endpoint is required")

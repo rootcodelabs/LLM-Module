@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Optional, Dict, Union, Protocol, cast
+from typing import Any, Sequence, Optional, Dict, Union, cast, List
 import logging
 import dspy
+from pydantic import BaseModel, Field
 
 from llm_orchestrator_config import LLMManager, LLMProvider
 
 LOGGER = logging.getLogger(__name__)
 
 
-class DSPyHistoryProtocol(Protocol):
-    messages: Any
+class ConversationHistory(BaseModel):
+    """Pydantic model for conversation history data."""
+
+    messages: List[Dict[str, Any]] = Field(
+        ..., description="List of conversation messages"
+    )
 
 
 HistoryList = Sequence[Dict[str, str]]
-HistoryLike = Union[HistoryList, DSPyHistoryProtocol]
+HistoryLike = Union[HistoryList, ConversationHistory]
 
 
 class PromptRefiner(dspy.Signature):
