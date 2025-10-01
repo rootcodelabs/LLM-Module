@@ -2,23 +2,23 @@
 
 from typing import Optional, List, Dict, Union, Any
 import json
-import dspy
 from loguru import logger
 
-from llm_config_module.llm_manager import LLMManager
+from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
     ConversationItem,
     PromptRefinerOutput,
 )
-from prompt_refiner_module.prompt_refiner import PromptRefinerAgent
-from chunk_indexing_module.chunk_config import ChunkConfig
-from chunk_indexing_module.hybrid_retrieval import HybridRetriever
-from response_generator_module.response_generator import ResponseGeneratorAgent
-
-# Constants
-UNKNOWN_SOURCE = "Unknown source"
+from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
+from vector_indexer.chunk_config import ChunkConfig
+from vector_indexer.hybrid_retrieval import HybridRetriever
+from src.response_generator.response_generate import ResponseGeneratorAgent
+from src.llm_orchestrator_config.llm_cochestrator_constants import (
+    OUT_OF_SCOPE_MESSAGE,
+    TECHNICAL_ISSUE_MESSAGE,
+)
 
 
 class LLMOrchestrationService:
@@ -76,7 +76,7 @@ class LLMOrchestrationService:
                 logger.warning(
                     f"Response Generator initialization failed: {str(generator_error)}"
                 )
-                logger.warning("Continuing without response generator capabilities")
+                # Do not attempt any other LLM path; we'll return the technical issue message later.
                 response_generator = None
 
             # Step 2: Refine user prompt using loaded configuration
@@ -86,7 +86,7 @@ class LLMOrchestrationService:
                 conversation_history=request.conversationHistory,
             )
 
-            # Step 3: Retrieve relevant chunks using hybrid retrieval
+            # Step 3: Retrieve relevant chunks using hybrid retrieval (optional)
             relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]] = []
             if hybrid_retriever is not None:
                 try:
@@ -97,13 +97,20 @@ class LLMOrchestrationService:
                 except Exception as retrieval_error:
                     logger.warning(f"Chunk retrieval failed: {str(retrieval_error)}")
                     logger.warning(
-                        "Continuing with response generation without retrieved chunks"
+                        "Returning out-of-scope message due to retrieval failure"
                     )
-                    relevant_chunks = []
+                    # Return out-of-scope response immediately
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=True,
+                        inputGuardFailed=False,
+                        content=OUT_OF_SCOPE_MESSAGE,
+                    )
             else:
                 logger.info("Hybrid Retriever not available, skipping chunk retrieval")
 
-            # Step 4: Generate response using retrieved chunks and response generator
+            # Step 4: Generate response with ResponseGenerator only (no extra LLM fallbacks)
             try:
                 response = self._generate_rag_response(
                     llm_manager=llm_manager,
@@ -115,28 +122,31 @@ class LLMOrchestrationService:
                 logger.info(
                     f"Successfully generated RAG response for chatId: {request.chatId}"
                 )
-            except Exception as response_error:
-                logger.warning(f"RAG response generation failed: {str(response_error)}")
-                logger.warning("Falling back to basic response")
-                response = self._generate_fallback_response(
-                    request.chatId, len(relevant_chunks)
-                )
+                return response
 
-            logger.info(f"Successfully processed request for chatId: {request.chatId}")
-            return response
+            except Exception as response_error:
+                logger.error(f"RAG response generation failed: {str(response_error)}")
+                # Standardized technical issue; no second LLM call, no citations
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
 
         except Exception as e:
             logger.error(
                 f"Error processing orchestration request for chatId: {request.chatId}, "
                 f"error: {str(e)}"
             )
-            # Return error response
+            # Technical issue at top-level
             return OrchestrationResponse(
                 chatId=request.chatId,
                 llmServiceActive=False,
                 questionOutOfLLMScope=False,
-                inputGuardFailed=True,
-                content="An error occurred while processing your request. Please try again later.",
+                inputGuardFailed=False,
+                content=TECHNICAL_ISSUE_MESSAGE,
             )
 
     def _initialize_llm_manager(
@@ -234,22 +244,6 @@ class LLMOrchestrationService:
             logger.error(f"Failed to refine message: {original_message}")
             raise RuntimeError(f"Prompt refinement process failed: {str(e)}") from e
 
-    def _generate_hardcoded_response(
-        self, chat_id: str, chunk_count: Optional[int] = None
-    ) -> OrchestrationResponse:
-        """
-        Generate hardcoded response for testing purposes (DEPRECATED - use _generate_fallback_response).
-
-        Args:
-            chat_id: Chat session identifier
-            chunk_count: Optional number of retrieved chunks for testing
-
-        Returns:
-            OrchestrationResponse with hardcoded values
-        """
-        # Delegate to the new fallback method
-        return self._generate_fallback_response(chat_id, chunk_count)
-
     def _initialize_hybrid_retriever(self) -> HybridRetriever:
         """
         Initialize hybrid retriever for document retrieval.
@@ -329,10 +323,19 @@ class LLMOrchestrationService:
 
             logger.info(f"Retrieved {len(relevant_chunks)} relevant chunks")
 
-            # Log chunk information for debugging
-            for i, chunk in enumerate(relevant_chunks[:3]):  # Log first 3 chunks
+            # Log first 3 for debugging (safe formatting for score)
+            for i, chunk in enumerate(relevant_chunks[:3]):
+                score = chunk.get("score", 0.0)
+                try:
+                    score_str = (
+                        f"{float(score):.4f}"
+                        if isinstance(score, (int, float))
+                        else str(score)
+                    )
+                except Exception:
+                    score_str = str(score)
                 logger.info(
-                    f"Chunk {i + 1}: ID={chunk.get('id', 'N/A')}, Score={chunk.get('score', 'N/A'):.4f}"
+                    f"Chunk {i + 1}: ID={chunk.get('id', 'N/A')}, Score={score_str}"
                 )
 
             return relevant_chunks
@@ -353,210 +356,64 @@ class LLMOrchestrationService:
         response_generator: Optional[ResponseGeneratorAgent] = None,
     ) -> OrchestrationResponse:
         """
-        Generate response using retrieved chunks and LLM with ResponseGeneratorAgent.
-
-        Args:
-            llm_manager: The LLM manager instance to use
-            request: The original orchestration request
-            refined_output: The refined prompt output
-            relevant_chunks: List of relevant document chunks
-            response_generator: Optional response generator agent for humanized responses
-
-        Returns:
-            OrchestrationResponse with LLM-generated content
+        Generate response using retrieved chunks and ResponseGeneratorAgent only.
+        No secondary LLM paths; no citations appended.
         """
         logger.info("Starting RAG response generation")
 
+        # If response generator is not available -> standardized technical issue (no extra LLM calls)
+        if response_generator is None:
+            logger.warning(
+                "Response generator unavailable – returning technical issue message."
+            )
+            return OrchestrationResponse(
+                chatId=request.chatId,
+                llmServiceActive=False,
+                questionOutOfLLMScope=False,
+                inputGuardFailed=False,
+                content=TECHNICAL_ISSUE_MESSAGE,
+            )
+
         try:
-            # Use ResponseGeneratorAgent if available for better humanized responses
-            if response_generator is not None and relevant_chunks:
-                logger.info("Using ResponseGeneratorAgent for humanized response")
-
-                # Set up DSPy context for response generation
-                with llm_manager.use_task_local():
-                    # Generate humanized response using the response generator
-                    generator_result = response_generator.forward(
-                        question=refined_output.original_question,
-                        chunks=relevant_chunks,
-                        max_blocks=10,
-                    )
-
-                # Extract answer and out-of-scope flag
-                answer = generator_result.get("answer", "").strip()
-                question_out_of_scope = generator_result.get(
-                    "questionOutOfLLMScope", False
+            with llm_manager.use_task_local():
+                generator_result = response_generator.forward(
+                    question=refined_output.original_question,
+                    chunks=relevant_chunks or [],
+                    max_blocks=10,
                 )
 
-                # Add citations for transparency
-                citations: List[str] = []
-                for i, chunk in enumerate(relevant_chunks[:10]):
-                    score = chunk.get("score", 0.0)
-                    metadata = chunk.get("meta", {})
-                    source_file = UNKNOWN_SOURCE
-                    if isinstance(metadata, dict):
-                        source_file = metadata.get("source_file", UNKNOWN_SOURCE)
-                    citations.append(
-                        f"[{i + 1}] {source_file} (relevance: {score:.3f})"
-                    )
+            answer = (generator_result.get("answer") or "").strip()
+            question_out_of_scope = bool(
+                generator_result.get("questionOutOfLLMScope", False)
+            )
 
-                # Add citations section if answer is not out of scope
-                if citations and not question_out_of_scope and answer:
-                    answer += "\n\nReferences:\n" + "\n".join(citations)
-
-                logger.info(
-                    f"Generated humanized response. Out of scope: {question_out_of_scope}"
-                )
-
+            if question_out_of_scope:
+                logger.info("Question determined out-of-scope – sending fixed message.")
                 return OrchestrationResponse(
                     chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=question_out_of_scope,
+                    llmServiceActive=True,  # service OK; insufficient context
+                    questionOutOfLLMScope=True,
                     inputGuardFailed=False,
-                    content=answer,
+                    content=OUT_OF_SCOPE_MESSAGE,
                 )
 
-            # Fallback to original method if ResponseGeneratorAgent is not available
-            logger.info("Using fallback response generation method")
-            return self._generate_fallback_rag_response(
-                llm_manager, request, refined_output, relevant_chunks
+            # In-scope: return the answer as-is (NO citations)
+            logger.info("Returning in-scope answer without citations.")
+            return OrchestrationResponse(
+                chatId=request.chatId,
+                llmServiceActive=True,
+                questionOutOfLLMScope=False,
+                inputGuardFailed=False,
+                content=answer,
             )
 
         except Exception as e:
-            logger.error(f"RAG response generation failed: {str(e)}")
-            raise RuntimeError(
-                f"RAG response generation process failed: {str(e)}"
-            ) from e
-
-    def _generate_fallback_rag_response(
-        self,
-        llm_manager: LLMManager,
-        request: OrchestrationRequest,
-        refined_output: PromptRefinerOutput,
-        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
-    ) -> OrchestrationResponse:
-        """
-        Fallback RAG response generation when ResponseGeneratorAgent is not available.
-
-        Args:
-            llm_manager: The LLM manager instance to use
-            request: The original orchestration request
-            refined_output: The refined prompt output
-            relevant_chunks: List of relevant document chunks
-
-        Returns:
-            OrchestrationResponse with LLM-generated content
-        """
-        logger.info("Starting fallback RAG response generation")
-
-        try:
-            # Prepare context from chunks
-            context_sections: List[str] = []
-            citations: List[str] = []
-
-            for i, chunk in enumerate(relevant_chunks[:10]):  # Use top 10 chunks
-                chunk_text = chunk.get("text", "")
-                score = chunk.get("score", 0.0)
-                metadata = chunk.get("meta", {})
-
-                # Add chunk to context
-                if chunk_text:
-                    context_sections.append(f"[Context {i + 1}]\n{chunk_text}")
-
-                    # Extract source information for citations
-                    source_file = UNKNOWN_SOURCE
-                    if isinstance(metadata, dict):
-                        source_file = metadata.get("source_file", UNKNOWN_SOURCE)
-                    citations.append(
-                        f"[{i + 1}] {source_file} (relevance: {score:.3f})"
-                    )
-
-            # Combine context
-            context = (
-                "\n\n".join(context_sections)
-                if context_sections
-                else "No relevant context found."
+            logger.error(f"RAG Response generation failed: {str(e)}")
+            # Standardized technical issue; no second LLM call, no citations
+            return OrchestrationResponse(
+                chatId=request.chatId,
+                llmServiceActive=False,
+                questionOutOfLLMScope=False,
+                inputGuardFailed=False,
+                content=TECHNICAL_ISSUE_MESSAGE,
             )
-
-            # Create RAG prompt
-            rag_prompt = f"""You are a helpful AI assistant that answers questions based on the provided context. Use the context to answer the user's question accurately and cite your sources.
-
-Context:
-{context}
-
-Question: {refined_output.original_question}
-
-Instructions:
-1. Answer the question based only on the information provided in the context
-2. If the context doesn't contain enough information to answer the question, say so clearly
-3. Include relevant citations in your response
-4. Be concise but thorough in your answer
-
-Answer:"""
-
-            # Generate response using LLM
-            try:
-                # Use task-local context for the LLM call:
-                generate = dspy.Predict("prompt -> response")
-                with llm_manager.use_task_local():
-                    result = generate(prompt=rag_prompt)
-                response_text = str(getattr(result, "response", result))
-
-                # Add citations section
-                if citations:
-                    response_text += "\n\nReferences:\n" + "\n".join(citations)
-
-                logger.info(
-                    f"Generated RAG response with {len(relevant_chunks)} chunks"
-                )
-
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=response_text,
-                )
-
-            except Exception as llm_error:
-                logger.error(f"LLM generation failed: {str(llm_error)}")
-                raise RuntimeError(
-                    f"LLM response generation failed: {str(llm_error)}"
-                ) from llm_error
-
-        except Exception as e:
-            logger.error(f"RAG response generation failed: {str(e)}")
-            raise RuntimeError(
-                f"RAG response generation process failed: {str(e)}"
-            ) from e
-
-    def _generate_fallback_response(
-        self, chat_id: str, chunk_count: Optional[int] = None
-    ) -> OrchestrationResponse:
-        """
-        Generate fallback response when RAG generation fails.
-
-        Args:
-            chat_id: Chat session identifier
-            chunk_count: Optional number of retrieved chunks for debugging
-
-        Returns:
-            OrchestrationResponse with fallback content
-        """
-        fallback_content = """I apologize, but I'm currently unable to generate a complete response based on the available information. 
-
-This could be due to:
-- Insufficient relevant context in the knowledge base
-- Technical issues with the response generation system
-
-Please try rephrasing your question or contact support if the issue persists."""
-
-        if chunk_count is not None:
-            fallback_content += f"\n\n[Debug: Retrieved {chunk_count} relevant chunks]"
-
-        return OrchestrationResponse(
-            chatId=chat_id,
-            llmServiceActive=True,
-            questionOutOfLLMScope=False,
-            inputGuardFailed=False,
-            content=fallback_content,
-        )
