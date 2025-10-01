@@ -40,6 +40,25 @@ class OrchestrationRequest(BaseModel):
         None, description="Optional connection identifier"
     )
 
+class EvalOrchestrationRequest(BaseModel):
+    """Model for LLM orchestration request."""
+
+    message: str = Field(..., description="User's message/query")
+    environment: Literal["production", "test", "development"] = Field(
+        ..., description="Environment context"
+    )
+    connection_id: Optional[str] = Field(
+        None, description="Optional connection identifier"
+    )
+
+class EvalOrchestrationResponse(BaseModel):
+    """Model for LLM orchestration response."""
+
+    response: str = Field(..., description="Response content with citations")
+    retrieval_context: List[str] = Field(
+        ..., description="retrieval context"
+    )
+
 
 class OrchestrationResponse(BaseModel):
     """Model for LLM orchestration response."""

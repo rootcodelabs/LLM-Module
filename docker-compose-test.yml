@@ -1,0 +1,90 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    restart: always
+    container_name: qdrant
+    ports: ["6333:6333", "6334:6334"]
+    volumes:
+      - test_qdrant_data:/qdrant/storage
+    networks:
+      - test-network
+
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: always
+    ports:
+      - "8100:8100"
+    environment:
+      - ENVIRONMENT=test
+      - VAULT_ADDR=http://vault:8200                 # uses Docker DNS
+      - VAULT_TOKEN_FILE=/agent/out/token            # read token written by agent
+    volumes:
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      - ./test-vault/agent-out:/agent/out:ro         # <-- share agent token
+      - test_llm_orchestration_logs:/app/logs
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  vault:
+    image: hashicorp/vault:1.20.3
+    container_name: vault
+    cap_add: [IPC_LOCK]
+    ports: ["8200:8200"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_API_ADDR: http://0.0.0.0:8200
+    command: server -dev -dev-listen-address=0.0.0.0:8200
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "vault", "status", "-format=json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  vault-agent-llm:
+    image: hashicorp/vault:1.20.3
+    container_name: vault-agent-llm
+    depends_on:
+      vault:
+        condition: service_healthy
+    volumes:
+      - ./test-vault/agents/llm:/agent/in
+      - ./test-vault/agent-out:/agent/out
+    # We'll start the agent from the test code after bootstrapping
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "Waiting for credentials..."
+        while [ ! -f /agent/in/role_id ] || [ ! -s /agent/in/role_id ]; do
+          sleep 1
+        done
+        while [ ! -f /agent/in/secret_id ] || [ ! -s /agent/in/secret_id ]; do
+          sleep 1
+        done
+        echo "Credentials found, starting agent..."
+        exec vault agent -config=/agent/in/agent.hcl -log-level=debug
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    name: test-network
+    driver: bridge
+
+volumes:
+  test_llm_orchestration_logs:
+    name: test_llm_orchestration_logs
+  test_qdrant_data:
+    name: test_qdrant_data
