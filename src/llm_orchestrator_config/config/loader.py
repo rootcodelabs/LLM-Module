@@ -16,30 +16,18 @@ from llm_orchestrator_config.config.schema import (
     AWSBedrockConfig,
     VaultConfig,
 )
-<<<<<<< HEAD:src/llm_config_module/config/loader.py
-from llm_config_module.vault.secret_resolver import SecretResolver
-from llm_config_module.types import LLMProvider
-from llm_config_module.exceptions import ConfigurationError, InvalidConfigurationError
-=======
 from llm_orchestrator_config.vault.secret_resolver import SecretResolver
 from llm_orchestrator_config.types import LLMProvider
 from llm_orchestrator_config.exceptions import (
     ConfigurationError,
     InvalidConfigurationError,
 )
->>>>>>> 24ffa82ee0d4c73732dbcff48a7917c160fad84d:src/llm_orchestrator_config/config/loader.py
 
 # Constants
 DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
 
 # Type alias for configuration values that can be processed
-<<<<<<< HEAD:src/llm_config_module/config/loader.py
-ConfigValue = Union[
-    str, Dict[str, "ConfigValue"], List["ConfigValue"], int, float, bool, None
-]
-=======
 ConfigValue = Union[str, Dict[str, Any], List[Any], int, float, bool, None]
->>>>>>> 24ffa82ee0d4c73732dbcff48a7917c160fad84d:src/llm_orchestrator_config/config/loader.py
 
 
 class ConfigurationLoader:
@@ -485,19 +473,11 @@ class ConfigurationLoader:
 
                 return re.sub(pattern, replace_env_var, obj)
             elif isinstance(obj, dict):
-<<<<<<< HEAD:src/llm_config_module/config/loader.py
-
-=======
->>>>>>> 24ffa82ee0d4c73732dbcff48a7917c160fad84d:src/llm_orchestrator_config/config/loader.py
                 result: Dict[str, ConfigValue] = {}
                 for key, value in obj.items():
                     result[str(key)] = substitute_env_vars(value)
                 return result
             elif isinstance(obj, list):
-<<<<<<< HEAD:src/llm_config_module/config/loader.py
-
-=======
->>>>>>> 24ffa82ee0d4c73732dbcff48a7917c160fad84d:src/llm_orchestrator_config/config/loader.py
                 result_list: List[ConfigValue] = []
 
                 for item in obj:
@@ -507,15 +487,8 @@ class ConfigurationLoader:
                 return obj
 
         result = substitute_env_vars(config)
-<<<<<<< HEAD:src/llm_config_module/config/loader.py
-        # Since we know config is a Dict[str, Any] and substitute_env_vars preserves structure,
-        # the result should also be a Dict[str, Any]
-        if isinstance(result, dict):
-            return cast(Dict[str, Any], result)
-=======
         if isinstance(result, dict):
             return result
->>>>>>> 24ffa82ee0d4c73732dbcff48a7917c160fad84d:src/llm_orchestrator_config/config/loader.py
         else:
             # This should never happen given our input type, but provide a fallback
             raise ConfigurationError(
