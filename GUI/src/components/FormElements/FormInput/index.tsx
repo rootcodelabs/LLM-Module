@@ -13,11 +13,31 @@ type InputProps = PropsWithChildren<InputHTMLAttributes<HTMLInputElement>> & {
   placeholder?: string | DefaultTFuncReturn;
   prefix?: string;
   formatAsNumber?: boolean; // New prop for number formatting
+  showEndButton?: boolean; // New prop for replace button
+  onEndButtonClick?: () => void; // New prop for replace button click handler
+  endButtonText?: string; // New prop for replace button text
 };
 
 const FormInput = forwardRef<HTMLInputElement, InputProps>(
   (
-    { label, name, disabled, hideLabel, maxLength, error, children, placeholder, prefix, formatAsNumber, onChange, value, ...rest },
+    { 
+      label, 
+      name, 
+      disabled, 
+      hideLabel, 
+      maxLength, 
+      error, 
+      children, 
+      placeholder, 
+      prefix, 
+      formatAsNumber, 
+      showEndButton = false,
+      onEndButtonClick,
+      endButtonText = 'Replace',
+      onChange, 
+      value, 
+      ...rest 
+    },
     ref
   ) => {
     const id = useId();
@@ -71,7 +91,13 @@ const FormInput = forwardRef<HTMLInputElement, InputProps>(
           <div className="input__input-container">
             {prefix && <span className="input__prefix">{prefix}</span>}
             <input
-              className={clsx('input__field', prefix && 'input__field--with-prefix', error && 'input__field--error')} name={name}
+              className={clsx(
+                'input__field', 
+                prefix && 'input__field--with-prefix', 
+                showEndButton && 'input__field--with-replace-button',
+                error && 'input__field--error'
+              )} 
+              name={name}
               maxLength={maxLength}
               id={id}
               ref={ref}
@@ -81,6 +107,15 @@ const FormInput = forwardRef<HTMLInputElement, InputProps>(
               placeholder={placeholder}
               {...rest}
             />
+            {showEndButton && (
+              <button
+                type="button"
+                className="input__replace-button"
+                onClick={onEndButtonClick}
+              >
+                {endButtonText}
+              </button>
+            )}
           </div>
           {error && <p className="input__inline_error">{error}</p>}
           {children}

@@ -1,7 +1,7 @@
 -- Schema for LLM Connections
 CREATE TABLE llm_connections (
     id SERIAL PRIMARY KEY,
-    
+    connection_name VARCHAR(255) NOT NULL DEFAULT '',
     -- LLM Model Configuration
     llm_platform VARCHAR(100) NOT NULL,       -- e.g. Azure AI, OpenAI
     llm_model VARCHAR(100) NOT NULL,          -- e.g. GPT-4o
@@ -12,12 +12,26 @@ CREATE TABLE llm_connections (
     
     -- Budget and Environment
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
-    used_budget NUMERIC(12,2) NOT NULL,
+    used_budget NUMERIC(12,2) DEFAULT 0.00,  -- e.g. 250.00
     environment VARCHAR(50) NOT NULL,
     
     -- Metadata
     connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
-    created_at TIMESTAMP DEFAULT NOW());
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    -- Mocked Credentials and Access Info
+    -- Azure
+    deployment_name VARCHAR(150),  -- for Azure deployments
+    target_uri TEXT,                -- for custom endpoints
+    api_key TEXT,                   -- secured api key mocked here
+
+    -- AWS Bedrock
+    secret_key TEXT,
+    access_key TEXT, 
+
+    -- Embedding Model 
+    embedding_model_api_key TEXT
+);
 
 CREATE TABLE inference_results (
     id SERIAL PRIMARY KEY,
@@ -36,3 +50,69 @@ CREATE TABLE inference_results_references (
     conversation_id INT NOT NULL REFERENCES inference_results(id) ON DELETE CASCADE,
     reference_url TEXT NOT NULL
 );
+
+-- Schema for Platform and Model Management
+
+-- Table for LLM Platforms
+CREATE TABLE llm_platforms (
+    id SERIAL PRIMARY KEY,
+    platform_key VARCHAR(50) NOT NULL UNIQUE,    -- e.g., 'azure', 'aws'
+    platform_name VARCHAR(100) NOT NULL        -- e.g., 'Azure OpenAI', 'AWS Bedrock'
+);
+
+-- Table for LLM Models
+CREATE TABLE llm_models (
+    id SERIAL PRIMARY KEY,
+    platform_id INT NOT NULL REFERENCES llm_platforms(id) ON DELETE CASCADE,
+    model_key VARCHAR(100) NOT NULL,             -- e.g., 'gpt-4o', 'anthropic-claude-3.5-sonnet'
+    model_name VARCHAR(150) NOT NULL,            -- e.g., 'GPT-4o', 'Anthropic Claude 3.5 Sonnet'
+    UNIQUE(platform_id, model_key)
+);
+
+-- Table for Embedding Platforms
+CREATE TABLE embedding_platforms (
+    id SERIAL PRIMARY KEY,
+    platform_key VARCHAR(50) NOT NULL UNIQUE,    -- e.g., 'azure', 'aws'
+    platform_name VARCHAR(100) NOT NULL         -- e.g., 'Azure OpenAI', 'AWS Bedrock'
+   
+);
+
+-- Table for Embedding Models
+CREATE TABLE embedding_models (
+    id SERIAL PRIMARY KEY,
+    platform_id INT NOT NULL REFERENCES embedding_platforms(id) ON DELETE CASCADE,
+    model_key VARCHAR(100) NOT NULL,             -- e.g., 'text-embedding-3-large', 'amazon.titan-embed-text-v2:0'
+    model_name VARCHAR(150) NOT NULL,            -- e.g., 'text-embedding-3-large', 'Amazon Titan Text Embeddings V2'
+    UNIQUE(platform_id, model_key)
+);
+
+-- Insert initial LLM platforms
+INSERT INTO llm_platforms (platform_key, platform_name) VALUES 
+('azure', 'Azure OpenAI'),
+('aws', 'AWS Bedrock');
+
+-- Insert initial LLM models
+INSERT INTO llm_models (platform_id, model_key, model_name) VALUES 
+-- Azure models
+((SELECT id FROM llm_platforms WHERE platform_key = 'azure'), 'gpt-4o-mini', 'GPT-4o-mini'),
+((SELECT id FROM llm_platforms WHERE platform_key = 'azure'), 'gpt-4o', 'GPT-4o'),
+-- AWS models
+((SELECT id FROM llm_platforms WHERE platform_key = 'aws'), 'anthropic-claude-3.5-sonnet', 'Anthropic Claude 3.5 Sonnet'),
+((SELECT id FROM llm_platforms WHERE platform_key = 'aws'), 'anthropic-claude-3.7-sonnet', 'Anthropic Claude 3.7 Sonnet');
+
+-- Insert initial embedding platforms
+INSERT INTO embedding_platforms (platform_key, platform_name) VALUES 
+('azure', 'Azure OpenAI'),
+('aws', 'AWS Bedrock');
+
+-- Insert initial embedding models
+INSERT INTO embedding_models (platform_id, model_key, model_name) VALUES 
+-- Azure embedding models
+((SELECT id FROM embedding_platforms WHERE platform_key = 'azure'), 'text-embedding-3-large', 'text-embedding-3-large'),
+-- AWS embedding models
+((SELECT id FROM embedding_platforms WHERE platform_key = 'aws'), 'amazon.titan-embed-text-v2:0', 'Amazon Titan Text Embeddings V2');
+
+-- Add indexes for better performance
+CREATE INDEX idx_llm_models_platform_id ON llm_models(platform_id);
+CREATE INDEX idx_embedding_models_platform_id ON embedding_models(platform_id);
+
