@@ -178,7 +178,6 @@ class ConfigurationLoader:
         if not vault_config.get("enabled", True):
             raise ConfigurationError("Vault is disabled in configuration")
 
-        # SecretResolver uses Vault Agent, so no need for vault_token from config
         return SecretResolver()
 
     def _resolve_provider_secrets(

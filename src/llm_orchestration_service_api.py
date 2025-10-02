@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, status, Request
-from fastapi.responses import JSONResponse
 from loguru import logger
 import uvicorn
 
@@ -115,16 +114,6 @@ def orchestrate_llm_request(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
         )
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: object, exc: Exception) -> JSONResponse:
-    """Global exception handler."""
-    logger.error(f"Unhandled exception: {str(exc)}")
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error"},
-    )
 
 
 if __name__ == "__main__":
