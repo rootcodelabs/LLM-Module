@@ -23,10 +23,18 @@ from src.utils.cost_utils import calculate_total_costs
 
 
 class LLMOrchestrationService:
-    """Stateless service class for handling LLM orchestration business logic."""
+    """
+    Service class for handling LLM orchestration business logic.
+    The service does not maintain state between requests (stateless in the architectural sense),
+    but tracks per-request state (such as costs) internally during the execution of a request.
+    """
 
     def __init__(self) -> None:
-        """Initialize the stateless orchestration service."""
+        """
+        Initialize the orchestration service.
+        Note: The service does not persist state between requests, but tracks per-request
+        information (e.g., costs) internally during request processing.
+        """
         pass
 
     def process_orchestration_request(

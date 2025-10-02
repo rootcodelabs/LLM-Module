@@ -131,7 +131,6 @@ class HybridRetriever:
         #     )
         #     self.reranker = None
 
-        # Reranker disabled - set to None
         self.reranker = None
         logger.info("Reranker disabled - using only dense search and BM25")
 

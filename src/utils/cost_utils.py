@@ -1,6 +1,6 @@
 """Cost calculation utilities for LLM usage tracking."""
 
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List
 import logging
 import dspy
 
@@ -88,43 +88,6 @@ def calculate_total_costs(component_costs: Dict[str, Dict[str, Any]]) -> Dict[st
         logger.error(f"Error calculating total costs: {str(e)}")
 
     return total
-
-
-def track_lm_usage(
-    operation: Callable[..., Any], *args, **kwargs
-) -> tuple[Any, Dict[str, Any]]:
-    """
-    Context manager-like function to track LM usage for any operation.
-
-    Args:
-        operation: The function to execute and track
-        *args: Positional arguments for the operation
-        **kwargs: Keyword arguments for the operation
-
-    Returns:
-        Tuple of (operation_result, usage_info_dict)
-
-    Example:
-        result, usage = track_lm_usage(predictor, question="What is AI?")
-    """
-    # Get initial history length
-    lm = dspy.settings.lm
-    history_length_before = len(lm.history) if lm and hasattr(lm, "history") else 0
-
-    # Execute the operation
-    result = operation(*args, **kwargs)
-
-    # Extract usage from new history entries
-    usage_info = get_default_usage_dict()
-
-    if lm and hasattr(lm, "history"):
-        try:
-            new_history = lm.history[history_length_before:]
-            usage_info = extract_cost_from_lm_history(new_history)
-        except Exception as e:
-            logger.warning(f"Failed to extract usage info: {str(e)}")
-
-    return result, usage_info
 
 
 def get_lm_usage_since(history_length_before: int) -> Dict[str, Any]:
