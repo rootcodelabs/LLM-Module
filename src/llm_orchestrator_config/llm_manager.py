@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
+import threading
 
 import dspy
 
@@ -24,6 +25,7 @@ class LLMManager:
     _instance: Optional["LLMManager"] = None
     _initialized: bool = False
     _configured: bool = False
+    _config_lock: threading.Lock = threading.Lock()
 
     def __new__(
         cls,
@@ -168,11 +170,15 @@ class LLMManager:
         dspy.configure(lm=dspy_client)
 
     def ensure_global_config(self, provider: Optional[LLMProvider] = None) -> None:
-        """Configure DSPy exactly once per process."""
+        """Configure DSPy exactly once per process (thread-safe)."""
+        # Double-checked locking pattern for performance
         if not self._configured:
-            dspy_client = self.get_dspy_client(provider)
-            dspy.configure(lm=dspy_client)  # one-and-done
-            self._configured = True
+            with self._config_lock:
+                # Re-check inside the lock to prevent race condition
+                if not self._configured:
+                    dspy_client = self.get_dspy_client(provider)
+                    dspy.configure(lm=dspy_client)
+                    self._configured = True
 
     @contextmanager
     def use_task_local(self, provider: Optional[LLMProvider] = None):
