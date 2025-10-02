@@ -19,12 +19,19 @@ POST /ruuter-private/llm/connections/create
 {
   "llmPlatform": "OpenAI",
   "llmModel": "GPT-4o",
-  "llmApiKey": "your-api-key",
   "embeddingPlatform": "OpenAI",
   "embeddingModel": "text-embedding-3-small",
-  "embeddingApiKey": "your-embedding-api-key",
   "monthlyBudget": 1000.00,
-  "deploymentEnvironment": "Testing"
+  "deploymentEnvironment": "Testing",
+  // Azure credentials (optional)
+  "deploymentName": "my-deployment",
+  "targetUri": "https://my-endpoint.azure.com",
+  "apiKey": "azure-api-key",
+  // AWS Bedrock credentials (optional)
+  "secretKey": "aws-secret-key",
+  "accessKey": "aws-access-key",
+  // Embedding model credentials (optional)
+  "embeddingModelApiKey": "embedding-api-key"
 }
 ```
 
@@ -37,10 +44,19 @@ POST /ruuter-private/llm/connections/create
   "embeddingPlatform": "OpenAI",
   "embeddingModel": "text-embedding-3-small",
   "monthlyBudget": 1000.00,
+  "usedBudget": 0.00,
   "deploymentEnvironment": "Testing",
   "status": "active",
   "createdAt": "2025-09-02T10:15:30.000Z",
-  "updatedAt": "2025-09-02T10:15:30.000Z"
+  // Azure credentials (if provided)
+  "deploymentName": "my-deployment",
+  "targetUri": "https://my-endpoint.azure.com",
+  "apiKey": "azure-api-key",
+  // AWS Bedrock credentials (if provided)  
+  "secretKey": "aws-secret-key",
+  "accessKey": "aws-access-key",
+  // Embedding model credentials (if provided)
+  "embeddingModelApiKey": "embedding-api-key"
 }
 ```
 
@@ -56,11 +72,22 @@ POST /ruuter-private/llm/connections/update
 ### Request Body
 ```json
 {
+  "connectionId": 1,
   "llmPlatform": "Azure AI",
   "llmModel": "GPT-4o-mini",
+  "embeddingPlatform": "Azure AI", 
+  "embeddingModel": "text-embedding-ada-002",
   "monthlyBudget": 2000.00,
   "deploymentEnvironment": "Production",
-  "status": "inactive"
+  // Azure credentials (optional)
+  "deploymentName": "updated-deployment",
+  "targetUri": "https://updated-endpoint.azure.com",
+  "apiKey": "updated-azure-api-key",
+  // AWS Bedrock credentials (optional)
+  "secretKey": "updated-aws-secret-key",
+  "accessKey": "updated-aws-access-key",
+  // Embedding model credentials (optional)
+  "embeddingModelApiKey": "updated-embedding-api-key"
 }
 ```
 
@@ -70,11 +97,22 @@ POST /ruuter-private/llm/connections/update
   "id": 1,
   "llmPlatform": "Azure AI",
   "llmModel": "GPT-4o-mini",
+  "embeddingPlatform": "Azure AI",
+  "embeddingModel": "text-embedding-ada-002",
   "monthlyBudget": 2000.00,
+  "usedBudget": 150.75,
   "deploymentEnvironment": "Production",
-  "status": "inactive",
+  "status": "active",
   "createdAt": "2025-09-02T10:15:30.000Z",
-  "updatedAt": "2025-09-02T11:00:00.000Z"
+  // Azure credentials (if provided)
+  "deploymentName": "updated-deployment",
+  "targetUri": "https://updated-endpoint.azure.com",
+  "apiKey": "updated-azure-api-key",
+  // AWS Bedrock credentials (if provided)  
+  "secretKey": "updated-aws-secret-key",
+  "accessKey": "updated-aws-access-key",
+  // Embedding model credentials (if provided)
+  "embeddingModelApiKey": "updated-embedding-api-key"
 }
 ```
 
@@ -523,28 +561,31 @@ POST /ruuter-private/inference/results/production/store
 
 ### Endpoint
 ```http
-POST /ruuter-private/inference/results/view
+POST /ruuter-private/inference/results/test/store
 ```
 
 ### Request Body
 ```json
-
 {
   "llmConnectionId": 1,
-  "message": "What are the benefits of using LLMs?"
+  "userQuestion": "What are the benefits of using LLMs?",
+  "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation."
 }
 ```
 
-### Response (200 OK)
+### Response (201 Created)
 ```json
 {
-  "chatId": 10,
-  "llmServiceActive": true,
-  "questionOutOfLlmScope": true,
-  "content": "Random answer with citations
-  - https://gov.ee/sample1,
-  - https://gov.ee/sample1"
-  
+  "data": {
+    "id": 15,
+    "llmConnectionId": 1,
+    "userQuestion": "What are the benefits of using LLMs?",
+    "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation.",
+    "environment": "testing",
+    "createdAt": "2025-09-25T10:15:30.000Z"
+  },
+  "operationSuccess": true,
+  "statusCode": 200
 }
 ```
 
@@ -552,41 +593,62 @@ POST /ruuter-private/inference/results/view
 
 ### Endpoint
 ```http
-POST /ruuter-private/rag/inquiry
+POST /ruuter-private/inference/results/production/store
 ```
 
 ### Request Body
 ```json
-
 {
-    "chatId": "chat-12345",
-    "message": "I need help with my electricity bill.",
-    "authorId": "12345",
-    "conversationHistory": [
-        {
-            "authorRole": "user",
-            "message": "Hi, I have a billing issue",
-            "timestamp": "2025-04-29T09:00:00Z"
-        },
-        {
-            "authorRole": "bot",
-            "message": "Sure, can you tell me more about the issue?",
-            "timestamp": "2025-04-29T09:00:05Z"
-        }
-    ],
-    "url": "id.ee"
+  "llmConnectionId": 1,
+  "chatId": "chat-session-12345",
+  "userQuestion": "What are the benefits of using LLMs?",
+  "refinedQuestions": [
+    "How do LLMs improve productivity?",
+    "What are practical use cases of LLMs?"
+  ],
+  "conversationHistory": [
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "Hi! How can I help you?" }
+  ],
+  "rankedChunks": [
+    { "id": "chunk_1", "content": "LLMs help in summarization", "rank": 1 },
+    { "id": "chunk_2", "content": "They improve Q&A systems", "rank": 2 }
+  ],
+  "embeddingScores": {
+    "chunk_1": 0.92,
+    "chunk_2": 0.85
+  },
+  "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation."
 }
 ```
 
-### Response (200 OK)
+### Response (201 Created)
 ```json
 {
-    "chatId": "chat-12345",
-    "llmServiceActive": true,
-    "questionOutOfLlmScope" : false,
-    "inputGuardFailed" : true,
-    "content": "This is a random answer payload. \n\n with citations. \n\n References
-    - https://gov.ee/sample1,
-    - https://gov.ee/sample2"
+  "id": 20,
+  "llmConnectionId": 1,
+  "chatId": "chat-session-12345",
+  "userQuestion": "What are the benefits of using LLMs?",
+  "refinedQuestions": [
+    "How do LLMs improve productivity?",
+    "What are practical use cases of LLMs?"
+  ],
+  "conversationHistory": [
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "Hi! How can I help you?" }
+  ],
+  "rankedChunks": [
+    { "id": "chunk_1", "content": "LLMs help in summarization", "rank": 1 },
+    { "id": "chunk_2", "content": "They improve Q&A systems", "rank": 2 }
+  ],
+  "embeddingScores": {
+    "chunk_1": 0.92,
+    "chunk_2": 0.85
+  },
+  "finalAnswer": "LLMs can improve productivity by summarizing large documents, enabling Q&A, and enhancing automation.",
+  "environment": "production",
+  "createdAt": "2025-09-25T10:15:30.000Z"
 }
 ```
+
+---

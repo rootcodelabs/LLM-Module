@@ -11,6 +11,9 @@ declaration:
       - field: connection_id
         type: number
         description: "LLM connection ID"
+      - field: connection_name
+        type: string
+        description: "Connection name for identification"
       - field: llm_platform
         type: string
         description: "LLM platform (e.g., Azure AI, OpenAI)"
@@ -29,16 +32,41 @@ declaration:
       - field: deployment_environment
         type: string
         description: "Deployment environment (Testing or Production)"
+      - field: deployment_name
+        type: string
+        description: "Azure deployment name"
+      - field: target_uri
+        type: string
+        description: "Custom endpoint URI"
+      - field: api_key
+        type: string
+        description: "API key"
+      - field: secret_key
+        type: string
+        description: "AWS secret key"
+      - field: access_key
+        type: string
+        description: "AWS access key"
+      - field: embedding_model_api_key
+        type: string
+        description: "Embedding model API key"
 
 extract_request_data:
   assign:
     connection_id: ${Number(incoming.body.connection_id)}
+    connection_name: ${incoming.body.connection_name}
     llm_platform: ${incoming.body.llm_platform}
     llm_model: ${incoming.body.llm_model}
     embedding_platform: ${incoming.body.embedding_platform}
     embedding_model: ${incoming.body.embedding_model}
     monthly_budget: ${Number(incoming.body.monthly_budget)}
     environment: ${incoming.body.deployment_environment}
+    deployment_name: ${incoming.body.deployment_name || ""}
+    target_uri: ${incoming.body.target_uri || ""}
+    api_key: ${incoming.body.api_key || ""}
+    secret_key: ${incoming.body.secret_key || ""}
+    access_key: ${incoming.body.access_key || ""}
+    embedding_model_api_key: ${incoming.body.embedding_model_api_key || ""}
     updated_at: ${new Date().toISOString()}
   next: validate_environment
 
@@ -69,12 +97,19 @@ update_llm_connection:
     url: "[#RAG_SEARCH_RESQL]/update-llm-connection"
     body:
       connection_id: ${connection_id}
+      connection_name: ${connection_name}
       llm_platform: ${llm_platform}
       llm_model: ${llm_model}
       embedding_platform: ${embedding_platform}
       embedding_model: ${embedding_model}
       monthly_budget: ${monthly_budget}
       environment: ${environment}
+      deployment_name: ${deployment_name}
+      target_uri: ${target_uri}
+      api_key: ${api_key}
+      secret_key: ${secret_key}
+      access_key: ${access_key}
+      embedding_model_api_key: ${embedding_model_api_key}
   result: connection_result
   next: return_success
 

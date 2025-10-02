@@ -1,28 +1,38 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import FormInput from 'components/FormElements/FormInput';
 import FormSelect from 'components/FormElements/FormSelect';
 import Button from 'components/Button';
 import Track from 'components/Track';
+import { 
+  getLLMPlatforms, 
+  getLLMModels, 
+  getEmbeddingPlatforms, 
+  getEmbeddingModels,
+  PlatformOption,
+  ModelOption 
+} from 'services/llmConfigs';
 import './LLMConnectionForm.scss';
 
 export type LLMConnectionFormData = {
+  connectionName: string;
   llmPlatform: string;
   llmModel: string;
   embeddingModelPlatform: string;
   embeddingModel: string;
-  llmApiKey: string;
-  embeddingApiKey: string;
   monthlyBudget: string;
   deploymentEnvironment: string;
-  // AWS Bedrock specific fields
+  // AWS Bedrock credentials
   accessKey?: string;
   secretKey?: string;
-  // Azure specific fields
+  // Azure credentials
   deploymentName?: string;
-  endpoint?: string;
-  azureApiKey?: string;
+  targetUri?: string;
+  apiKey?: string;
+  // Embedding model credentials
+  embeddingModelApiKey?: string;
 };
 
 type LLMConnectionFormProps = {
@@ -47,24 +57,26 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isDirty, isValid },
   } = useForm<LLMConnectionFormData>({
     defaultValues: {
+      connectionName: '',
       llmPlatform: '',
       llmModel: '',
       embeddingModelPlatform: '',
       embeddingModel: '',
-      llmApiKey: '',
-      embeddingApiKey: '',
+      embeddingModelApiKey: '',
       monthlyBudget: '',
-      deploymentEnvironment: 'development',
-      // AWS Bedrock specific fields
+      deploymentEnvironment: 'testing',
+      // AWS Bedrock credentials
       accessKey: '',
       secretKey: '',
-      // Azure specific fields
+      // Azure credentials
       deploymentName: '',
-      endpoint: '',
-      azureApiKey: '',
+      targetUri: '',
+      apiKey: '',
+      // Embedding model credentials
       ...defaultValues,
     },
     mode: 'onChange',
@@ -73,72 +85,97 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
   const selectedLLMPlatform = watch('llmPlatform');
   const selectedEmbeddingPlatform = watch('embeddingModelPlatform');
 
-  // Platform options
-  const llmPlatformOptions = [
-    { label: 'Azure OpenAI', value: 'azure' },
-    { label: 'AWS Bedrock', value: 'bedrock' },
-    { label: 'Hugging Face', value: 'huggingface' },
-  ];
+  // Fetch platform and model options from API
+  const { data: llmPlatformsData = [], isLoading: llmPlatformsLoading, error: llmPlatformsError } = useQuery({
+    queryKey: ['llm-platforms'],
+    queryFn: getLLMPlatforms,
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  const embeddingPlatformOptions = [
-    { label: 'OpenAI', value: 'openai' },
-    { label: 'Hugging Face', value: 'huggingface' },
-    { label: 'Azure OpenAI', value: 'azure' },
-  ];
+  const { data: embeddingPlatformsData = [], isLoading: embeddingPlatformsLoading, error: embeddingPlatformsError } = useQuery({
+    queryKey: ['embedding-platforms'],
+    queryFn: getEmbeddingPlatforms,
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  // Model options based on selected platform
-  const getLLMModelOptions = (platform: string) => {
-    switch (platform) {
-      case 'azure':
-        return [
-          { label: 'GPT-4', value: 'gpt-4' },
-          { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
-          { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-          { label: 'GPT-4o', value: 'gpt-4o' },
-        ];
-      case 'bedrock':
-        return [
-          { label: 'Claude 3 Sonnet', value: 'anthropic.claude-3-sonnet-20240229-v1:0' },
-          { label: 'Claude 3 Haiku', value: 'anthropic.claude-3-haiku-20240307-v1:0' },
-          { label: 'Claude 3 Opus', value: 'anthropic.claude-3-opus-20240229-v1:0' },
-          { label: 'Titan Text G1 - Express', value: 'amazon.titan-text-express-v1' },
-          { label: 'Llama 2 70B Chat', value: 'meta.llama2-70b-chat-v1' },
-        ];
-      case 'huggingface':
-        return [
-          { label: 'Llama 2 7B Chat', value: 'meta-llama/Llama-2-7b-chat-hf' },
-          { label: 'Llama 2 13B Chat', value: 'meta-llama/Llama-2-13b-chat-hf' },
-          { label: 'Mistral 7B Instruct', value: 'mistralai/Mistral-7B-Instruct-v0.1' },
-          { label: 'CodeLlama 7B Instruct', value: 'codellama/CodeLlama-7b-Instruct-hf' },
-        ];
-      default:
-        return [{ label: 'Custom Model', value: 'custom' }];
-    }
+  const { data: llmModelsData = [], isLoading: llmModelsLoading, error: llmModelsError } = useQuery({
+    queryKey: ['llm-models', selectedLLMPlatform],
+    queryFn: () => getLLMModels(selectedLLMPlatform),
+    enabled: !!selectedLLMPlatform,
+    retry: 2,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+
+  const { data: embeddingModelsData = [], isLoading: embeddingModelsLoading, error: embeddingModelsError } = useQuery({
+    queryKey: ['embedding-models', selectedEmbeddingPlatform],
+    queryFn: () => getEmbeddingModels(selectedEmbeddingPlatform),
+    enabled: !!selectedEmbeddingPlatform,
+    retry: 2,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+
+  // Convert API data to option format
+  const llmPlatformOptions = llmPlatformsData?.map((platform: PlatformOption) => ({
+    label: platform.label,
+    value: platform.value,
+  }));
+
+  const embeddingPlatformOptions = embeddingPlatformsData?.map((platform: PlatformOption) => ({
+    label: platform.label,
+    value: platform.value,
+  }));
+
+  const llmModelOptions = llmModelsData?.map((model: ModelOption) => ({
+    label: model.label,
+    value: model.value,
+  }));
+
+  const embeddingModelOptions = embeddingModelsData?.map((model: ModelOption) => ({
+    label: model.label,
+    value: model.value,
+  }));
+
+  const [replaceApiKey, setReplaceApiKey] = React.useState(false);
+  const [replaceSecretKey, setReplaceSecretKey] = React.useState(false);
+  const [replaceAccessKey, setReplaceAccessKey] = React.useState(false);
+  const [replaceEmbeddingModelApiKey, setReplaceEmbeddingModelApiKey] = React.useState(false);
+
+  // State to track if API key fields should be in replace mode (readonly with replace button)
+  const [apiKeyReplaceMode, setApiKeyReplaceMode] = React.useState(isEditing);
+  const [secretKeyReplaceMode, setSecretKeyReplaceMode] = React.useState(isEditing);
+  const [accessKeyReplaceMode, setAccessKeyReplaceMode] = React.useState(isEditing);
+  const [embeddingApiKeyReplaceMode, setEmbeddingApiKeyReplaceMode] = React.useState(isEditing);
+
+  const resetLLMCredentialFields = () => {
+    setValue('accessKey', '');
+    setValue('secretKey', '');
+    setValue('deploymentName', '');
+    setValue('targetUri', '');
+    setValue('apiKey', '');
+    setValue('llmModel', '');
+    
+    // Reset replace mode states when platform changes
+    setApiKeyReplaceMode(false);
+    setSecretKeyReplaceMode(false);
+    setAccessKeyReplaceMode(false);
   };
 
-  const getEmbeddingModelOptions = (platform: string) => {
-    switch (platform) {
-      case 'openai':
-        return [
-          { label: 'text-embedding-ada-002', value: 'text-embedding-ada-002' },
-          { label: 'text-embedding-3-small', value: 'text-embedding-3-small' },
-          { label: 'text-embedding-3-large', value: 'text-embedding-3-large' },
-        ];
-      case 'azure':
-        return [
-          { label: 'text-embedding-ada-002', value: 'text-embedding-ada-002' },
-          { label: 'text-embedding-3-small', value: 'text-embedding-3-small' },
-          { label: 'text-embedding-3-large', value: 'text-embedding-3-large' },
-        ];
-      case 'huggingface':
-        return [
-          { label: 'all-MiniLM-L6-v2', value: 'sentence-transformers/all-MiniLM-L6-v2' },
-          { label: 'all-mpnet-base-v2', value: 'sentence-transformers/all-mpnet-base-v2' },
-          { label: 'all-distilroberta-v1', value: 'sentence-transformers/all-distilroberta-v1' },
-        ];
-      default:
-        return [{ label: 'Custom Model', value: 'custom' }];
-    }
+   const resetEmbeddingModelCredentialFields = () => {
+    setValue('embeddingModelApiKey', '');
+    setValue('embeddingModel', '');
+    
+    // Reset replace mode state when platform changes
+    setEmbeddingApiKeyReplaceMode(false);
+  };
+  // Model options based on selected platform
+  const getLLMModelOptions = () => {
+    return llmModelOptions;
+  };
+
+  const getEmbeddingModelOptions = () => {
+    return embeddingModelOptions;
   };
 
   const deploymentEnvironments = [
@@ -148,7 +185,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
 
   const renderPlatformSpecificFields = () => {
     switch (selectedLLMPlatform) {
-      case 'bedrock':
+      case 'aws':
         return (
           <>
             <div className="form-row">
@@ -161,9 +198,16 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter AWS Access Key"
                     error={errors.accessKey?.message}
+                    readOnly={accessKeyReplaceMode}
+                    showEndButton={accessKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setAccessKeyReplaceMode(false);
+                      setValue('accessKey', '');
+                    }}
+                    endButtonText="Change"
                     {...field}
                   />
                 )}
@@ -179,9 +223,16 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter AWS Secret Key"
                     error={errors.secretKey?.message}
+                    readOnly={secretKeyReplaceMode}
+                    showEndButton={secretKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setSecretKeyReplaceMode(false);
+                      setValue('secretKey', '');
+                    }}
+                    endButtonText="Change"
                     {...field}
                   />
                 )}
@@ -213,7 +264,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               <p className='form-label'>Endpoint / Target URI</p>
               <p className='form-description'>Azure OpenAI service endpoint URL</p>
               <Controller
-                name="endpoint"
+                name="targetUri"
                 control={control}
                 rules={{ 
                   required: 'Endpoint is required for Azure OpenAI',
@@ -226,7 +277,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   <FormInput
                     label=""
                     placeholder="https://your-resource.openai.azure.com/"
-                    error={errors.endpoint?.message}
+                    error={errors.targetUri?.message}
                     {...field}
                   />
                 )}
@@ -235,16 +286,24 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             <div className="form-row">
               <p className='form-label'>API Key</p>
               <p className='form-description'>Azure OpenAI API key</p>
+
               <Controller
-                name="azureApiKey"
+                name="apiKey"
                 control={control}
                 rules={{ required: 'API Key is required for Azure OpenAI' }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    type="password"
+                    type={isEditing ? 'text' : 'password'}
                     placeholder="Enter Azure OpenAI API key"
-                    error={errors.azureApiKey?.message}
+                    error={errors.apiKey?.message}
+                    readOnly={apiKeyReplaceMode}
+                    showEndButton={apiKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setApiKeyReplaceMode(false);
+                      setValue('apiKey', '');
+                    }}
+                    endButtonText="Change"
                     {...field}
                   />
                 )}
@@ -252,42 +311,22 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             </div>
           </>
         );
-      case 'huggingface':
-        return (
-          <div className="form-row">
-            <p className='form-label'>LLM API Key</p>
-            <p className='form-description'>Hugging Face API token for model access</p>
-            <Controller
-              name="llmApiKey"
-              control={control}
-              rules={{ required: 'API Key is required for Hugging Face' }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  type="password"
-                  placeholder="Enter Hugging Face API token"
-                  error={errors.llmApiKey?.message}
-                  {...field}
-                />
-              )}
-            />
-          </div>
-        );
+      
       default:
         return (
           <div className="form-row">
             <p className='form-label'>LLM API Key</p>
             <p className='form-description'>The API key of the LLM model</p>
             <Controller
-              name="llmApiKey"
+              name="apiKey"
               control={control}
               rules={{ required: 'LLM API Key is required' }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  type="password"
+                  type={isEditing ? 'text' : 'password'}
                   placeholder="Enter your LLM API key"
-                  error={errors.llmApiKey?.message}
+                  error={errors.apiKey?.message}
                   {...field}
                 />
               )}
@@ -312,6 +351,25 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           <h3 className="form-section-title">LLM Configuration</h3>
 
           <div className="form-row">
+            <p className='form-label'>Connection Name</p>
+            <p className='form-description'>A unique name to identify this LLM connection</p>
+            <Controller
+              name="connectionName"
+              control={control}
+              rules={{ required: 'Connection Name is required' }}
+              render={({ field }) => (
+                <FormInput
+                  label=""
+                  placeholder="Enter connection name (e.g., Azure GPT-4 Production)"
+                  error={errors.connectionName?.message}
+                  disabled={readOnly}
+                  {...field}
+                />
+              )}
+            />
+          </div>
+
+          <div className="form-row">
             <p className='form-label'>LLM Platform</p>
             <p className='form-description'> Cloud / local platform in which your model is hosted</p>
             <Controller
@@ -322,11 +380,18 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 <FormSelect
                   label=""
                   options={llmPlatformOptions}
-                  placeholder="Select LLM Platform"
-                  error={errors.llmPlatform?.message}
-                  disabled={readOnly}
+                  placeholder={
+                    llmPlatformsLoading 
+                      ? "Loading platforms..." 
+                      : llmPlatformsError 
+                        ? "Error loading platforms" 
+                        : "Select LLM Platform"
+                  }
+                  error={errors.llmPlatform?.message || (llmPlatformsError ? "Failed to load platforms" : undefined)}
+                  disabled={readOnly || llmPlatformsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
+                    resetLLMCredentialFields();
                   }}
                   defaultValue={field.value}
                   {...field}
@@ -346,10 +411,18 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={getLLMModelOptions(selectedLLMPlatform)}
-                  placeholder="Select LLM Model"
-                  error={errors.llmModel?.message}
-                  disabled={!selectedLLMPlatform || readOnly}
+                  options={getLLMModelOptions()}
+                  placeholder={
+                    llmModelsLoading 
+                      ? "Loading models..." 
+                      : llmModelsError 
+                        ? "Error loading models" 
+                        : !selectedLLMPlatform 
+                          ? "Select a platform first"
+                          : "Select LLM Model"
+                  }
+                  error={errors.llmModel?.message || (llmModelsError ? "Failed to load models" : undefined)}
+                  disabled={!selectedLLMPlatform || readOnly || llmModelsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
                   }}
@@ -379,10 +452,18 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 <FormSelect
                   label=""
                   options={embeddingPlatformOptions}
-                  placeholder="Select Embedding Platform"
-                  error={errors.embeddingModelPlatform?.message}
+                  placeholder={
+                    embeddingPlatformsLoading 
+                      ? "Loading platforms..." 
+                      : embeddingPlatformsError 
+                        ? "Error loading platforms" 
+                        : "Select Embedding Platform"
+                  }
+                  error={errors.embeddingModelPlatform?.message || (embeddingPlatformsError ? "Failed to load platforms" : undefined)}
+                  disabled={embeddingPlatformsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
+                    resetEmbeddingModelCredentialFields();
                   }}
                   defaultValue={field.value}
                   {...field}
@@ -402,10 +483,18 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={getEmbeddingModelOptions(selectedEmbeddingPlatform)}
-                  placeholder="Select Embedding Model"
-                  error={errors.embeddingModel?.message}
-                  disabled={!selectedEmbeddingPlatform}
+                  options={getEmbeddingModelOptions()}
+                  placeholder={
+                    embeddingModelsLoading 
+                      ? "Loading models..." 
+                      : embeddingModelsError 
+                        ? "Error loading models" 
+                        : !selectedEmbeddingPlatform 
+                          ? "Select a platform first"
+                          : "Select Embedding Model"
+                  }
+                  error={errors.embeddingModel?.message || (embeddingModelsError ? "Failed to load models" : undefined)}
+                  disabled={!selectedEmbeddingPlatform || embeddingModelsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
                   }}
@@ -421,15 +510,22 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             <p className='form-description'>API key of your embedding model</p>
 
             <Controller
-              name="embeddingApiKey"
+              name="embeddingModelApiKey"
               control={control}
               rules={{ required: 'Embedding API Key is required' }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  type="password"
+                  type={isEditing ? 'text' : 'password'}
                   placeholder="Enter your Embedding API key"
-                  error={errors.embeddingApiKey?.message}
+                  error={errors.embeddingModelApiKey?.message}
+                  readOnly={embeddingApiKeyReplaceMode}
+                  showEndButton={embeddingApiKeyReplaceMode}
+                  onEndButtonClick={() => {
+                    setEmbeddingApiKeyReplaceMode(false);
+                    setValue('embeddingModelApiKey', '');
+                  }}
+                  endButtonText="Change"
                   {...field}
                 />
               )}
@@ -481,7 +577,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                 <div className="radio-group">
                   <label className="radio-group-label">Deployment Environment</label>
                   <div className="radio-options">
-                    {deploymentEnvironments.map((env) => (
+                    {deploymentEnvironments?.map((env) => (
                       <label key={env.value} className="radio-option">
                         <input
                           type="radio"
@@ -513,6 +609,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               {isEditing && (<Button
                 appearance="error"
                 onClick={onDelete}
+                type='button'
               >
                 Delete Connection
               </Button>)}
