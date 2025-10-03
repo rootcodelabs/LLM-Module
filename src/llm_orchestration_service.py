@@ -186,7 +186,6 @@ class LLMOrchestrationService:
 
             total_costs = calculate_total_costs(costs_dict)
 
-            logger.info("=" * 50)
             logger.info("LLM USAGE COSTS:")
 
             for component, costs in costs_dict.items():
@@ -195,12 +194,10 @@ class LLMOrchestrationService:
                     f"({costs['num_calls']} calls, {costs['total_tokens']} tokens)"
                 )
 
-            logger.info("-" * 50)
             logger.info(
                 f"  TOTAL: ${total_costs['total_cost']:.6f} "
                 f"({total_costs['total_calls']} calls, {total_costs['total_tokens']} tokens)"
             )
-            logger.info("=" * 50)
 
         except Exception as e:
             logger.warning(f"Failed to log costs: {str(e)}")
