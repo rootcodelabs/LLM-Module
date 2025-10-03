@@ -10,6 +10,7 @@ from models.request_models import (
     OrchestrationResponse,
     ConversationItem,
     PromptRefinerOutput,
+    ContextGenerationRequest,
 )
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from vector_indexer.chunk_config import ChunkConfig
@@ -25,9 +26,22 @@ class LLMOrchestrationService:
     """Stateless service class for handling LLM orchestration business logic."""
 
     def __init__(self) -> None:
-        """Initialize the stateless orchestration service."""
-        # No instance variables - completely stateless
-        pass
+        """Initialize the orchestration service with new managers."""
+        # Initialize managers for new functionality
+        from llm_orchestrator_config.embedding_manager import EmbeddingManager
+        from llm_orchestrator_config.context_manager import ContextGenerationManager
+        from llm_orchestrator_config.llm_manager import LLMManager
+        from llm_orchestrator_config.vault.vault_client import VaultAgentClient
+        from llm_orchestrator_config.config.loader import ConfigurationLoader
+        
+        # Initialize vault client and config loader (reusing existing patterns)
+        self.vault_client = VaultAgentClient()
+        self.config_loader = ConfigurationLoader()
+        self.llm_manager = LLMManager()
+        
+        # Initialize new managers
+        self.embedding_manager = EmbeddingManager(self.vault_client, self.config_loader)
+        self.context_manager = ContextGenerationManager(self.llm_manager)
 
     def process_orchestration_request(
         self, request: OrchestrationRequest
@@ -417,3 +431,66 @@ class LLMOrchestrationService:
                 inputGuardFailed=False,
                 content=TECHNICAL_ISSUE_MESSAGE,
             )
+
+    def create_embeddings(
+        self, 
+        texts: List[str], 
+        model_name: Optional[str] = None, 
+        environment: str = "production",
+        connection_id: Optional[str] = None, 
+        batch_size: int = 50
+    ) -> Dict[str, Any]:
+        """Create embeddings using DSPy Embedder with vault configuration."""
+        logger.info(f"Creating embeddings for {len(texts)} texts")
+        
+        try:
+            return self.embedding_manager.create_embeddings(
+                texts=texts,
+                model_name=model_name,
+                environment=environment,
+                connection_id=connection_id,
+                batch_size=batch_size
+            )
+        except Exception as e:
+            logger.error(f"Embedding creation failed: {e}")
+            raise
+
+    def generate_context_with_caching(
+        self, 
+        request: ContextGenerationRequest
+    ) -> Dict[str, Any]:
+        """Generate context using Anthropic methodology with caching structure."""
+        logger.info("Generating context with Anthropic methodology")
+        
+        try:
+            return self.context_manager.generate_context_with_caching(request)
+        except Exception as e:
+            logger.error(f"Context generation failed: {e}")
+            raise
+
+    def get_available_embedding_models(
+        self, 
+        environment: str = "production", 
+        connection_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get available embedding models from vault configuration."""
+        try:
+            available_models = self.embedding_manager.get_available_models(
+                environment, connection_id
+            )
+            # Get default model through public interface
+            try:
+                default_model = self.embedding_manager.get_embedder(
+                    model_name=None, environment=environment, connection_id=connection_id
+                )
+                default_model = "text-embedding-3-small"  # Fallback for now
+            except Exception:
+                default_model = "text-embedding-3-small"
+            
+            return {
+                "available_models": available_models,
+                "default_model": default_model
+            }
+        except Exception as e:
+            logger.error(f"Failed to get embedding models: {e}")
+            raise

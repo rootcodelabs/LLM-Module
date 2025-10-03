@@ -1,6 +1,6 @@
 """Pydantic models for API requests and responses."""
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -53,3 +53,112 @@ class OrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+
+
+# New models for embedding and context generation
+
+class EmbeddingRequest(BaseModel):
+    """Request model for embedding generation."""
+
+    texts: List[str] = Field(
+        ..., 
+        description="List of texts to embed", 
+        max_length=1000
+    )
+    model_name: Optional[str] = Field(
+        None, 
+        description="Embedding model name from vault"
+    )
+    batch_size: Optional[int] = Field(
+        50,  # Using small batch size as requested
+        description="Batch size for processing", 
+        ge=1, 
+        le=100
+    )
+    connection_id: Optional[str] = Field(
+        None, 
+        description="Connection ID for dev/test environments"
+    )
+
+
+class EmbeddingResponse(BaseModel):
+    """Response model for embedding generation."""
+
+    embeddings: List[List[float]] = Field(
+        ..., 
+        description="List of embedding vectors"
+    )
+    model_used: str = Field(
+        ..., 
+        description="Actual model used for embeddings"
+    )
+    processing_info: Dict[str, Any] = Field(
+        ..., 
+        description="Processing metadata"
+    )
+    total_tokens: Optional[int] = Field(
+        None, 
+        description="Total tokens processed"
+    )
+
+
+class ContextGenerationRequest(BaseModel):
+    """Request model for context generation using Anthropic methodology."""
+
+    document_prompt: str = Field(
+        ..., 
+        description="Document content for caching", 
+        max_length=100000
+    )
+    chunk_prompt: str = Field(
+        ..., 
+        description="Chunk-specific prompt", 
+        max_length=5000
+    )
+    model: str = Field(
+        default="claude-3-haiku-20240307", 
+        description="Model for context generation"
+    )
+    max_tokens: int = Field(
+        default=1000, 
+        description="Maximum tokens for response", 
+        ge=50, 
+        le=2000
+    )
+    temperature: float = Field(
+        default=0.0, 
+        description="Temperature for generation", 
+        ge=0.0, 
+        le=1.0
+    )
+    use_cache: bool = Field(
+        default=True, 
+        description="Enable prompt caching"
+    )
+    connection_id: Optional[str] = Field(
+        None, 
+        description="Connection ID for dev/test environments"
+    )
+
+
+class ContextGenerationResponse(BaseModel):
+    """Response model for context generation."""
+
+    context: str = Field(..., description="Generated contextual description")
+    usage: Dict[str, int] = Field(..., description="Token usage breakdown")
+    cache_performance: Dict[str, Any] = Field(
+        ..., 
+        description="Caching performance metrics"
+    )
+    model_used: str = Field(..., description="Model used for generation")
+
+
+class EmbeddingErrorResponse(BaseModel):
+    """Error response for embedding failures."""
+
+    error: str = Field(..., description="Error message")
+    failed_texts: List[str] = Field(..., description="Texts that failed to embed")
+    retry_after: Optional[int] = Field(
+        None, 
+        description="Retry after seconds"
+    )
