@@ -16,7 +16,7 @@ from langchain_core.callbacks.manager import (
 )
 from langchain_core.outputs import LLMResult, Generation
 from langchain_core.language_models.llms import LLM
-from guardrails.guardrails_llm_configs import TEMPERATURE, MAX_TOKENS, MODEL_NAME
+from src.guardrails.guardrails_llm_configs import TEMPERATURE, MAX_TOKENS, MODEL_NAME
 
 
 class DSPyNeMoLLM(LLM):

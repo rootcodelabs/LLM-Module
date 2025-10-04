@@ -210,7 +210,7 @@ class NeMoRailsAdapter:
             )
 
             # Use NeMo's generate API with output rails enabled
-            response = self._rails.generate(  # type: ignore[union-attr]
+            response = self._rails.generate(
                 messages=[
                     {"role": "user", "content": "test query"},
                     {"role": "assistant", "content": assistant_message},
