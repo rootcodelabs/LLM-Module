@@ -58,16 +58,20 @@ class OrchestrationResponse(BaseModel):
 # New models for embedding and context generation
 
 class EmbeddingRequest(BaseModel):
-    """Request model for embedding generation."""
+    """Request model for embedding generation.
+    
+    Model name is resolved from vault based on environment and connection_id.
+    No explicit model_name parameter needed - uses vault-driven model selection.
+    """
 
     texts: List[str] = Field(
         ..., 
         description="List of texts to embed", 
         max_length=1000
     )
-    model_name: Optional[str] = Field(
-        None, 
-        description="Embedding model name from vault"
+    environment: Literal["production", "development", "test"] = Field(
+        ..., 
+        description="Environment for model resolution"
     )
     batch_size: Optional[int] = Field(
         50,  # Using small batch size as requested
@@ -77,7 +81,7 @@ class EmbeddingRequest(BaseModel):
     )
     connection_id: Optional[str] = Field(
         None, 
-        description="Connection ID for dev/test environments"
+        description="Connection ID for dev/test environments (required for non-production)"
     )
 
 

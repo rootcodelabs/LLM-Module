@@ -1,7 +1,7 @@
 """LLM Orchestration Service API - FastAPI application."""
 
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, HTTPException, status, Request
 from loguru import logger
@@ -127,18 +127,21 @@ def orchestrate_llm_request(
 @app.post("/embeddings", response_model=EmbeddingResponse, responses={500: {"model": EmbeddingErrorResponse}})
 async def create_embeddings(request: EmbeddingRequest) -> EmbeddingResponse:
     """
-    Create embeddings using DSPy with vault-managed models.
+    Create embeddings using DSPy with vault-driven model resolution.
+    
+    Model selection is automatic based on environment and connection_id:
+    - Production: Uses first available embedding model from vault
+    - Development/Test: Uses model associated with connection_id
     
     Supports Azure OpenAI, AWS Bedrock, and OpenAI embedding models.
     Includes automatic retry with exponential backoff.
     """
     try:
-        logger.info(f"Creating embeddings for {len(request.texts)} texts using model: {request.model_name}")
+        logger.info(f"Creating embeddings for {len(request.texts)} texts in {request.environment} environment")
         
-        result = app.state.orchestration_service.create_embeddings(
+        result: Dict[str, Any] = app.state.orchestration_service.create_embeddings(
             texts=request.texts,
-            model_name=request.model_name,
-            environment="production" if request.connection_id is None else "development",
+            environment=request.environment,
             connection_id=request.connection_id,
             batch_size=request.batch_size or 50
         )
@@ -179,16 +182,20 @@ async def generate_context_with_caching(request: ContextGenerationRequest) -> Co
 
 @app.get("/embedding-models")
 async def get_available_embedding_models(
-    environment: str = "production",
-    connection_id: Optional[str] = None
+    environment: str = "production"
 ) -> Dict[str, Any]:
-    """Get available embedding models from vault configuration."""
-    try:
-        # Get available embedding models
+    """Get available embedding models from vault configuration.
+    
+    Args:
+        environment: Environment to get models for (production, development, test)
         
-        result = app.state.orchestration_service.get_available_embedding_models(
-            environment=environment, 
-            connection_id=connection_id
+    Returns:
+        Dictionary with available models and default model information
+    """
+    try:
+        # Get available embedding models using vault-driven resolution
+        result: Dict[str, Any] = app.state.orchestration_service.get_available_embedding_models(
+            environment=environment
         )
         return result
         

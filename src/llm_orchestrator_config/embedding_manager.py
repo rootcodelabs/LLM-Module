@@ -41,68 +41,99 @@ class EmbeddingManager:
         
     def get_embedder(
         self, 
-        model_name: Optional[str] = None, 
         environment: str = "production",
         connection_id: Optional[str] = None
     ) -> dspy.Embedder:
-        """Get or create DSPy Embedder instance."""
-        # Use same logic as LLM model selection
-        actual_model_name = model_name or self._get_default_embedding_model(
-            environment, connection_id
-        )
+        """Get or create DSPy Embedder instance using vault-driven model resolution.
         
-        cache_key = f"{actual_model_name}_{environment}_{connection_id or 'default'}"
-        
-        if cache_key in self.embedders:
-            return self.embedders[cache_key]
+        Args:
+            environment: Environment (production, development, test)
+            connection_id: Optional connection ID for dev/test environments
             
-        # Load configuration from vault
-        config = self._load_embedding_config_from_vault(
-            actual_model_name, environment, connection_id
-        )
-        
-        # Create DSPy embedder based on provider
-        embedder = self._create_dspy_embedder(config)
-        self.embedders[cache_key] = embedder
-        
-        logger.info(f"Created embedder for model: {actual_model_name}")
-        return embedder
+        Returns:
+            Configured DSPy embedder instance
+            
+        Raises:
+            ConfigurationError: If no embedding models are available or configuration fails
+        """
+        # Resolve model from vault using ConfigurationLoader
+        try:
+            provider_name, model_name = self.config_loader.resolve_embedding_model(
+                environment, connection_id
+            )
+            
+            cache_key: str = f"{provider_name}_{model_name}_{environment}_{connection_id or 'default'}"
+            
+            if cache_key in self.embedders:
+                logger.debug(f"Using cached embedder: {provider_name}/{model_name}")
+                return self.embedders[cache_key]
+                
+            # Get full configuration with secrets from embeddings vault path
+            config: Dict[str, Any] = self.config_loader.get_embedding_provider_config(
+                provider_name, model_name, environment, connection_id
+            )
+            
+            # Create DSPy embedder based on provider
+            embedder: dspy.Embedder = self._create_dspy_embedder(config)
+            self.embedders[cache_key] = embedder
+            
+            logger.info(f"Created embedder for model: {provider_name}/{model_name}")
+            return embedder
+            
+        except Exception as e:
+            logger.error(f"Failed to create embedder: {e}")
+            raise ConfigurationError(f"Embedder creation failed: {e}") from e
         
     def create_embeddings(
         self,
         texts: List[str],
-        model_name: Optional[str] = None,
         environment: str = "production", 
         connection_id: Optional[str] = None,
         batch_size: int = 50
     ) -> Dict[str, Any]:
-        """Create embeddings using DSPy with error handling."""
-        embedder = self.get_embedder(model_name, environment, connection_id)
-        actual_model_name = model_name or self._get_default_embedding_model(
+        """Create embeddings using DSPy with vault-driven model resolution.
+        
+        Args:
+            texts: List of texts to embed
+            environment: Environment (production, development, test)
+            connection_id: Optional connection ID for dev/test environments
+            batch_size: Batch size for processing
+            
+        Returns:
+            Dictionary with embeddings and metadata
+            
+        Raises:
+            ConfigurationError: If embedding creation fails
+        """
+        embedder: dspy.Embedder = self.get_embedder(environment, connection_id)
+        
+        # Get the resolved model information for metadata
+        provider_name, model_name = self.config_loader.resolve_embedding_model(
             environment, connection_id
         )
+        model_identifier: str = f"{provider_name}/{model_name}"
         
         try:
             # Process in batches
-            all_embeddings = []
-            total_tokens = 0
+            all_embeddings: List[List[float]] = []
+            total_tokens: int = 0
             
             for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
+                batch_texts: List[str] = texts[i:i + batch_size]
                 logger.info(f"Processing embedding batch {i//batch_size + 1}")
                 
                 # Use Python's generic exponential backoff
-                batch_embeddings = self._create_embeddings_with_retry(
-                    embedder, batch_texts, actual_model_name
+                batch_embeddings: np.ndarray = self._create_embeddings_with_retry(
+                    embedder, batch_texts, model_identifier
                 )
                 all_embeddings.extend(batch_embeddings.tolist())
                 
                 # Estimate tokens (rough approximation)
-                total_tokens += sum(len(text.split()) * 1.3 for text in batch_texts)
+                total_tokens += int(sum(len(text.split()) * 1.3 for text in batch_texts))
                 
             return {
                 "embeddings": all_embeddings,
-                "model_used": actual_model_name,
+                "model_used": model_identifier,
                 "processing_info": {
                     "batch_count": (len(texts) + batch_size - 1) // batch_size,
                     "total_texts": len(texts),
@@ -113,7 +144,7 @@ class EmbeddingManager:
             
         except Exception as e:
             logger.error(f"Embedding creation failed: {e}")
-            self._log_embedding_failure(texts, str(e), actual_model_name)
+            self._log_embedding_failure(texts, str(e), model_identifier)
             raise
             
     def _create_embeddings_with_retry(
@@ -150,71 +181,7 @@ class EmbeddingManager:
         # This should never be reached, but makes pyright happy
         raise RuntimeError("Unexpected error in retry logic")
         
-    def _get_default_embedding_model(
-        self, 
-        environment: str, 
-        connection_id: Optional[str] = None
-    ) -> str:
-        """Get default embedding model using same logic as LLM selection."""
-        try:
-            if environment == "production":
-                # For production, get default from environment-specific path
-                path = "secret/embeddings/connections/azure_openai/production/default"
-            else:
-                # For dev/test, use connection_id
-                if not connection_id:
-                    raise ConfigurationError(
-                        f"connection_id required for environment: {environment}"
-                    )
-                path = f"secret/embeddings/connections/azure_openai/{environment}/{connection_id}/default"
-                
-            config = self.vault_client.get_secret(path)
-            if config is None:
-                raise ConfigurationError(f"No default embedding model found at {path}")
-            return config.get("model", "text-embedding-3-small")
-            
-        except Exception as e:
-            logger.warning(f"Could not get default embedding model: {e}")
-            return "text-embedding-3-small"  # Fallback
-            
-    def _load_embedding_config_from_vault(
-        self,
-        model_name: str,
-        environment: str, 
-        connection_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Load embedding configuration from vault using same logic as LLM."""
-        try:
-            # Determine provider from model name
-            provider = self._get_provider_from_model(model_name)
-            
-            if environment == "production":
-                path = f"secret/embeddings/connections/{provider}/production/{model_name}"
-            else:
-                if not connection_id:
-                    raise ConfigurationError(
-                        f"connection_id required for environment: {environment}"
-                    )
-                path = f"secret/embeddings/connections/{provider}/{environment}/{connection_id}/{model_name}"
-                
-            config = self.vault_client.get_secret(path)
-            if config is None:
-                raise ConfigurationError(f"No embedding configuration found at {path}")
-            logger.info(f"Loaded embedding config from vault: {path}")
-            return config
-            
-        except Exception as e:
-            logger.error(f"Failed to load embedding config: {e}")
-            raise ConfigurationError(f"Could not load embedding config: {e}")
-            
-    def _get_provider_from_model(self, model_name: str) -> str:
-        """Determine provider from model name."""
-        if "text-embedding" in model_name:
-            return "azure_openai"  # Default to Azure OpenAI
-        elif "titan" in model_name or "cohere" in model_name:
-            return "aws_bedrock"
-        else:
-            return "openai"
+
             
     def _create_dspy_embedder(self, config: Dict[str, Any]) -> dspy.Embedder:
         """Create DSPy embedder from vault configuration."""
@@ -274,14 +241,19 @@ class EmbeddingManager:
             
     def get_available_models(
         self, 
-        environment: str, 
-        connection_id: Optional[str] = None
+        environment: str
     ) -> List[str]:
-        """Get available embedding models from vault."""
+        """Get available embedding models from vault using ConfigurationLoader."""
         try:
-            # For now, return static list of supported models
-            # TODO: Implement dynamic model discovery from vault
-            _ = environment, connection_id  # Acknowledge parameters for future use
+            available_models: Dict[str, List[str]] = self.config_loader.get_available_embedding_models(environment)
+            # Flatten the dictionary values into a single list
+            all_models: List[str] = []
+            for provider_models in available_models.values():
+                all_models.extend(provider_models)
+            return all_models
+        except ConfigurationError as e:
+            logger.warning(f"Could not get available embedding models: {e}")
+            # Fallback to static list if vault query fails
             return [
                 "text-embedding-3-small",
                 "text-embedding-3-large", 
