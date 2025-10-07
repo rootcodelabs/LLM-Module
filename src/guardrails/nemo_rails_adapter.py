@@ -143,7 +143,7 @@ class NeMoRailsAdapter:
             logger.debug(f"Checking input guardrails for: {user_message[:100]}...")
 
             # Use NeMo's generate API with input rails enabled
-            response = self._rails.generate(  # type: ignore[union-attr]
+            response = self._rails.generate(
                 messages=[{"role": "user", "content": user_message}]
             )
 
@@ -216,7 +216,7 @@ class NeMoRailsAdapter:
             )
 
             # Use NeMo's generate API with output rails enabled
-            response = self._rails.generate(  # type: ignore[union-attr]
+            response = self._rails.generate(
                 messages=[
                     {"role": "user", "content": "test query"},
                     {"role": "assistant", "content": assistant_message},
