@@ -18,6 +18,8 @@ from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.llm_orchestrator_config.llm_cochestrator_constants import (
     OUT_OF_SCOPE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGE,
+    INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
 )
 from src.utils.cost_utils import calculate_total_costs
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
@@ -122,7 +124,7 @@ class LLMOrchestrationService:
         """Execute the main orchestration pipeline with all components."""
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
-            input_blocked_response = self._check_and_handle_input_guardrails(
+            input_blocked_response = self.handle_input_guardrails(
                 components["guardrails_adapter"], request, costs_dict
             )
             if input_blocked_response:
@@ -154,7 +156,7 @@ class LLMOrchestrationService:
         )
 
         # Step 5: Output Guardrails Check
-        return self._check_and_handle_output_guardrails(
+        return self.handle_output_guardrails(
             components["guardrails_adapter"], generated_response, request, costs_dict
         )
 
@@ -198,7 +200,7 @@ class LLMOrchestrationService:
             )
             return None
 
-    def _check_and_handle_input_guardrails(
+    def handle_input_guardrails(
         self,
         guardrails_adapter: NeMoRailsAdapter,
         request: OrchestrationRequest,
@@ -218,7 +220,7 @@ class LLMOrchestrationService:
                 llmServiceActive=True,
                 questionOutOfLLMScope=False,
                 inputGuardFailed=True,
-                content=input_check_result.content,
+                content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
             )
 
         logger.info("Input guardrails check passed")
@@ -245,7 +247,7 @@ class LLMOrchestrationService:
             logger.warning("Returning out-of-scope message due to retrieval failure")
             return None
 
-    def _check_and_handle_output_guardrails(
+    def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
         generated_response: OrchestrationResponse,
@@ -273,7 +275,7 @@ class LLMOrchestrationService:
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=output_check_result.content,
+                    content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
                 )
 
             logger.info("Output guardrails check passed")
