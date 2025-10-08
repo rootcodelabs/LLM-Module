@@ -11,6 +11,9 @@ export interface LLMConnection {
   embeddingPlatform: string;
   embeddingModel: string;
   monthlyBudget: number;
+  warnBudgetThreshold: number;
+  stopBudgetThreshold: number;
+  disconnectOnBudgetExceed: boolean;
   environment: string;
   status: string;
   createdAt: string;
@@ -64,6 +67,9 @@ export interface LLMConnectionFormData {
   embeddingModelPlatform: string;
   embeddingModel: string;
   monthlyBudget: string;
+  warnBudget: string;
+  stopBudget: string;
+  disconnectOnBudgetExceed: boolean;
   deploymentEnvironment: string;
   // Azure credentials
   deploymentName?: string;
@@ -107,6 +113,9 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
+    warn_budget_threshold: parseInt(connectionData.warnBudget),
+    stop_budget_threshold: parseInt(connectionData.stopBudget),
+    disconnect_on_budget_exceed: connectionData.disconnectOnBudgetExceed,
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
     // Azure credentials
     deployment_name: connectionData.deploymentName || null,
@@ -133,6 +142,9 @@ export async function updateLLMConnection(
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
+    warn_budget_threshold: parseInt(connectionData.warnBudget),
+    stop_budget_threshold: parseInt(connectionData.stopBudget),
+    disconnect_on_budget_exceed: connectionData.disconnectOnBudgetExceed,
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
     // Azure credentials
     deployment_name: connectionData.deploymentName || null,

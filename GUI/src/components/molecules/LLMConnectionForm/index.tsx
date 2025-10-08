@@ -4,15 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import FormInput from 'components/FormElements/FormInput';
 import FormSelect from 'components/FormElements/FormSelect';
+import FormCheckbox from 'components/FormElements/FormCheckbox';
+import FormRadios from 'components/FormElements/FormRadios';
 import Button from 'components/Button';
 import Track from 'components/Track';
-import { 
-  getLLMPlatforms, 
-  getLLMModels, 
-  getEmbeddingPlatforms, 
+import {
+  getLLMPlatforms,
+  getLLMModels,
+  getEmbeddingPlatforms,
   getEmbeddingModels,
   PlatformOption,
-  ModelOption 
+  ModelOption
 } from 'services/llmConfigs';
 import './LLMConnectionForm.scss';
 
@@ -23,6 +25,9 @@ export type LLMConnectionFormData = {
   embeddingModelPlatform: string;
   embeddingModel: string;
   monthlyBudget: string;
+  warnBudget: string;
+  stopBudget: string;
+  disconnectOnBudgetExceed: boolean;
   deploymentEnvironment: string;
   // AWS Bedrock credentials
   accessKey?: string;
@@ -68,7 +73,10 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       embeddingModel: '',
       embeddingModelApiKey: '',
       monthlyBudget: '',
-      deploymentEnvironment: 'testing',
+      warnBudget: '80',
+      stopBudget: '100',
+      disconnectOnBudgetExceed: true,
+      deploymentEnvironment: '',
       // AWS Bedrock credentials
       accessKey: '',
       secretKey: '',
@@ -155,17 +163,17 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
     setValue('targetUri', '');
     setValue('apiKey', '');
     setValue('llmModel', '');
-    
+
     // Reset replace mode states when platform changes
     setApiKeyReplaceMode(false);
     setSecretKeyReplaceMode(false);
     setAccessKeyReplaceMode(false);
   };
 
-   const resetEmbeddingModelCredentialFields = () => {
+  const resetEmbeddingModelCredentialFields = () => {
     setValue('embeddingModelApiKey', '');
     setValue('embeddingModel', '');
-    
+
     // Reset replace mode state when platform changes
     setEmbeddingApiKeyReplaceMode(false);
   };
@@ -266,7 +274,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               <Controller
                 name="targetUri"
                 control={control}
-                rules={{ 
+                rules={{
                   required: 'Endpoint is required for Azure OpenAI',
                   pattern: {
                     value: /^https?:\/\/.+/,
@@ -311,7 +319,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             </div>
           </>
         );
-      
+
       default:
         return (
           <div className="form-row">
@@ -340,6 +348,8 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
     const cleanedData = {
       ...data,
       monthlyBudget: data.monthlyBudget.replace(/,/g, ''),
+      warnBudget: data.warnBudget.replace('%', ''),
+      stopBudget: data.stopBudget.replace('%', ''),
     };
     onSubmit(cleanedData);
   };
@@ -381,10 +391,10 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   label=""
                   options={llmPlatformOptions}
                   placeholder={
-                    llmPlatformsLoading 
-                      ? "Loading platforms..." 
-                      : llmPlatformsError 
-                        ? "Error loading platforms" 
+                    llmPlatformsLoading
+                      ? "Loading platforms..."
+                      : llmPlatformsError
+                        ? "Error loading platforms"
                         : "Select LLM Platform"
                   }
                   error={errors.llmPlatform?.message || (llmPlatformsError ? "Failed to load platforms" : undefined)}
@@ -413,11 +423,11 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   label=""
                   options={getLLMModelOptions()}
                   placeholder={
-                    llmModelsLoading 
-                      ? "Loading models..." 
-                      : llmModelsError 
-                        ? "Error loading models" 
-                        : !selectedLLMPlatform 
+                    llmModelsLoading
+                      ? "Loading models..."
+                      : llmModelsError
+                        ? "Error loading models"
+                        : !selectedLLMPlatform
                           ? "Select a platform first"
                           : "Select LLM Model"
                   }
@@ -453,10 +463,10 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   label=""
                   options={embeddingPlatformOptions}
                   placeholder={
-                    embeddingPlatformsLoading 
-                      ? "Loading platforms..." 
-                      : embeddingPlatformsError 
-                        ? "Error loading platforms" 
+                    embeddingPlatformsLoading
+                      ? "Loading platforms..."
+                      : embeddingPlatformsError
+                        ? "Error loading platforms"
                         : "Select Embedding Platform"
                   }
                   error={errors.embeddingModelPlatform?.message || (embeddingPlatformsError ? "Failed to load platforms" : undefined)}
@@ -485,11 +495,11 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   label=""
                   options={getEmbeddingModelOptions()}
                   placeholder={
-                    embeddingModelsLoading 
-                      ? "Loading models..." 
-                      : embeddingModelsError 
-                        ? "Error loading models" 
-                        : !selectedEmbeddingPlatform 
+                    embeddingModelsLoading
+                      ? "Loading models..."
+                      : embeddingModelsError
+                        ? "Error loading models"
+                        : !selectedEmbeddingPlatform
                           ? "Select a platform first"
                           : "Select Embedding Model"
                   }
@@ -567,6 +577,114 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               )}
             />
           </div>
+
+          <div className="form-row">
+
+            <Controller
+              name="disconnectOnBudgetExceed"
+              control={control}
+              render={({ field }) => (
+                <FormCheckbox
+                  label=""
+                  name="disconnectOnBudgetExceed"
+                  item={{
+                    label: "Automatically disconnect LLM connection when stop budget threshold is exceeded",
+                    value: "true",
+                    checked: field.value
+                  }}
+                  checked={field.value}
+                  onChange={(e) => field.onChange(e.target.checked)}
+                  hideLabel={true}
+                />
+              )}
+            />
+          </div>
+
+          <div className="form-row">
+            <p className='form-label'>Warn Budget Threshold</p>
+            <p className='form-description'>You will get a notification when your usage reaches this percentage of your allocated monthly budget.</p>
+
+            <Controller
+              name="warnBudget"
+              control={control}
+              rules={{
+                required: 'Warn Budget Threshold is required',
+                pattern: {
+                  value: /^\d+$/,
+                  message: 'Please enter numbers only'
+                },
+                validate: (value, formValues) => {
+                  const numericValue = Number(value.replace('%', ''));
+
+                  if (numericValue < 1 || numericValue > 100) {
+                    return 'Warn Budget Threshold must be between 1-100%';
+                  }
+                  return true;
+                }
+              }}
+              render={({ field }) => (
+                <FormInput
+                  label=""
+                  placeholder="Enter warn budget threshold"
+                  error={errors.warnBudget?.message}
+                  value={field.value ? `${field.value}%` : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^\d]/g, ''); // Remove all non-numeric characters
+                    field.onChange(value);
+                  }}
+                  name={field.name}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
+          </div>
+
+          <div className="form-row">
+            <p className='form-label'>Disconnect Budget Threshold</p>
+            <p className='form-description'>You LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
+              this percentage of your monthly budget</p>
+
+            <Controller
+              name="stopBudget"
+              control={control}
+              rules={{
+                required: 'Stop Budget Threshold is required',
+                pattern: {
+                  value: /^\d+$/,
+                  message: 'Please enter numbers only'
+                },
+                validate: (value, formValues) => {
+                  const numericValue = Number(value.replace('%', ''));
+                  const warnValue = Number(formValues.warnBudget?.replace('%', '') || 0);
+
+                  if (numericValue < 1 || numericValue > 200) {
+                    return 'Stop Budget Threshold must be between 1-200%';
+                  }
+
+                  if (warnValue > 0 && numericValue <= warnValue) {
+                    return 'Stop Budget Threshold must be greater than Warn Budget Threshold';
+                  }
+
+                  return true;
+                }
+              }}
+              render={({ field }) => (
+                <FormInput
+                  label=""
+                  placeholder="Enter stop budget threshold"
+                  error={errors.stopBudget?.message}
+                  value={field.value ? `${field.value}%` : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^\d]/g, ''); // Remove all non-numeric characters
+                    field.onChange(value);
+                  }}
+                  name={field.name}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
+          </div>
+
 
           <div className="form-row">
             <Controller
