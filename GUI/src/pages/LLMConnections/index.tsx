@@ -47,12 +47,12 @@ const LLMConnections: FC = () => {
     value: string | number | undefined | { name: string; id: string }
   ) => {
     let filterUpdate: Partial<LLMConnectionFilters> = {};
-    
+
     if (name === 'sorting') {
       // Handle sorting format - no conversion needed, use snake_case directly
       const sortingValue = value as string;
       const [sortBy, sortOrder] = sortingValue.split(' ');
-      
+
       filterUpdate = {
         sortBy: sortBy,
         sortOrder: sortOrder as 'asc' | 'desc'
@@ -65,7 +65,7 @@ const LLMConnections: FC = () => {
       ...prevFilters,
       ...filterUpdate,
     }));
-    
+
     // Reset to first page when filters change
     if (name !== 'pageNumber') {
       setPageIndex(1);
@@ -235,7 +235,6 @@ const LLMConnections: FC = () => {
                           budgetStatus={llmConnection.budgetStatus}
                           platform={llmConnection.llmPlatform}
                           model={llmConnection.llmModel}
-                          
                         />
                       );
                     })}

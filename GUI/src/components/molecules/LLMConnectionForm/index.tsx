@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import FormInput from 'components/FormElements/FormInput';
 import FormSelect from 'components/FormElements/FormSelect';
 import FormCheckbox from 'components/FormElements/FormCheckbox';
-import FormRadios from 'components/FormElements/FormRadios';
 import Button from 'components/Button';
 import Track from 'components/Track';
 import {
@@ -17,6 +16,7 @@ import {
   ModelOption
 } from 'services/llmConfigs';
 import './LLMConnectionForm.scss';
+import { toOptions } from 'utils/commonUtilts';
 
 export type LLMConnectionFormData = {
   connectionName: string;
@@ -97,61 +97,31 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
   // Fetch platform and model options from API
   const { data: llmPlatformsData = [], isLoading: llmPlatformsLoading, error: llmPlatformsError } = useQuery({
     queryKey: ['llm-platforms'],
-    queryFn: getLLMPlatforms,
-    retry: 2,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    queryFn: getLLMPlatforms
   });
 
   const { data: embeddingPlatformsData = [], isLoading: embeddingPlatformsLoading, error: embeddingPlatformsError } = useQuery({
     queryKey: ['embedding-platforms'],
-    queryFn: getEmbeddingPlatforms,
-    retry: 2,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    queryFn: getEmbeddingPlatforms
   });
 
   const { data: llmModelsData = [], isLoading: llmModelsLoading, error: llmModelsError } = useQuery({
     queryKey: ['llm-models', selectedLLMPlatform],
     queryFn: () => getLLMModels(selectedLLMPlatform),
     enabled: !!selectedLLMPlatform,
-    retry: 2,
-    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
   const { data: embeddingModelsData = [], isLoading: embeddingModelsLoading, error: embeddingModelsError } = useQuery({
     queryKey: ['embedding-models', selectedEmbeddingPlatform],
     queryFn: () => getEmbeddingModels(selectedEmbeddingPlatform),
     enabled: !!selectedEmbeddingPlatform,
-    retry: 2,
-    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
-  // Convert API data to option format
-  const llmPlatformOptions = llmPlatformsData?.map((platform: PlatformOption) => ({
-    label: platform.label,
-    value: platform.value,
-  }));
+const llmPlatformOptions = toOptions(llmPlatformsData);
+const embeddingPlatformOptions = toOptions(embeddingPlatformsData);
+const llmModelOptions = toOptions(llmModelsData);
+const embeddingModelOptions = toOptions(embeddingModelsData);
 
-  const embeddingPlatformOptions = embeddingPlatformsData?.map((platform: PlatformOption) => ({
-    label: platform.label,
-    value: platform.value,
-  }));
-
-  const llmModelOptions = llmModelsData?.map((model: ModelOption) => ({
-    label: model.label,
-    value: model.value,
-  }));
-
-  const embeddingModelOptions = embeddingModelsData?.map((model: ModelOption) => ({
-    label: model.label,
-    value: model.value,
-  }));
-
-  const [replaceApiKey, setReplaceApiKey] = React.useState(false);
-  const [replaceSecretKey, setReplaceSecretKey] = React.useState(false);
-  const [replaceAccessKey, setReplaceAccessKey] = React.useState(false);
-  const [replaceEmbeddingModelApiKey, setReplaceEmbeddingModelApiKey] = React.useState(false);
-
-  // State to track if API key fields should be in replace mode (readonly with replace button)
   const [apiKeyReplaceMode, setApiKeyReplaceMode] = React.useState(isEditing);
   const [secretKeyReplaceMode, setSecretKeyReplaceMode] = React.useState(isEditing);
   const [accessKeyReplaceMode, setAccessKeyReplaceMode] = React.useState(isEditing);
@@ -390,7 +360,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={llmPlatformOptions}
+                  options={llmPlatformOptions || []}
                   placeholder={
                     llmPlatformsLoading
                       ? "Loading platforms..."
@@ -422,7 +392,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={getLLMModelOptions()}
+                  options={getLLMModelOptions() || []}
                   placeholder={
                     llmModelsLoading
                       ? "Loading models..."
@@ -462,7 +432,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={embeddingPlatformOptions}
+                  options={embeddingPlatformOptions || []}
                   placeholder={
                     embeddingPlatformsLoading
                       ? "Loading platforms..."
@@ -494,7 +464,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
               render={({ field }) => (
                 <FormSelect
                   label=""
-                  options={getEmbeddingModelOptions()}
+                  options={getEmbeddingModelOptions() || []}
                   placeholder={
                     embeddingModelsLoading
                       ? "Loading models..."
@@ -643,7 +613,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
           {disconnectOnBudgetExceed && (
             <div className="form-row">
               <p className='form-label'>Disconnect Budget Threshold</p>
-              <p className='form-description'>You LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
+              <p className='form-description'>Your LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
                 this percentage of your monthly budget</p>
 
               <Controller
@@ -657,7 +627,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
                   },
                   validate: (value, formValues) => {
                     if (!disconnectOnBudgetExceed) return true;
-                    
+
                     const numericValue = Number(value.replace('%', ''));
                     const warnValue = Number(formValues.warnBudget?.replace('%', '') || 0);
 
