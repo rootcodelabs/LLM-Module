@@ -73,9 +73,9 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       embeddingModel: '',
       embeddingModelApiKey: '',
       monthlyBudget: '',
-      warnBudget: '80',
-      stopBudget: '100',
-      disconnectOnBudgetExceed: true,
+      warnBudget: '',
+      stopBudget: '',
+      disconnectOnBudgetExceed: false,
       deploymentEnvironment: '',
       // AWS Bedrock credentials
       accessKey: '',
@@ -92,6 +92,7 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
 
   const selectedLLMPlatform = watch('llmPlatform');
   const selectedEmbeddingPlatform = watch('embeddingModelPlatform');
+  const disconnectOnBudgetExceed = watch('disconnectOnBudgetExceed');
 
   // Fetch platform and model options from API
   const { data: llmPlatformsData = [], isLoading: llmPlatformsLoading, error: llmPlatformsError } = useQuery({
@@ -639,52 +640,55 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
             />
           </div>
 
-          <div className="form-row">
-            <p className='form-label'>Disconnect Budget Threshold</p>
-            <p className='form-description'>You LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
-              this percentage of your monthly budget</p>
+          {disconnectOnBudgetExceed && (
+            <div className="form-row">
+              <p className='form-label'>Disconnect Budget Threshold</p>
+              <p className='form-description'>You LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
+                this percentage of your monthly budget</p>
 
-            <Controller
-              name="stopBudget"
-              control={control}
-              rules={{
-                required: 'Stop Budget Threshold is required',
-                pattern: {
-                  value: /^\d+$/,
-                  message: 'Please enter numbers only'
-                },
-                validate: (value, formValues) => {
-                  const numericValue = Number(value.replace('%', ''));
-                  const warnValue = Number(formValues.warnBudget?.replace('%', '') || 0);
+              <Controller
+                name="stopBudget"
+                control={control}
+                rules={{
+                  required: disconnectOnBudgetExceed ? 'Stop Budget Threshold is required' : false,
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Please enter numbers only'
+                  },
+                  validate: (value, formValues) => {
+                    if (!disconnectOnBudgetExceed) return true;
+                    
+                    const numericValue = Number(value.replace('%', ''));
+                    const warnValue = Number(formValues.warnBudget?.replace('%', '') || 0);
 
-                  if (numericValue < 1 || numericValue > 200) {
-                    return 'Stop Budget Threshold must be between 1-200%';
+                    if (numericValue < 1 || numericValue > 200) {
+                      return 'Stop Budget Threshold must be between 1-200%';
+                    }
+
+                    if (warnValue > 0 && numericValue <= warnValue) {
+                      return 'Stop Budget Threshold must be greater than Warn Budget Threshold';
+                    }
+
+                    return true;
                   }
-
-                  if (warnValue > 0 && numericValue <= warnValue) {
-                    return 'Stop Budget Threshold must be greater than Warn Budget Threshold';
-                  }
-
-                  return true;
-                }
-              }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  placeholder="Enter stop budget threshold"
-                  error={errors.stopBudget?.message}
-                  value={field.value ? `${field.value}%` : ''}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/[^\d]/g, ''); // Remove all non-numeric characters
-                    field.onChange(value);
-                  }}
-                  name={field.name}
-                  onBlur={field.onBlur}
-                />
-              )}
-            />
-          </div>
-
+                }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    placeholder="Enter stop budget threshold"
+                    error={errors.stopBudget?.message}
+                    value={field.value ? `${field.value}%` : ''}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^\d]/g, ''); // Remove all non-numeric characters
+                      field.onChange(value);
+                    }}
+                    name={field.name}
+                    onBlur={field.onBlur}
+                  />
+                )}
+              />
+            </div>
+          )}
 
           <div className="form-row">
             <Controller

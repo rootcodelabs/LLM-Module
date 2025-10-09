@@ -68,9 +68,9 @@ extract_request_data:
     embedding_platform: ${incoming.body.embedding_platform}
     embedding_model: ${incoming.body.embedding_model}
     monthly_budget: ${incoming.body.monthly_budget}
-    warn_budget_threshold: ${incoming.body.warn_budget_threshold}
-    stop_budget_threshold: ${incoming.body.stop_budget_threshold}
-    disconnect_on_budget_exceed: ${incoming.body.disconnect_on_budget_exceed}
+    warn_budget_threshold: ${incoming.body.warn_budget_threshold || 0}
+    stop_budget_threshold: ${incoming.body.stop_budget_threshold || 0}
+    disconnect_on_budget_exceed: ${incoming.body.disconnect_on_budget_exceed || false}
     deployment_environment: ${incoming.body.deployment_environment}
     deployment_name: ${incoming.body.deployment_name || ""}
     target_uri: ${incoming.body.target_uri || ""}

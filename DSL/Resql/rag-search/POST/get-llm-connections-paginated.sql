@@ -16,8 +16,9 @@ SELECT
     CEIL(COUNT(*) OVER() / :page_size::DECIMAL) AS totalPages,
     -- Calculate budget status based on usage percentage and configured thresholds
     CASE 
-        WHEN used_budget IS NULL OR monthly_budget IS NULL OR monthly_budget = 0 THEN 'within_budget'
-        WHEN (used_budget::DECIMAL / monthly_budget::DECIMAL) >= (stop_budget_threshold::DECIMAL / 100.0) THEN 'over_budget'
+        WHEN used_budget IS NULL OR used_budget = 0 OR (used_budget::DECIMAL / monthly_budget::DECIMAL) < (warn_budget_threshold::DECIMAL / 100.0) THEN 'within_budget'
+        WHEN stop_budget_threshold != 0 AND (used_budget::DECIMAL / monthly_budget::DECIMAL) >= (stop_budget_threshold::DECIMAL / 100.0) THEN 'over_budget'
+        WHEN stop_budget_threshold = 0 AND (used_budget::DECIMAL / monthly_budget::DECIMAL) >= 1 THEN 'over_budget'
         WHEN (used_budget::DECIMAL / monthly_budget::DECIMAL) >= (warn_budget_threshold::DECIMAL / 100.0) THEN 'close_to_exceed'
         ELSE 'within_budget'
     END AS budget_status

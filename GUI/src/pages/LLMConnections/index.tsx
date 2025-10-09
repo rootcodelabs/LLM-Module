@@ -209,7 +209,7 @@ const LLMConnections: FC = () => {
                     <LLMConnectionCard
                       key={featuredConnection.id}
                       llmConnectionId={featuredConnection.id}
-                      llmConnectionName={`${featuredConnection.llmPlatform} - ${featuredConnection.llmModel}`}
+                      llmConnectionName={featuredConnection.connectionName}
                       isActive={featuredConnection.status === 'active'}
                       deploymentEnv={featuredConnection.environment}
                       budgetStatus={featuredConnection.budgetStatus}
@@ -229,12 +229,13 @@ const LLMConnections: FC = () => {
                         <LLMConnectionCard
                           key={llmConnection.id}
                           llmConnectionId={llmConnection.id}
-                          llmConnectionName={`${llmConnection.llmPlatform} - ${llmConnection.llmModel}`}
+                          llmConnectionName={llmConnection.connectionName}
                           isActive={llmConnection.status === 'active'}
                           deploymentEnv={llmConnection.environment}
                           budgetStatus={llmConnection.budgetStatus}
                           platform={llmConnection.llmPlatform}
                           model={llmConnection.llmModel}
+                          
                         />
                       );
                     })}
