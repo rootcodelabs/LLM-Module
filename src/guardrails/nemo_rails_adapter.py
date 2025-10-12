@@ -11,8 +11,8 @@ from nemoguardrails import RailsConfig, LLMRails
 from nemoguardrails.llm.providers import register_llm_provider
 from loguru import logger
 
-from .dspy_nemo_adapter import DSPyNeMoLLM
-from .rails_config import RAILS_CONFIG_YAML
+from src.guardrails.dspy_nemo_adapter import DSPyNeMoLLM
+from src.guardrails.rails_config import RAILS_CONFIG_PATH
 from src.llm_orchestrator_config.llm_manager import LLMManager
 from src.utils.cost_utils import get_lm_usage_since
 
@@ -95,12 +95,18 @@ class NeMoRailsAdapter:
             # Step 2: Register custom LLM provider
             self._register_custom_provider()
 
-            # Step 3: Create rails configuration from YAML
+            # Step 3: Load rails configuration from YAML file
             try:
-                rails_config = RailsConfig.from_content(yaml_content=RAILS_CONFIG_YAML)
+                if not RAILS_CONFIG_PATH.exists():
+                    raise FileNotFoundError(
+                        f"Rails config file not found: {RAILS_CONFIG_PATH}"
+                    )
+
+                rails_config = RailsConfig.from_path(str(RAILS_CONFIG_PATH))
+                logger.info(f"Loaded rails config from: {RAILS_CONFIG_PATH}")
             except Exception as yaml_error:
                 logger.error(
-                    f"Failed to parse Rails YAML configuration: {str(yaml_error)}"
+                    f"Failed to load Rails YAML configuration: {str(yaml_error)}"
                 )
                 raise RuntimeError(
                     f"Rails YAML configuration error: {str(yaml_error)}"
