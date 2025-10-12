@@ -111,18 +111,12 @@ class ContextualRetriever:
                 logger.debug("Using injected LLM service for session")
                 self._session_llm_service = self._llm_service
             else:
-                # Fallback: create new instance (maintains backward compatibility)
-                logger.debug(
-                    "No LLM service injected, creating new instance (fallback)"
+                # No fallback - enforce dependency injection pattern
+                raise RuntimeError(
+                    "LLM service not injected. ContextualRetriever requires "
+                    "LLMOrchestrationService to be provided via dependency injection. "
+                    "Pass llm_service parameter during initialization."
                 )
-
-                # Import here to avoid circular dependencies (fallback only)
-                from src.llm_orchestration_service import LLMOrchestrationService
-
-                # Create and cache LLM service instance
-                self._session_llm_service = LLMOrchestrationService()
-
-                logger.debug("Fallback LLM service created and cached")
 
         return self._session_llm_service
 
