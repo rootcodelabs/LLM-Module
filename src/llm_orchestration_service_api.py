@@ -179,8 +179,6 @@ async def generate_context_with_caching(
     future prompt caching implementation for cost optimization.
     """
     try:
-        # logger.info(f"Generating context using model: {request.model}")
-
         result = app.state.orchestration_service.generate_context_for_chunks(request)
 
         return ContextGenerationResponse(**result)

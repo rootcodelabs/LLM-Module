@@ -5,7 +5,7 @@ Handles semantic search against contextual chunk collections using
 existing contextual embeddings created by the vector indexer.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Protocol
 from loguru import logger
 import asyncio
 from contextual_retrieval.contextual_retrieval_api_client import get_http_client_manager
@@ -16,6 +16,30 @@ from contextual_retrieval.constants import (
     LoggingConstants,
 )
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
+
+
+class LLMServiceProtocol(Protocol):
+    """Protocol defining the interface required from LLM service for embedding operations."""
+
+    def create_embeddings_for_indexer(
+        self,
+        texts: List[str],
+        environment: str = "production",
+        connection_id: Optional[str] = None,
+        batch_size: int = 100,
+    ) -> Dict[str, Any]:
+        """Create embeddings for text inputs using the configured embedding model.
+
+        Args:
+            texts: List of text strings to embed
+            environment: Environment for model resolution
+            connection_id: Optional connection ID for service selection
+            batch_size: Number of texts to process in each batch
+
+        Returns:
+            Dictionary containing embeddings list and metadata
+        """
+        ...
 
 
 class QdrantContextualSearch:
@@ -105,7 +129,7 @@ class QdrantContextualSearch:
             )
 
             for i, result in enumerate(collection_results):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     logger.warning(
                         f"Search failed for collection {collections[i]}: {result}"
                     )
@@ -277,7 +301,7 @@ class QdrantContextualSearch:
     def get_embedding_for_query_with_service(
         self,
         query: str,
-        llm_service: Any,  # Using Any to avoid circular import
+        llm_service: LLMServiceProtocol,
         environment: str = "production",
         connection_id: Optional[str] = None,
     ) -> Optional[List[float]]:
@@ -317,7 +341,7 @@ class QdrantContextualSearch:
     def get_embeddings_for_queries_batch(
         self,
         queries: List[str],
-        llm_service: Any,
+        llm_service: LLMServiceProtocol,
         environment: str = "production",
         connection_id: Optional[str] = None,
     ) -> Optional[List[List[float]]]:

@@ -97,7 +97,7 @@ class ContextualProcessor:
                         "chunk_id_pattern"
                     ]
                     chunk_id = chunk_id_pattern.format(
-                        provider=document.document_hash, index=i
+                        document_hash=document.document_hash, index=i
                     )
                 else:
                     chunk_id = ChunkingConstants.CHUNK_ID_PATTERN.format(

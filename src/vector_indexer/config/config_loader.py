@@ -3,7 +3,7 @@
 import yaml
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from loguru import logger
 
 from vector_indexer.constants import (
@@ -36,7 +36,7 @@ class ChunkingConfig(BaseModel):
     )
     templates: Dict[str, str] = Field(
         default_factory=lambda: {
-            "chunk_id_pattern": "chunk_{provider}_{index:04d}",
+            "chunk_id_pattern": "chunk_{document_hash}_{index:04d}",
             "context_separator": "\n\n--- Chunk {chunk_id} ---\n\n",
         },
         description="Templates for chunk formatting",
@@ -151,23 +151,25 @@ class DocumentLoaderConfig(BaseModel):
     enable_content_caching: bool = Field(default=False)
     max_scan_depth: int = Field(default=DocumentConstants.MAX_SCAN_DEPTH, gt=0, le=10)
 
-    @field_validator("max_content_length")
-    @classmethod
-    def validate_max_content(cls, v: int) -> int:
-        """Ensure max_content_length is positive."""
-        # Note: Cross-field validation in V2 should be done with model_validator
-        # For now, we'll validate that the value is positive
-        if v <= 0:
-            raise ValueError("max_content_length must be positive")
-        return v
+    @model_validator(mode="after")
+    def validate_content_length_range(self) -> "DocumentLoaderConfig":
+        """Ensure min_content_length < max_content_length."""
+        if self.min_content_length >= self.max_content_length:
+            raise ValueError(
+                f"min_content_length ({self.min_content_length}) must be less than "
+                f"max_content_length ({self.max_content_length})"
+            )
+        return self
 
-    @field_validator("max_file_size_bytes")
-    @classmethod
-    def validate_max_file_size(cls, v: int) -> int:
-        """Ensure max_file_size_bytes is positive."""
-        if v <= 0:
-            raise ValueError("max_file_size_bytes must be positive")
-        return v
+    @model_validator(mode="after")
+    def validate_file_size_range(self) -> "DocumentLoaderConfig":
+        """Ensure min_file_size_bytes < max_file_size_bytes."""
+        if self.min_file_size_bytes >= self.max_file_size_bytes:
+            raise ValueError(
+                f"min_file_size_bytes ({self.min_file_size_bytes}) must be less than "
+                f"max_file_size_bytes ({self.max_file_size_bytes})"
+            )
+        return self
 
     @field_validator("required_metadata_fields")
     @classmethod

@@ -10,12 +10,16 @@ Orchestrates the full Anthropic Contextual Retrieval pipeline:
 Achieves 49% improvement in retrieval accuracy.
 """
 
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, TYPE_CHECKING
 from loguru import logger
 import asyncio
 import time
 
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
+
+# Type checking import to avoid circular dependency at runtime
+if TYPE_CHECKING:
+    from src.llm_orchestration_service import LLMOrchestrationService
 from contextual_retrieval.provider_detection import DynamicProviderDetection
 from contextual_retrieval.qdrant_search import QdrantContextualSearch
 
@@ -37,6 +41,7 @@ class ContextualRetriever:
         environment: str = "production",
         connection_id: Optional[str] = None,
         config_path: Optional[str] = None,
+        llm_service: Optional["LLMOrchestrationService"] = None,
     ):
         """
         Initialize contextual retriever.
@@ -46,10 +51,14 @@ class ContextualRetriever:
             environment: Environment for model resolution
             connection_id: Optional connection ID
             config_path: Optional config file path
+            llm_service: Optional LLM service instance (prevents circular dependency)
         """
         self.qdrant_url = qdrant_url
         self.environment = environment
         self.connection_id = connection_id
+
+        # Store injected LLM service (for dependency injection)
+        self._llm_service = llm_service
 
         # Load configuration
         self.config = (
@@ -94,18 +103,26 @@ class ContextualRetriever:
     def _get_session_llm_service(self):
         """
         Get cached LLM service for current retrieval session.
-        Creates new instance if needed and caches it for reuse within the session.
+        Uses injected service if available, creates new instance as fallback.
         """
         if self._session_llm_service is None:
-            logger.debug("Creating new session LLM service with connection pooling")
+            if self._llm_service is not None:
+                # Use injected service (eliminates circular dependency)
+                logger.debug("Using injected LLM service for session")
+                self._session_llm_service = self._llm_service
+            else:
+                # Fallback: create new instance (maintains backward compatibility)
+                logger.debug(
+                    "No LLM service injected, creating new instance (fallback)"
+                )
 
-            # Import here to avoid circular dependencies
-            from src.llm_orchestration_service import LLMOrchestrationService
+                # Import here to avoid circular dependencies (fallback only)
+                from src.llm_orchestration_service import LLMOrchestrationService
 
-            # Create and cache LLM service instance
-            self._session_llm_service = LLMOrchestrationService()
+                # Create and cache LLM service instance
+                self._session_llm_service = LLMOrchestrationService()
 
-            logger.debug("Session LLM service created and cached")
+                logger.debug("Fallback LLM service created and cached")
 
         return self._session_llm_service
 

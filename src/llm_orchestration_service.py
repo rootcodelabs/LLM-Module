@@ -625,6 +625,7 @@ class LLMOrchestrationService:
                 qdrant_url=qdrant_url,
                 environment=environment,
                 connection_id=connection_id,
+                llm_service=self,  # Inject self to eliminate circular dependency
             )
 
             logger.info("Contextual retriever initialized successfully")
