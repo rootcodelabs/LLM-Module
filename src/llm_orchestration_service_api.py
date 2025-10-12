@@ -9,13 +9,13 @@ import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
 from models.request_models import (
-    OrchestrationRequest, 
+    OrchestrationRequest,
     OrchestrationResponse,
     EmbeddingRequest,
-    EmbeddingResponse, 
+    EmbeddingResponse,
     ContextGenerationRequest,
     ContextGenerationResponse,
-    EmbeddingErrorResponse
+    EmbeddingErrorResponse,
 )
 
 
@@ -124,57 +124,67 @@ def orchestrate_llm_request(
         )
 
 
-@app.post("/embeddings", response_model=EmbeddingResponse, responses={500: {"model": EmbeddingErrorResponse}})
+@app.post(
+    "/embeddings",
+    response_model=EmbeddingResponse,
+    responses={500: {"model": EmbeddingErrorResponse}},
+)
 async def create_embeddings(request: EmbeddingRequest) -> EmbeddingResponse:
     """
     Create embeddings using DSPy with vault-driven model resolution.
-    
+
     Model selection is automatic based on environment and connection_id:
     - Production: Uses first available embedding model from vault
     - Development/Test: Uses model associated with connection_id
-    
+
     Supports Azure OpenAI, AWS Bedrock, and OpenAI embedding models.
     Includes automatic retry with exponential backoff.
     """
     try:
-        logger.info(f"Creating embeddings for {len(request.texts)} texts in {request.environment} environment")
-        
-        result: Dict[str, Any] = app.state.orchestration_service.create_embeddings(
-            texts=request.texts,
-            environment=request.environment,
-            connection_id=request.connection_id,
-            batch_size=request.batch_size or 50
+        logger.info(
+            f"Creating embeddings for {len(request.texts)} texts in {request.environment} environment"
         )
-        
+
+        result: Dict[str, Any] = (
+            app.state.orchestration_service.create_embeddings_for_indexer(
+                texts=request.texts,
+                environment=request.environment,
+                connection_id=request.connection_id,
+                batch_size=request.batch_size or 50,
+            )
+        )
+
         return EmbeddingResponse(**result)
-        
+
     except Exception as e:
         logger.error(f"Embedding creation failed: {e}")
         raise HTTPException(
             status_code=500,
             detail={
-                "error": str(e), 
+                "error": str(e),
                 "failed_texts": request.texts[:5],  # Don't log all texts for privacy
-                "retry_after": 30
-            }
+                "retry_after": 30,
+            },
         )
 
 
 @app.post("/generate-context", response_model=ContextGenerationResponse)
-async def generate_context_with_caching(request: ContextGenerationRequest) -> ContextGenerationResponse:
+async def generate_context_with_caching(
+    request: ContextGenerationRequest,
+) -> ContextGenerationResponse:
     """
     Generate contextual descriptions using Anthropic methodology.
-    
+
     Uses exact Anthropic prompt templates and supports structure for
     future prompt caching implementation for cost optimization.
     """
     try:
-        logger.info(f"Generating context using model: {request.model}")
-        
-        result = app.state.orchestration_service.generate_context_with_caching(request)
-        
+        # logger.info(f"Generating context using model: {request.model}")
+
+        result = app.state.orchestration_service.generate_context_for_chunks(request)
+
         return ContextGenerationResponse(**result)
-        
+
     except Exception as e:
         logger.error(f"Context generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -182,23 +192,25 @@ async def generate_context_with_caching(request: ContextGenerationRequest) -> Co
 
 @app.get("/embedding-models")
 async def get_available_embedding_models(
-    environment: str = "production"
+    environment: str = "production",
 ) -> Dict[str, Any]:
     """Get available embedding models from vault configuration.
-    
+
     Args:
         environment: Environment to get models for (production, development, test)
-        
+
     Returns:
         Dictionary with available models and default model information
     """
     try:
         # Get available embedding models using vault-driven resolution
-        result: Dict[str, Any] = app.state.orchestration_service.get_available_embedding_models(
-            environment=environment
+        result: Dict[str, Any] = (
+            app.state.orchestration_service.get_available_embedding_models_for_indexer(
+                environment=environment
+            )
         )
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to get embedding models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
