@@ -120,7 +120,22 @@ services:
       - ./DSL/DatasetGenerator/output_datasets:/app/output_datasets
     networks:
       - bykstack
-
+  
+  cron-manager:
+    container_name: cron-manager
+    image: cron-manager-python:latest
+    volumes:
+      - ./DSL/CronManager/DSL:/DSL
+      - ./DSL/CronManager/script:/app/scripts
+      - cron_data:/app/data
+      - ./models:/app/models
+    environment:
+      - server.port=9010
+    ports:
+      - 9010:8080
+    networks:
+      - bykstack
+   
   gui:
     container_name: gui
     environment:
@@ -434,37 +449,37 @@ services:
 
 
   # LLM Orchestration Service
-  llm-orchestration-service:
-    build:
-      context: .
-      dockerfile: Dockerfile.llm_orchestration_service
-    container_name: llm-orchestration-service
-    restart: always
-    ports:
-      - "8100:8100"
-    env_file:
-      - .env
-    environment:
-      - ENVIRONMENT=production
-      - VAULT_ADDR=http://vault:8200
-      - VAULT_TOKEN=/agent/out/token
-    volumes:
-      # Mount configuration files
-      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
-      # Mount logs directory for persistence
-      - llm_orchestration_logs:/app/logs
-      - ./vault/agent-out:/agent/out:ro
-    networks:
-      - bykstack
-    depends_on:
-      - vault
-      - vault-agent-llm
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 40s
-      retries: 3
+  # llm-orchestration-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.llm_orchestration_service
+  #   container_name: llm-orchestration-service
+  #   restart: always
+  #   ports:
+  #     - "8100:8100"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - ENVIRONMENT=production
+  #     - VAULT_ADDR=http://vault:8200
+  #     - VAULT_TOKEN=/agent/out/token
+  #   volumes:
+  #     # Mount configuration files
+  #     - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+  #     # Mount logs directory for persistence
+  #     - llm_orchestration_logs:/app/logs
+  #     - ./vault/agent-out:/agent/out:ro
+  #   networks:
+  #     - bykstack
+  #   depends_on:
+  #     - vault
+  #     - vault-agent-llm
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     start_period: 40s
+  #     retries: 3
 
 volumes:
   loki-data:
@@ -487,6 +502,8 @@ volumes:
     name: vault-data
   vault-agent-out:
     name: vault-agent-out
+  cron_data:
+    name: cron_data
 
 networks:
   bykstack:
