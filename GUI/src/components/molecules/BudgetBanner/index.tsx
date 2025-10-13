@@ -25,7 +25,7 @@ const BudgetBanner: React.FC = () => {
             return {
                 type: 'error' as const,
                 message: `Production LLM connection disabled`,
-                description: `${data?.llmPlatform === "aws" ? "AWS Bedrock" : "Azure OpenAI"} integration has exceeded it's budget. Update budget to reactivate LLM connection.`,
+                description: `${data?.llmPlatform === "aws" ? "AWS Bedrock" : "Azure OpenAI"} integration has exceeded its budget. Update budget to reactivate LLM connection.`,
                 icon: <MdOutlineGppMaybe size={30} />
             };
         }
