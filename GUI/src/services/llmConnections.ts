@@ -1,6 +1,6 @@
 import apiDev from './api-dev';
 import { llmConnectionsEndpoints } from 'utils/endpoints';
-import { removeCommasFromNumber } from 'utils/commonUtilts';
+import { removeCommasFromNumber } from 'utils/commonUtils';
 import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
 
 export interface LLMConnection {
