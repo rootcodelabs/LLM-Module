@@ -16,7 +16,7 @@ import {
   ModelOption
 } from 'services/llmConfigs';
 import './LLMConnectionForm.scss';
-import { toOptions } from 'utils/commonUtilts';
+import { toOptions } from 'utils/commonUtils';
 
 export type LLMConnectionFormData = {
   connectionName: string;
