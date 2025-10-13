@@ -35,11 +35,19 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
 
 
   const renderDeploymentEnv = (deploymentEnvironment: string | undefined) => {
-    return (
-        <Label type="success">
-          {deploymentEnvironment}
+    if (deploymentEnvironment === "testing") {
+      return (
+        <Label type="info">
+          testing
         </Label>
       );
+    } else if (deploymentEnvironment === "production") {
+      return (
+        <Label type="success">
+         production
+        </Label>
+      );
+    }
   };
 
   const renderBudgetStatus = (status: string | undefined) => {
