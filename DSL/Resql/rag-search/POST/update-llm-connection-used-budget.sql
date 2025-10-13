@@ -10,4 +10,5 @@ RETURNING
     (monthly_budget - used_budget) AS remaining_budget,
     warn_budget_threshold,
     stop_budget_threshold,
-    disconnect_on_budget_exceed;
+    disconnect_on_budget_exceed,
+    connection_status;
