@@ -15,7 +15,7 @@ export interface LLMConnection {
   stopBudgetThreshold: number;
   disconnectOnBudgetExceed: boolean;
   environment: string;
-  status: string;
+  connectionStatus: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
   totalPages?: number;
@@ -163,4 +163,15 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
   await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
     connection_id: id,
   });
+}
+
+export async function updateLLMConnectionStatus(
+  id: string | number, 
+  status: 'active' | 'inactive'
+): Promise<LLMConnection> {
+  const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION_STATUS(), {
+    connection_id: id,
+    connection_status: status,
+  });
+  return data?.response;
 }
