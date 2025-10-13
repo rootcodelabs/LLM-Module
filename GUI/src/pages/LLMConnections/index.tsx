@@ -4,7 +4,7 @@ import { Button, FormSelect } from 'components';
 import Pagination from 'components/molecules/Pagination';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formattedArray } from 'utils/commonUtilts';
+import { formattedArray } from 'utils/commonUtils';
 import DataModelCard from 'components/molecules/LLMConnectionCard';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
 import { ButtonAppearanceTypes } from 'enums/commonEnums';
