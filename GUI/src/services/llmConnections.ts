@@ -15,7 +15,7 @@ export interface LLMConnection {
   stopBudgetThreshold: number;
   disconnectOnBudgetExceed: boolean;
   environment: string;
-  status: string;
+  connectionStatus: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
   totalPages?: number;
@@ -123,6 +123,12 @@ export async function getLLMConnection(id: string | number): Promise<LLMConnecti
   return data?.response;
 }
 
+export async function getProductionConnection(): Promise<LLMConnection | null> {
+  const { data } = await apiDev.get(llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION());
+  return data?.response?.[0] || null;
+}
+
+
 export async function createLLMConnection(connectionData: LLMConnectionFormData): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.CREATE_LLM_CONNECTION(), {
     connection_name: connectionData.connectionName,
@@ -191,4 +197,14 @@ export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
     // Return null if no production connection found (404) or other errors
     return null;
   }
+  
+export async function updateLLMConnectionStatus(
+  id: string | number, 
+  status: 'active' | 'inactive'
+): Promise<LLMConnection> {
+  const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION_STATUS(), {
+    connection_id: id,
+    connection_status: status,
+  });
+  return data?.response;
 }
