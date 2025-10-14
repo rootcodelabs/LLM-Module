@@ -8,6 +8,7 @@ SELECT
     monthly_budget,
     warn_budget_threshold,
     stop_budget_threshold,
+    used_budget,
     disconnect_on_budget_exceed,
     environment,
     connection_status,
