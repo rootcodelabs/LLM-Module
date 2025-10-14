@@ -7,3 +7,5 @@ __pycache__/
 tim-db
 datasets
 logs/
+data_sets
+vault/agent-out
