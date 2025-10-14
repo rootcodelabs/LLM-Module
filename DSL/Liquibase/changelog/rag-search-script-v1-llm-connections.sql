@@ -118,3 +118,20 @@ INSERT INTO embedding_models (platform_id, model_key, model_name) VALUES
 CREATE INDEX idx_llm_models_platform_id ON llm_models(platform_id);
 CREATE INDEX idx_embedding_models_platform_id ON embedding_models(platform_id);
 
+CREATE TABLE public.agency_sync (
+    agency_id         VARCHAR(50) PRIMARY KEY,
+    agency_data_hash  VARCHAR(255),
+    data_url          TEXT,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.agency_sync (agency_id, created_at) VALUES 
+('AGENCY001', NOW());
+
+CREATE TABLE public.mock_ckb (
+    agency_id         VARCHAR(50) PRIMARY KEY,
+    agency_data_hash  VARCHAR(255) NOT NULL,
+    data_url          TEXT NOT NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);

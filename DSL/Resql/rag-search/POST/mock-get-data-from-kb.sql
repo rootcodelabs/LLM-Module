@@ -1,0 +1,20 @@
+WITH parsed_ids AS (
+    SELECT unnest(string_to_array(:agencyIds, ' ')) AS agency_id
+)
+SELECT 
+    mock_ckb.agency_id,
+    mock_ckb.agency_data_hash,
+    mock_ckb.data_url,
+    CASE 
+        WHEN mock_ckb.agency_data_hash = agency_sync.agency_data_hash THEN true
+        ELSE false
+    END AS hash_match
+FROM 
+    public.mock_ckb
+JOIN
+    parsed_ids ON mock_ckb.agency_id = parsed_ids.agency_id
+LEFT JOIN
+    public.agency_sync ON mock_ckb.agency_id = agency_sync.agency_id
+WHERE 
+    mock_ckb.agency_data_hash IS NOT NULL
+    AND mock_ckb.data_url IS NOT NULL;

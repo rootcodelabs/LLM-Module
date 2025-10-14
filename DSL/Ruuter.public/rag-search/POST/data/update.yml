@@ -1,0 +1,67 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Resync new data from KB"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+
+getAgencyId:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/get-agency-id"
+  result: get_agency_id_result
+  next: log_result
+
+log_result:
+  log: ${get_agency_id_result.response.body[0].agencyIds}
+  next: checkSyncStatus
+
+checkSyncStatus:
+  switch:
+    - condition: ${get_agency_id_result.response.body[0].hasData}
+      next: importAgencyData
+    - condition: true
+      next: noAgencyData
+
+importAgencyData:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RUUTER_PUBLIC]/ckb/agency-data-import"
+    body:
+      agencyIds: ${get_agency_id_result.response.body[0].agencyIds}
+  result: importResult
+  next: logImportAgencyDataResponse
+
+logImportAgencyDataResponse:
+  log: ${JSON.stringify(importResult.response)}
+  next: checkHashMatch
+
+checkHashMatch:
+  switch:
+    - condition: ${importResult.response.body.response[0].hashMatch}
+      next: noAgencyData
+    - condition: true
+      next: logNewDataPresent
+
+executeCronManager:
+  call: http.post
+  url: "[#RAG_SEARCH_CRON_MANAGER]/data-resync"
+
+# logNewDataPresent:
+#   log: "New data present - synchronization required"
+#   next: end
+
+assignNoAgencyResponse:
+  assign:
+    no_agency_response:
+      success: false
+      message: "No agency data available for sync"
+  next: noAgencyData
+
+noAgencyData:
+  status: 200
+  return: ${no_agency_response}
+  next: end
+  

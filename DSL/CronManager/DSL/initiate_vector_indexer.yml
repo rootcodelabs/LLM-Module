@@ -1,0 +1,5 @@
+vector_indexer:
+  trigger: off
+  type: exec
+  command: "../app/scripts/vector_indexer_pipeline_s3.sh"
+  allowedEnvs: ['signedUrls', 'datasetId', 'majorVersion', 'minorVersion']
