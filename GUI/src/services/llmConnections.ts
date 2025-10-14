@@ -34,7 +34,28 @@ export interface LLMConnection {
 
 export interface LLMConnectionsResponse {
   data: LLMConnection[];
-  
+
+}
+
+export interface BudgetStatus {
+  used_budget_percentage: number;
+  exceeded_stop_budget: boolean;
+  exceeded_warn_budget: boolean;
+  data: {
+    id: number;
+    connectionName: string;
+    usedBudget: number;
+    monthlyBudget: number;
+    warnBudgetThreshold: number;
+    stopBudgetThreshold: number;
+    environment: string;
+    connectionStatus: string;
+    createdAt: string;
+    llmPlatform: string;
+    llmModel: string;
+    embeddingPlatform: string;
+    embeddingModel: string;
+  }
 }
 
 export interface LLMConnectionFilters {
@@ -48,8 +69,6 @@ export interface LLMConnectionFilters {
   environment?: string;
   status?: string;
 }
-
-// Legacy interface for backwards compatibility
 export interface LegacyLLMConnectionFilters {
   page: number;
   pageSize: number;
@@ -59,7 +78,6 @@ export interface LegacyLLMConnectionFilters {
   environment?: string;
   status?: string;
 }
-
 export interface LLMConnectionFormData {
   connectionName: string;
   llmPlatform: string;
@@ -84,7 +102,7 @@ export interface LLMConnectionFormData {
 
 export async function fetchLLMConnectionsPaginated(filters: LLMConnectionFilters): Promise<LLMConnection[]> {
   const queryParams = new URLSearchParams();
-  
+
   if (filters.pageNumber) queryParams.append('pageNumber', filters.pageNumber.toString());
   if (filters.pageSize) queryParams.append('pageSize', filters.pageSize.toString());
   if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
@@ -92,7 +110,7 @@ export async function fetchLLMConnectionsPaginated(filters: LLMConnectionFilters
   if (filters.llmPlatform) queryParams.append('llmPlatform', filters.llmPlatform);
   if (filters.llmModel) queryParams.append('llmModel', filters.llmModel);
   if (filters.environment) queryParams.append('environment', filters.environment);
-  
+
   const url = `${llmConnectionsEndpoints.FETCH_LLM_CONNECTIONS_PAGINATED()}?${queryParams.toString()}`;
   const { data } = await apiDev.get(url);
   return data?.response;
@@ -137,7 +155,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
 }
 
 export async function updateLLMConnection(
-  id: string | number, 
+  id: string | number,
   connectionData: LLMConnectionFormData
 ): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION(), {
@@ -171,6 +189,15 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
   });
 }
 
+export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
+  try {
+    const { data } = await apiDev.get(llmConnectionsEndpoints.CHECK_BUDGET_STATUS());
+    return data?.response as BudgetStatus;
+  } catch (error) {
+    // Return null if no production connection found (404) or other errors
+    return null;
+  }
+  
 export async function updateLLMConnectionStatus(
   id: string | number, 
   status: 'active' | 'inactive'

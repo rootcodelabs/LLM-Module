@@ -9,6 +9,7 @@ import DataModelCard from 'components/molecules/LLMConnectionCard';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
 import { ButtonAppearanceTypes } from 'enums/commonEnums';
 import NoDataView from 'components/molecules/NoDataView';
+import BudgetBanner from 'components/molecules/BudgetBanner';
 import './LLMConnections.scss';
 import { platforms, trainingStatuses } from 'config/dataModelsConfig';
 import LLMConnectionCard from 'components/molecules/LLMConnectionCard';
