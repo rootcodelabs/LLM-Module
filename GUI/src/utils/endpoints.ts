@@ -16,6 +16,7 @@ export const authEndpoints = {
 export const llmConnectionsEndpoints = {
   FETCH_LLM_CONNECTIONS_PAGINATED: (): string => `/rag-search/llm-connections/list`,
   GET_LLM_CONNECTION: (): string => `/rag-search/llm-connections/get`,
+  GET_PRODUCTION_CONNECTION: (): string => `/rag-search/llm-connections/production`,
   CREATE_LLM_CONNECTION: (): string => `/rag-search/llm-connections/add`,
   UPDATE_LLM_CONNECTION: (): string => `/rag-search/llm-connections/edit`,
   UPDATE_LLM_CONNECTION_STATUS: (): string => `/rag-search/llm-connections/update-status`,

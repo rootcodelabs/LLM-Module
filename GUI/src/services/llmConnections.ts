@@ -105,6 +105,12 @@ export async function getLLMConnection(id: string | number): Promise<LLMConnecti
   return data?.response;
 }
 
+export async function getProductionConnection(): Promise<LLMConnection | null> {
+  const { data } = await apiDev.get(llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION());
+  return data?.response?.[0] || null;
+}
+
+
 export async function createLLMConnection(connectionData: LLMConnectionFormData): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.CREATE_LLM_CONNECTION(), {
     connection_name: connectionData.connectionName,
