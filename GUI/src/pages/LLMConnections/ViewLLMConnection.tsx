@@ -179,6 +179,9 @@ const ViewLLMConnection = () => {
     embeddingModelPlatform: connectionData.embeddingPlatform,
     embeddingModel: connectionData.embeddingModel,
     monthlyBudget: connectionData.monthlyBudget.toString(),
+    warnBudget: connectionData.warnBudgetThreshold.toString(),
+    stopBudget: connectionData.disconnectOnBudgetExceed ? connectionData.stopBudgetThreshold.toString() : '0',
+    disconnectOnBudgetExceed: connectionData.disconnectOnBudgetExceed,
     deploymentEnvironment: connectionData.environment,
     // Azure credentials (don't show sensitive data, but include structure)
     deploymentName: connectionData.deploymentName || '',
