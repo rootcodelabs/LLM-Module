@@ -210,7 +210,7 @@ const LLMConnections: FC = () => {
                       key={featuredConnection.id}
                       llmConnectionId={featuredConnection.id}
                       llmConnectionName={featuredConnection.connectionName}
-                      isActive={featuredConnection.status === 'active'}
+                      isActive={featuredConnection.connectionStatus === 'active'}
                       deploymentEnv={featuredConnection.environment}
                       budgetStatus={featuredConnection.budgetStatus}
                       platform={featuredConnection.llmPlatform}
@@ -230,7 +230,7 @@ const LLMConnections: FC = () => {
                           key={llmConnection.id}
                           llmConnectionId={llmConnection.id}
                           llmConnectionName={llmConnection.connectionName}
-                          isActive={llmConnection.status === 'active'}
+                          isActive={llmConnection.connectionStatus === 'active'}
                           deploymentEnv={llmConnection.environment}
                           budgetStatus={llmConnection.budgetStatus}
                           platform={llmConnection.llmPlatform}
