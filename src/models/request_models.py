@@ -129,3 +129,31 @@ class EmbeddingErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
     failed_texts: List[str] = Field(..., description="Texts that failed to embed")
     retry_after: Optional[int] = Field(None, description="Retry after seconds")
+
+
+# Test endpoint models
+
+
+class TestOrchestrationRequest(BaseModel):
+    """Model for simplified test orchestration request."""
+
+    message: str = Field(..., description="User's message/query")
+    environment: Literal["production", "test", "development"] = Field(
+        ..., description="Environment context"
+    )
+    connection_id: Optional[str] = Field(
+        None, description="Optional connection identifier"
+    )
+
+
+class TestOrchestrationResponse(BaseModel):
+    """Model for test orchestration response (without chatId)."""
+
+    llmServiceActive: bool = Field(..., description="Whether LLM service is active")
+    questionOutOfLLMScope: bool = Field(
+        ..., description="Whether question is out of LLM scope"
+    )
+    inputGuardFailed: bool = Field(
+        ..., description="Whether input guard validation failed"
+    )
+    content: str = Field(..., description="Response content with citations")

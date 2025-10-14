@@ -11,6 +11,8 @@ from llm_orchestration_service import LLMOrchestrationService
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
+    TestOrchestrationRequest,
+    TestOrchestrationResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ContextGenerationRequest,
@@ -118,6 +120,84 @@ def orchestrate_llm_request(
         raise
     except Exception as e:
         logger.error(f"Unexpected error processing request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred",
+        )
+
+
+@app.post(
+    "/orchestrate/test",
+    response_model=TestOrchestrationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Process test LLM orchestration request",
+    description="Processes a simplified test message through the LLM orchestration pipeline",
+)
+def test_orchestrate_llm_request(
+    http_request: Request,
+    request: TestOrchestrationRequest,
+) -> TestOrchestrationResponse:
+    """
+    Process test LLM orchestration request with simplified input.
+
+    Args:
+        http_request: FastAPI Request object for accessing app state
+        request: TestOrchestrationRequest containing only message, environment, and connection_id
+
+    Returns:
+        TestOrchestrationResponse: Response with LLM output and status flags (without chatId)
+
+    Raises:
+        HTTPException: For processing errors
+    """
+    try:
+        logger.info(f"Received test orchestration request for environment: {request.environment}")
+
+        # Get the orchestration service from app state
+        if not hasattr(http_request.app.state, "orchestration_service"):
+            logger.error("Orchestration service not found in app state")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        orchestration_service = http_request.app.state.orchestration_service
+        if orchestration_service is None:
+            logger.error("Orchestration service is None")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        # Map TestOrchestrationRequest to OrchestrationRequest with defaults
+        full_request = OrchestrationRequest(
+            chatId="test-session",
+            message=request.message,
+            authorId="test-user", 
+            conversationHistory=[],
+            url="test-context",
+            environment=request.environment,
+            connection_id=request.connection_id,
+        )
+
+        # Process the request using the same logic
+        response = orchestration_service.process_orchestration_request(full_request)
+
+        # Convert to TestOrchestrationResponse (exclude chatId)
+        test_response = TestOrchestrationResponse(
+            llmServiceActive=response.llmServiceActive,
+            questionOutOfLLMScope=response.questionOutOfLLMScope,
+            inputGuardFailed=response.inputGuardFailed,
+            content=response.content,
+        )
+
+        logger.info(f"Successfully processed test request for environment: {request.environment}")
+        return test_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error processing test request: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
