@@ -197,6 +197,7 @@ export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
     // Return null if no production connection found (404) or other errors
     return null;
   }
+}
   
 export async function updateLLMConnectionStatus(
   id: string | number, 
