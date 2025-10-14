@@ -151,7 +151,9 @@ def test_orchestrate_llm_request(
         HTTPException: For processing errors
     """
     try:
-        logger.info(f"Received test orchestration request for environment: {request.environment}")
+        logger.info(
+            f"Received test orchestration request for environment: {request.environment}"
+        )
 
         # Get the orchestration service from app state
         if not hasattr(http_request.app.state, "orchestration_service"):
@@ -173,7 +175,7 @@ def test_orchestrate_llm_request(
         full_request = OrchestrationRequest(
             chatId="test-session",
             message=request.message,
-            authorId="test-user", 
+            authorId="test-user",
             conversationHistory=[],
             url="test-context",
             environment=request.environment,
@@ -191,7 +193,9 @@ def test_orchestrate_llm_request(
             content=response.content,
         )
 
-        logger.info(f"Successfully processed test request for environment: {request.environment}")
+        logger.info(
+            f"Successfully processed test request for environment: {request.environment}"
+        )
         return test_response
 
     except HTTPException:
