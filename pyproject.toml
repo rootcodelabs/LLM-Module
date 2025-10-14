@@ -26,6 +26,8 @@ dependencies = [
     "qdrant-client>=1.15.1",
     "rank-bm25>=0.2.2",
     "nemoguardrails>=0.16.0",
+    "rerankers[transformers]>=0.10.0",
+    "tiktoken>=0.11.0",
 ]
 
 [tool.pyright]
