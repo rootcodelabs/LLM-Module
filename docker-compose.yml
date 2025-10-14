@@ -292,7 +292,7 @@ services:
       - langfuse-worker
       - rag_search_db
     ports:
-      - 3000:3000
+      - 3005:3000
     env_file:
       - .env
     environment:
@@ -449,37 +449,37 @@ services:
 
 
   # LLM Orchestration Service
-  # llm-orchestration-service:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.llm_orchestration_service
-  #   container_name: llm-orchestration-service
-  #   restart: always
-  #   ports:
-  #     - "8100:8100"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - ENVIRONMENT=production
-  #     - VAULT_ADDR=http://vault:8200
-  #     - VAULT_TOKEN=/agent/out/token
-  #   volumes:
-  #     # Mount configuration files
-  #     - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
-  #     # Mount logs directory for persistence
-  #     - llm_orchestration_logs:/app/logs
-  #     - ./vault/agent-out:/agent/out:ro
-  #   networks:
-  #     - bykstack
-  #   depends_on:
-  #     - vault
-  #     - vault-agent-llm
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     start_period: 40s
-  #     retries: 3
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: always
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=/agent/out/token
+    volumes:
+      # Mount configuration files
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      # Mount logs directory for persistence
+      - llm_orchestration_logs:/app/logs
+      - ./vault/agent-out:/agent/out:ro
+    networks:
+      - bykstack
+    depends_on:
+      - vault
+      - vault-agent-llm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
 
 volumes:
   loki-data:
