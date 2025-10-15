@@ -130,8 +130,8 @@ INSERT INTO public.agency_sync (agency_id, created_at) VALUES
 ('AGENCY001', NOW());
 
 CREATE TABLE public.mock_ckb (
-    agency_id         VARCHAR(50) PRIMARY KEY,
-    agency_data_hash  VARCHAR(255) NOT NULL,
-    data_url          TEXT NOT NULL,
+    client_id         VARCHAR(50) PRIMARY KEY,
+    client_data_hash  VARCHAR(255) NOT NULL,
+    signed_s3_url     TEXT NOT NULL,
     created_at        TIMESTAMP NOT NULL DEFAULT NOW()
 );

@@ -1,6 +1,8 @@
 """Main vector indexer script for processing documents with contextual retrieval."""
 
+import argparse
 import asyncio
+import shutil
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -16,17 +18,21 @@ from vector_indexer.contextual_processor import ContextualProcessor
 from vector_indexer.qdrant_manager import QdrantManager
 from vector_indexer.error_logger import ErrorLogger
 from vector_indexer.models import ProcessingStats, DocumentInfo
+from vector_indexer.diff_identifier import DiffDetector, create_diff_config, DiffError
 
 
 class VectorIndexer:
     """Main vector indexer orchestrating the full pipeline."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, signed_url: Optional[str] = None):
         # Load configuration
         self.config_path = (
             config_path or "src/vector_indexer/config/vector_indexer_config.yaml"
         )
         self.config = ConfigLoader.load_config(self.config_path)
+        
+        # Store signed URL for future dataset download implementation
+        self.signed_url = signed_url
 
         # Initialize components
         self.document_loader = DocumentLoader(self.config)
@@ -51,6 +57,9 @@ class VectorIndexer:
         logger.info(
             f"Max concurrent chunks: {self.config.max_concurrent_chunks_per_doc}"
         )
+        
+        if self.signed_url:
+            logger.info(f"Signed URL provided: {self.signed_url[:50]}...")  # Log first 50 chars only
 
     async def process_all_documents(self) -> ProcessingStats:
         """
@@ -66,16 +75,52 @@ class VectorIndexer:
         self.stats.start_time = datetime.now()
 
         try:
+            # Step 1: Dataset download (future implementation)
+            if self.signed_url:
+                logger.info("Dataset download URL provided - download logic to be implemented")
+                # TODO: Implement dataset download and extraction
+                # await self._download_and_extract_dataset(self.signed_url)
+            
+            # Step 2: Diff identification - determine what files need processing
+            logger.info("Step 1: Identifying changed files...")
+            try:
+                diff_config = create_diff_config()
+                diff_detector = DiffDetector(diff_config)
+                diff_result = await diff_detector.get_changed_files()
+                
+                logger.info("Diff identification complete:")
+                logger.info(f"  • Total files scanned: {diff_result.total_files_scanned}")
+                logger.info(f"  • Previously processed: {diff_result.previously_processed_count}")
+                logger.info(f"  • Files needing processing: {len(diff_result.new_files)}")
+                logger.info(f"  • Is first run: {diff_result.is_first_run}")
+                
+                if not diff_result.new_files:
+                    logger.info("No new or changed files detected. Processing complete.")
+                    self._cleanup_datasets()
+                    return self.stats
+                    
+            except DiffError as e:
+                logger.error(f"Diff identification failed: {e}")
+                logger.info("Continuing with full document discovery as fallback")
+                diff_result = None
+                diff_detector = None
+
             # Initialize Qdrant collections
             async with QdrantManager(self.config) as qdrant_manager:
                 await qdrant_manager.ensure_collections_exist()
 
-                # Discover all documents
-                logger.info("Discovering documents...")
-                documents = self.document_loader.discover_all_documents()
+                # Step 3: Document discovery (filtered by diff results if available)
+                logger.info("Step 2: Discovering documents...")
+                if diff_result and diff_result.new_files:
+                    # Filter documents to only those identified as changed
+                    documents = self._filter_documents_by_paths(diff_result.new_files)
+                else:
+                    # Fallback: discover all documents
+                    documents = self.document_loader.discover_all_documents()
 
                 if not documents:
                     logger.warning("No documents found to process")
+                    self._cleanup_datasets()
                     return self.stats
 
                 logger.info(f"Found {len(documents)} documents to process")
@@ -119,9 +164,22 @@ class VectorIndexer:
                 # Calculate final statistics
                 self.stats.end_time = datetime.now()
 
+                # Step 4: Update processed files tracking
+                if diff_detector and documents:
+                    try:
+                        processed_paths = [doc.cleaned_txt_path for doc in documents]
+                        if processed_paths:
+                            await diff_detector.mark_files_processed(processed_paths)
+                            logger.info("Updated processed files tracking")
+                    except Exception as e:
+                        logger.warning(f"Failed to update processed files tracking: {e}")
+
                 # Log final statistics
                 self.error_logger.log_processing_stats(self.stats)
                 self._log_final_summary()
+
+                # Step 5: Cleanup datasets folder after successful processing
+                self._cleanup_datasets()
 
                 return self.stats
 
@@ -299,10 +357,77 @@ class VectorIndexer:
             logger.debug("API client closed successfully")
         except Exception as e:
             logger.warning(f"Error closing API client: {e}")
+    
+    def _filter_documents_by_paths(self, file_paths: List[str]) -> List[DocumentInfo]:
+        """
+        Filter documents by specific file paths.
+        
+        Args:
+            file_paths: List of file paths to process
+            
+        Returns:
+            List of DocumentInfo for matching files
+        """
+        documents = []
+        
+        for file_path in file_paths:
+            try:
+                file_path_obj = Path(file_path)
+                
+                # Ensure this is a cleaned.txt file
+                if file_path_obj.name != "cleaned.txt":
+                    logger.debug(f"Skipping non-cleaned.txt file: {file_path}")
+                    continue
+                
+                # Get hash directory and collection directory
+                hash_dir = file_path_obj.parent
+                collection_dir = hash_dir.parent
+                
+                # Check if metadata file exists
+                metadata_file = hash_dir / self.config.metadata_file
+                if not metadata_file.exists():
+                    logger.warning(f"Skipping file without metadata: {file_path}")
+                    continue
+                
+                # Create DocumentInfo
+                doc_info = DocumentInfo(
+                    document_hash=hash_dir.name,
+                    cleaned_txt_path=str(file_path_obj),
+                    source_meta_path=str(metadata_file),
+                    dataset_collection=collection_dir.name
+                )
+                
+                documents.append(doc_info)
+                logger.debug(f"Added document: {doc_info.document_hash}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to process file path {file_path}: {e}")
+                continue
+        
+        logger.info(f"Filtered to {len(documents)} documents from {len(file_paths)} paths")
+        return documents
+    
+    def _cleanup_datasets(self):
+        """Remove datasets folder after processing."""
+        try:
+            datasets_path = Path(self.config.dataset_base_path)
+            if datasets_path.exists():
+                shutil.rmtree(str(datasets_path))
+                logger.info(f"Datasets folder cleaned up: {datasets_path}")
+            else:
+                logger.debug(f"Datasets folder does not exist: {datasets_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup datasets folder: {e}")
+            # Non-critical error - don't fail the entire process
 
 
 async def main():
     """Main entry point for the vector indexer."""
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Vector Indexer with Diff Identification")
+    parser.add_argument("--signed-url", help="Signed URL for dataset download")
+    args = parser.parse_args()
 
     # Configure logging
     logger.remove()  # Remove default handler
@@ -323,8 +448,8 @@ async def main():
 
     indexer = None
     try:
-        # Initialize vector indexer
-        indexer = VectorIndexer()
+        # Initialize vector indexer with signed URL
+        indexer = VectorIndexer(signed_url=args.signed_url)
 
         # Run health check first
         logger.info("Performing pre-processing health check...")

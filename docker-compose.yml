@@ -156,6 +156,42 @@ services:
   #   mem_limit: "1G"
   #   restart: unless-stopped
 
+  rag-s3-ferry:
+    image: s3-ferry:latest
+    container_name: rag-s3-ferry
+    volumes:
+      - shared-volume:/app/shared
+      - cron_data:/app/data
+      - ./datasets:/app/datasets  # Access to datasets folder for diff identifier operations
+    env_file:
+      - .env
+    ports:
+      - "3006:3000"
+    networks:
+      - bykstack
+    depends_on:
+      minio:
+        condition: service_started
+
+  cron-manager:
+    container_name: cron-manager
+    image: cron-manager-python:latest
+    user: "root"
+    volumes:
+      - ./DSL/CronManager/DSL:/DSL
+      - ./DSL/CronManager/script:/app/scripts
+      - ./src/vector_indexer:/app/src/vector_indexer
+      - cron_data:/app/data
+      - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
+      - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
+    environment:
+      - server.port=9010
+      - PYTHONPATH=/app:/app/src/vector_indexer
+    ports:
+      - 9010:8080
+    networks:
+      - bykstack
+
   qdrant:
     image: qdrant/qdrant:v1.15.1
     restart: always
@@ -487,6 +523,10 @@ volumes:
     name: vault-data
   vault-agent-out:
     name: vault-agent-out
+  shared-volume:
+    name: shared-volume
+  cron_data:
+    name: cron_data
 
 networks:
   bykstack:

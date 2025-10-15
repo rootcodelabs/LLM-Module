@@ -1,7 +1,4 @@
 SELECT 
-    CASE 
-        WHEN COUNT(*) > 0 THEN ARRAY_AGG(agency_id ORDER BY agency_id)
-        ELSE NULL
-    END as agency_ids,
-    COUNT(*) > 0 as has_data
+    agency_id,
+    agency_data_hash
 FROM public.agency_sync;

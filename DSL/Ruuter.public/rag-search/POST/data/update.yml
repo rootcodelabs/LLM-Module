@@ -7,7 +7,7 @@ declaration:
   returns: json
   namespace: rag-search
 
-getAgencyId:
+get_agency_id:
   call: http.post
   args:
     url: "[#RAG_SEARCH_RESQL]/get-agency-id"
@@ -15,43 +15,67 @@ getAgencyId:
   next: log_result
 
 log_result:
-  log: ${get_agency_id_result.response.body[0].agencyIds}
-  next: checkSyncStatus
+  log: ${get_agency_id_result.response.body[0].agencyId}
+  next: extract_params
 
-checkSyncStatus:
-  switch:
-    - condition: ${get_agency_id_result.response.body[0].hasData}
-      next: importAgencyData
-    - condition: true
-      next: noAgencyData
+extract_params:
+  assign:
+    single_agency_id: ${get_agency_id_result.response.body[0].agencyId}
+    agency_ids: 
+      - ${single_agency_id}
+    agency_data_hash: ${get_agency_id_result.response.body[0].agencyDataHash}
+  next: logs_params
 
-importAgencyData:
+logs_params:
+  log: "Agency ID: ${agency_ids}, Agency Data Hash: ${agency_data_hash}"
+  next: import_agency_data
+
+# check_sync_status:
+#   switch:
+#     - condition: ${get_agency_id_result.response.body[0].hasData}
+#       next: importAgencyData
+#     - condition: true
+#       next: noAgencyData
+
+import_agency_data:
   call: http.post
   args:
     url: "[#RAG_SEARCH_RUUTER_PUBLIC]/ckb/agency-data-import"
     body:
-      agencyIds: ${get_agency_id_result.response.body[0].agencyIds}
+      agencyIds: ${agency_ids}
   result: importResult
   next: logImportAgencyDataResponse
 
 logImportAgencyDataResponse:
   log: ${JSON.stringify(importResult.response)}
-  next: checkHashMatch
+  next: assign_import_agency_data
 
-checkHashMatch:
+assign_import_agency_data:
+  assign:
+    client_data_hash: ${importResult.response.body.response[0].clientDataHash}
+    signed_s3_url: ${importResult.response.body.response[0].signedS3Url}
+  next: check_has_match
+  
+check_has_match:
   switch:
-    - condition: ${importResult.response.body.response[0].hashMatch}
+    - condition: ${agency_data_hash === importResult.response.body.response[0].clientDataHash}
       next: noAgencyData
     - condition: true
-      next: logNewDataPresent
+      next: execute_cron_manager
 
-executeCronManager:
+execute_cron_manager:
   call: http.post
-  url: "[#RAG_SEARCH_CRON_MANAGER]/data-resync"
+  args:
+    url: "[#RAG_SEARCH_CRON_MANAGER]/execute/initiate_vector_indexer/vector_indexer"
+    query:
+      signedUrl: ${signed_s3_url}
+      clientDataHash: ${client_data_hash}
+  result: res
+  next: log_new_data_present
 
-# logNewDataPresent:
-#   log: "New data present - synchronization required"
-#   next: end
+log_new_data_present:
+  log: "New data present - synchronization required"
+  next: end
 
 assignNoAgencyResponse:
   assign:
@@ -61,7 +85,11 @@ assignNoAgencyResponse:
   next: noAgencyData
 
 noAgencyData:
+  assign:
+    response_data:
+      success: true
+      message: "No sync required - data is up to date"
   status: 200
-  return: ${no_agency_response}
+  return: ${response_data}
   next: end
   
