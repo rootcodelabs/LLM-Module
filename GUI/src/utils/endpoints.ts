@@ -25,5 +25,5 @@ export const llmConnectionsEndpoints = {
 }
 
 export const inferenceEndpoints = {
-  VIEW_INFERENCE_RESULT: (): string => `/rag-search/inference/results/view`,
+  VIEW_TEST_INFERENCE_RESULT: (): string => `/rag-search/inference/test`,
 }
