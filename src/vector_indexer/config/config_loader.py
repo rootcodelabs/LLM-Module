@@ -77,7 +77,8 @@ class VectorIndexerConfig(BaseModel):
     """Configuration model for vector indexer."""
 
     # API Configuration
-    api_base_url: str = "http://localhost:8100"
+    api_base_url: str = "http://llm-orchestration-service:8100"
+    qdrant_url: str = "http://qdrant:6333"
     api_timeout: int = 300
 
     # Processing Configuration
@@ -210,7 +211,7 @@ class ConfigLoader:
         # API config
         api_config = indexer_config.get("api", {})
         flattened_config["api_base_url"] = api_config.get(
-            "base_url", "http://localhost:8100"
+            "base_url"
         )
         flattened_config["api_timeout"] = api_config.get("timeout", 300)
 

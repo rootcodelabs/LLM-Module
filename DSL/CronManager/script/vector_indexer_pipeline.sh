@@ -3,7 +3,7 @@
 echo "Starting vector indexer pipeline..."
 
 if [ -z "$signedUrl" ] || [ -z "$clientDataHash" ]; then
-  echo "Please set the signedS3Url and clientDataHash environment variables."
+  echo "Please set the signedUrl and clientDataHash environment variables."
   exit 1
 fi
 
@@ -40,6 +40,7 @@ echo "[PACKAGES] Installing required packages..."
 "$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "rank-bm25>=0.2.2" || exit 1
 "$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "tiktoken>=0.11.0" || exit 1
 "$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "dvc[s3]>=3.55.2" || exit 1
+"$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "loguru>=0.7.3" || exit 1
 
 echo "[PACKAGES] All packages installed successfully"
 
@@ -51,12 +52,58 @@ echo "[FOUND] Python script at: $PYTHON_SCRIPT"
 
 # Run vector indexer with signed URL parameter
 echo "[STARTING] Vector indexer processing..."
+
+# Add debugging before Python execution
+echo "[DEBUG] Testing basic Python execution..."
+python3 --version || echo "[ERROR] Python version check failed"
+
+echo "[DEBUG] Testing Python imports..."
+python3 -c "
+import sys
+print(f'[DEBUG] Python executable: {sys.executable}')
+print(f'[DEBUG] Python version: {sys.version}')
+try:
+    from pathlib import Path
+    print('[DEBUG] ✓ pathlib import OK')
+    from loguru import logger
+    print('[DEBUG] ✓ loguru import OK')
+    import argparse
+    print('[DEBUG] ✓ argparse import OK')
+except Exception as e:
+    print(f'[DEBUG] ✗ Import failed: {e}')
+    import traceback
+    traceback.print_exc()
+" 2>&1
+
+echo "[DEBUG] Testing main_indexer.py syntax..."
+python3 -m py_compile "$PYTHON_SCRIPT" 2>&1 || echo "[ERROR] Syntax check failed"
+
+echo "[DEBUG] About to execute main_indexer.py..."
 if [ -n "$signedUrl" ]; then
     echo "[SIGNED_URL] Using signed URL for dataset processing"
-    python3 "$PYTHON_SCRIPT" --signed-url "$signedUrl"
+    echo "[COMMAND] python3 -u $PYTHON_SCRIPT --signed-url $signedUrl"
+    python3 -u "$PYTHON_SCRIPT" --signed-url "$signedUrl" 2>&1
+    PYTHON_EXIT_CODE=$?
 else
     echo "[NO_URL] Running without signed URL"
-    python3 "$PYTHON_SCRIPT"
+    echo "[COMMAND] python3 -u $PYTHON_SCRIPT"
+    python3 -u "$PYTHON_SCRIPT" 2>&1
+    PYTHON_EXIT_CODE=$?
 fi
 
-echo "[COMPLETED] Vector indexer pipeline finished"
+echo "[DEBUG] Python execution completed with exit code: $PYTHON_EXIT_CODE"
+
+# Handle exit codes
+if [ $PYTHON_EXIT_CODE -eq 0 ]; then
+    echo "[SUCCESS] Vector indexer completed successfully"
+    exit 0
+elif [ $PYTHON_EXIT_CODE -eq 2 ]; then
+    echo "[WARNING] Vector indexer completed with some failures"
+    exit 2
+elif [ $PYTHON_EXIT_CODE -eq 130 ]; then
+    echo "[INTERRUPTED] Vector indexer was interrupted by user"
+    exit 130
+else
+    echo "[ERROR] Vector indexer failed with exit code: $PYTHON_EXIT_CODE"
+    exit $PYTHON_EXIT_CODE
+fi

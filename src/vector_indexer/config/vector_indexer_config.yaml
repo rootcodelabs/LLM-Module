@@ -2,7 +2,7 @@
 vector_indexer:
   # API Configuration
   api:
-    base_url: "http://localhost:8100"
+    base_url: "http://llm-orchestration-service:8100"
     qdrant_url: "http://qdrant:6333"
     timeout: 300  # seconds
   

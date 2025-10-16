@@ -1,7 +1,7 @@
 """S3Ferry client for file transfer operations."""
 
+import asyncio
 import json
-import tempfile
 import time
 from typing import Any, Dict, Optional
 import requests
@@ -31,7 +31,22 @@ class S3Ferry:
             requests.Response: Response from S3Ferry service
         """
         payload = GET_S3_FERRY_PAYLOAD(destinationFilePath, destinationStorageType, sourceFilePath, sourceStorageType)
+        
+        # Debug logging for S3Ferry request
+        logger.debug("S3Ferry Request Details:")
+        logger.debug(f"  URL: {self.url}")
+        logger.debug("  Method: POST")
+        logger.debug("  Headers: Content-Type: application/json")
+        logger.debug(f"  Payload: {payload}")
+        
         response = requests.post(self.url, json=payload)
+        
+        # Debug logging for S3Ferry response
+        logger.debug("S3Ferry Response Details:")
+        logger.debug(f"  Status Code: {response.status_code}")
+        logger.debug(f"  Response Headers: {dict(response.headers)}")
+        logger.debug(f"  Response Body: {response.text}")
+        
         return response
 
 
@@ -54,7 +69,7 @@ class S3FerryClient:
         """Async context manager exit."""
         pass
         
-    def upload_metadata(self, metadata: Dict[str, Any]) -> bool:
+    async def upload_metadata(self, metadata: Dict[str, Any]) -> bool:
         """
         Upload metadata to S3 via S3Ferry.
         
@@ -68,14 +83,13 @@ class S3FerryClient:
             DiffError: If upload fails
         """
         try:
-            # Create temporary file with metadata
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-                json.dump(metadata, temp_file, indent=2)
-                temp_file_path = temp_file.name
+            # Create temporary file with metadata (run in thread pool)
+            temp_file_path = await asyncio.to_thread(self._create_temp_metadata_file, metadata)
             
             try:
-                # Transfer from FS to S3 using S3Ferry
-                response = self._retry_with_backoff(
+                # Transfer from FS to S3 using S3Ferry (run in thread pool)
+                response = await asyncio.to_thread(
+                    self._retry_with_backoff,
                     lambda: self.s3_ferry.transfer_file(
                         destinationFilePath=self.config.metadata_s3_path,
                         destinationStorageType="S3",
@@ -92,17 +106,14 @@ class S3FerryClient:
                     return False
                     
             finally:
-                # Clean up temporary file
-                import os
-                try:
-                    os.unlink(temp_file_path)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
+                # Clean up temporary file (run in thread pool)
+                # await asyncio.to_thread(self._cleanup_temp_file, temp_file_path)  # Disabled for debugging
+                pass
                 
         except Exception as e:
             raise DiffError(f"Failed to upload metadata: {str(e)}", e)
     
-    def download_metadata(self) -> Optional[Dict[str, Any]]:
+    async def download_metadata(self) -> Optional[Dict[str, Any]]:
         """
         Download metadata from S3 via S3Ferry.
         
@@ -113,13 +124,13 @@ class S3FerryClient:
             DiffError: If download fails (except for file not found)
         """
         try:
-            # Create temporary file for download
-            with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
-                temp_file_path = temp_file.name
+            # Create temporary file for download (run in thread pool)
+            temp_file_path = await asyncio.to_thread(self._create_temp_file)
             
             try:
-                # Transfer from S3 to FS using S3Ferry
-                response = self._retry_with_backoff(
+                # Transfer from S3 to FS using S3Ferry (run in thread pool)
+                response = await asyncio.to_thread(
+                    self._retry_with_backoff,
                     lambda: self.s3_ferry.transfer_file(
                         destinationFilePath=temp_file_path,
                         destinationStorageType="FS",
@@ -129,9 +140,8 @@ class S3FerryClient:
                 )
                 
                 if response.status_code == 200:
-                    # Read metadata from downloaded file
-                    with open(temp_file_path, 'r') as f:
-                        metadata = json.load(f)
+                    # Read metadata from downloaded file (run in thread pool)
+                    metadata = await asyncio.to_thread(self._read_metadata_from_file, temp_file_path)
                     logger.info(f"Metadata downloaded successfully from {self.config.metadata_s3_path}")
                     return metadata
                 elif response.status_code == 404:
@@ -142,12 +152,9 @@ class S3FerryClient:
                     return None
                     
             finally:
-                # Clean up temporary file
-                import os
-                try:
-                    os.unlink(temp_file_path)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
+                # Clean up temporary file (run in thread pool)
+                # await asyncio.to_thread(self._cleanup_temp_file, temp_file_path)  # Disabled for debugging
+                pass
                 
         except json.JSONDecodeError as e:
             raise DiffError(f"Failed to parse downloaded metadata JSON: {str(e)}", e)
@@ -155,6 +162,54 @@ class S3FerryClient:
             # Don't raise for file not found - it's expected on first run
             logger.warning(f"Failed to download metadata (may be first run): {str(e)}")
             return None
+    
+    def _create_temp_metadata_file(self, metadata: Dict[str, Any]) -> str:
+        """Create a temporary file with metadata content in shared folder."""
+        import os
+        import uuid
+        
+        # Create temp file in shared folder accessible by both containers
+        shared_dir = "/app/shared"
+        os.makedirs(shared_dir, exist_ok=True)
+        
+        temp_filename = f"temp_metadata_{uuid.uuid4().hex[:8]}.json"
+        temp_file_path = os.path.join(shared_dir, temp_filename)
+        
+        with open(temp_file_path, 'w') as temp_file:
+            json.dump(metadata, temp_file, indent=2)
+            
+        return temp_file_path
+    
+    def _create_temp_file(self) -> str:
+        """Create an empty temporary file in shared folder."""
+        import os
+        import uuid
+        
+        # Create temp file in shared folder accessible by both containers
+        shared_dir = "/app/shared"
+        os.makedirs(shared_dir, exist_ok=True)
+        
+        temp_filename = f"temp_download_{uuid.uuid4().hex[:8]}.json"
+        temp_file_path = os.path.join(shared_dir, temp_filename)
+        
+        # Create empty file
+        with open(temp_file_path, 'w'):
+            pass  # Create empty file
+            
+        return temp_file_path
+    
+    def _read_metadata_from_file(self, file_path: str) -> Dict[str, Any]:
+        """Read metadata from a file."""
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    
+    def _cleanup_temp_file(self, file_path: str) -> None:
+        """Clean up a temporary file."""
+        import os
+        try:
+            os.unlink(file_path)
+        except Exception as cleanup_error:
+            logger.warning(f"Failed to cleanup temp file {file_path}: {cleanup_error}")
     
     def _retry_with_backoff(self, operation: Any) -> requests.Response:
         """

@@ -178,18 +178,18 @@ def create_diff_config() -> DiffConfig:
     """
     try:
         # S3Ferry Configuration
-        s3_ferry_url = os.getenv("S3_FERRY_URL", "http://rag-s3-ferry:3000")
+        s3_ferry_url = os.getenv("S3_FERRY_URL", "http://rag-s3-ferry:3000/v1/files/copy")
         
         # Path configurations
         datasets_path = os.getenv("DATASETS_PATH", "datasets")
         metadata_filename = os.getenv("METADATA_FILENAME", "processed-metadata.json")
         
         # S3 configuration (required for DVC operations)
-        s3_bucket_name = os.getenv("S3_DATA_BUCKET_NAME")
-        s3_bucket_path = os.getenv("S3_DATA_BUCKET_PATH", "resources")
-        s3_endpoint_url = os.getenv("S3_ENDPOINT_URL")
-        s3_access_key_id = os.getenv("S3_ACCESS_KEY_ID")
-        s3_secret_access_key = os.getenv("S3_SECRET_ACCESS_KEY")
+        s3_bucket_name = "rag-search"
+        s3_bucket_path = "resources"
+        s3_endpoint_url = "http://minio:9000"
+        s3_access_key_id = "minioadmin"
+        s3_secret_access_key = "minioadmin"
         
         # Validate required S3 credentials for DVC
         if not all([s3_bucket_name, s3_endpoint_url, s3_access_key_id, s3_secret_access_key]):
@@ -202,7 +202,8 @@ def create_diff_config() -> DiffConfig:
             raise DiffError(f"Missing required S3 environment variables for DVC: {', '.join(missing)}")
         
         # Build paths
-        metadata_s3_path = f"{s3_bucket_path}/datasets/{metadata_filename}"
+        # S3Ferry is already configured with bucket context, so no need for s3_bucket_path prefix
+        metadata_s3_path = f"datasets/{metadata_filename}"
         dvc_remote_url = f"s3://{s3_bucket_name}/{s3_bucket_path}/datasets/dvc-cache"
         
         config = DiffConfig(
