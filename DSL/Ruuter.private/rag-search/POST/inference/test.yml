@@ -24,8 +24,9 @@ extract_request_data:
 get_connection:
   call: http.post
   args:
-    url: "[#RAG_SEARCH_RESQL]/get-production-connection"
-    body: {}
+    url: "[#RAG_SEARCH_RESQL]/get-llm-connection"
+    body: 
+      connection_id: ${connectionId}
   result: connection_result
   next: validate_connection
 
@@ -57,7 +58,7 @@ validate_budget_status:
 call_orchestrate_endpoint:
   call: http.post
   args:
-    url: "[#RAG_SEARCH_LLM_ORCHESTRATOR]"
+    url: "[#RAG_SEARCH_LLM_ORCHESTRATOR]/test"
     body:
       connectionId: ${connectionId}
       message: ${message}
@@ -65,10 +66,15 @@ call_orchestrate_endpoint:
     headers:
       Content-Type: "application/json"
   result: orchestrate_result
+  next: assign_response
+
+assign_response:
+  assign:
+    response: "${orchestrate_result.response.body}"
   next: return_orchestrate_response
 
 return_orchestrate_response:
-  return: ${orchestrate_result.response.body}
+  return: ${response}
   next: end
 
 assign_disconnected_response:

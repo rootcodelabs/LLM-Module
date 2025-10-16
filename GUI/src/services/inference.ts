@@ -16,8 +16,8 @@ export interface InferenceResponse {
 }
 
 export async function viewInferenceResult(request: InferenceRequest): Promise<InferenceResponse> {
-  const { data } = await apiDev.post(inferenceEndpoints.VIEW_INFERENCE_RESULT(), {
-    llmConnectionId: request.llmConnectionId,
+  const { data } = await apiDev.post(inferenceEndpoints.VIEW_TEST_INFERENCE_RESULT(), {
+    connectionId: request.llmConnectionId,
     message: request.message,
   });
   return data;
