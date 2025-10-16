@@ -1,6 +1,6 @@
 import apiDev from './api-dev';
 import { llmConnectionsEndpoints } from 'utils/endpoints';
-import { removeCommasFromNumber } from 'utils/commonUtilts';
+import { removeCommasFromNumber } from 'utils/commonUtils';
 import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
 
 export interface LLMConnection {
@@ -11,6 +11,9 @@ export interface LLMConnection {
   embeddingPlatform: string;
   embeddingModel: string;
   monthlyBudget: number;
+  warnBudgetThreshold: number;
+  stopBudgetThreshold: number;
+  disconnectOnBudgetExceed: boolean;
   environment: string;
   status: string;
   createdAt: string;
@@ -64,6 +67,9 @@ export interface LLMConnectionFormData {
   embeddingModelPlatform: string;
   embeddingModel: string;
   monthlyBudget: string;
+  warnBudget: string;
+  stopBudget: string;
+  disconnectOnBudgetExceed: boolean;
   deploymentEnvironment: string;
   // Azure credentials
   deploymentName?: string;
@@ -107,16 +113,19 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
+    warn_budget_threshold: parseInt(connectionData.warnBudget),
+    stop_budget_threshold: connectionData.disconnectOnBudgetExceed ? parseInt(connectionData.stopBudget) : 0,
+    disconnect_on_budget_exceed: connectionData.disconnectOnBudgetExceed,
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
     // Azure credentials
-    deployment_name: connectionData.deploymentName || null,
-    target_uri: connectionData.targetUri || null,
-    api_key: maskSensitiveKey(connectionData.apiKey) || null,
+    deployment_name: connectionData.deploymentName || "",
+    target_uri: connectionData.targetUri || "",
+    api_key: maskSensitiveKey(connectionData.apiKey) || "",
     // AWS Bedrock credentials
-    secret_key: maskSensitiveKey(connectionData.secretKey) || null,
-    access_key: maskSensitiveKey(connectionData.accessKey) || null,
+    secret_key: maskSensitiveKey(connectionData.secretKey) || "",
+    access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || null,
+    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
   });
   return data?.response;
 }
@@ -133,16 +142,19 @@ export async function updateLLMConnection(
     embedding_platform: connectionData.embeddingModelPlatform,
     embedding_model: connectionData.embeddingModel,
     monthly_budget: parseFloat(removeCommasFromNumber(connectionData.monthlyBudget)),
+    warn_budget_threshold: parseInt(connectionData.warnBudget),
+    stop_budget_threshold: connectionData.disconnectOnBudgetExceed ? parseInt(connectionData.stopBudget) : 0,
+    disconnect_on_budget_exceed: connectionData.disconnectOnBudgetExceed,
     deployment_environment: connectionData.deploymentEnvironment.toLowerCase(),
     // Azure credentials
-    deployment_name: connectionData.deploymentName || null,
-    target_uri: connectionData.targetUri || null,
-    api_key: maskSensitiveKey(connectionData.apiKey) || null,
+    deployment_name: connectionData.deploymentName || "",
+    target_uri: connectionData.targetUri || "",
+    api_key: maskSensitiveKey(connectionData.apiKey) || "",
     // AWS Bedrock credentials
-    secret_key: maskSensitiveKey(connectionData.secretKey) || null,
-    access_key: maskSensitiveKey(connectionData.accessKey) || null,
+    secret_key: maskSensitiveKey(connectionData.secretKey) || "",
+    access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || null,
+    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
   });
   return data?.response;
 }

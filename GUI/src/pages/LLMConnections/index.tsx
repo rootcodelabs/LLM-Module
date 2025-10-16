@@ -4,7 +4,7 @@ import { Button, FormSelect } from 'components';
 import Pagination from 'components/molecules/Pagination';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formattedArray } from 'utils/commonUtilts';
+import { formattedArray } from 'utils/commonUtils';
 import DataModelCard from 'components/molecules/LLMConnectionCard';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
 import { ButtonAppearanceTypes } from 'enums/commonEnums';
@@ -47,12 +47,12 @@ const LLMConnections: FC = () => {
     value: string | number | undefined | { name: string; id: string }
   ) => {
     let filterUpdate: Partial<LLMConnectionFilters> = {};
-    
+
     if (name === 'sorting') {
       // Handle sorting format - no conversion needed, use snake_case directly
       const sortingValue = value as string;
       const [sortBy, sortOrder] = sortingValue.split(' ');
-      
+
       filterUpdate = {
         sortBy: sortBy,
         sortOrder: sortOrder as 'asc' | 'desc'
@@ -65,7 +65,7 @@ const LLMConnections: FC = () => {
       ...prevFilters,
       ...filterUpdate,
     }));
-    
+
     // Reset to first page when filters change
     if (name !== 'pageNumber') {
       setPageIndex(1);
@@ -209,7 +209,7 @@ const LLMConnections: FC = () => {
                     <LLMConnectionCard
                       key={featuredConnection.id}
                       llmConnectionId={featuredConnection.id}
-                      llmConnectionName={`${featuredConnection.llmPlatform} - ${featuredConnection.llmModel}`}
+                      llmConnectionName={featuredConnection.connectionName}
                       isActive={featuredConnection.status === 'active'}
                       deploymentEnv={featuredConnection.environment}
                       budgetStatus={featuredConnection.budgetStatus}
@@ -229,7 +229,7 @@ const LLMConnections: FC = () => {
                         <LLMConnectionCard
                           key={llmConnection.id}
                           llmConnectionId={llmConnection.id}
-                          llmConnectionName={`${llmConnection.llmPlatform} - ${llmConnection.llmModel}`}
+                          llmConnectionName={llmConnection.connectionName}
                           isActive={llmConnection.status === 'active'}
                           deploymentEnv={llmConnection.environment}
                           budgetStatus={llmConnection.budgetStatus}

@@ -4,7 +4,7 @@ import Label from 'components/Label';
 import { useDialog } from 'hooks/useDialog';
 import './LLMConnectionCard.scss';
 import { useTranslation } from 'react-i18next';
-import { formatDate } from 'utils/commonUtilts';
+import { formatDate } from 'utils/commonUtils';
 import { useNavigate } from 'react-router-dom';
 import { pl } from 'date-fns/locale';
 import { Switch } from 'components/FormElements';
