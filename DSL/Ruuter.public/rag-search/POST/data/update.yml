@@ -30,13 +30,6 @@ logs_params:
   log: "Agency ID: ${agency_ids}, Agency Data Hash: ${agency_data_hash}"
   next: import_agency_data
 
-# check_sync_status:
-#   switch:
-#     - condition: ${get_agency_id_result.response.body[0].hasData}
-#       next: importAgencyData
-#     - condition: true
-#       next: noAgencyData
-
 import_agency_data:
   call: http.post
   args:
@@ -44,9 +37,9 @@ import_agency_data:
     body:
       agencyIds: ${agency_ids}
   result: importResult
-  next: logImportAgencyDataResponse
+  next: log_import_agency_data_response
 
-logImportAgencyDataResponse:
+log_import_agency_data_response:
   log: ${JSON.stringify(importResult.response)}
   next: assign_import_agency_data
 

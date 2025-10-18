@@ -53,31 +53,6 @@ echo "[FOUND] Python script at: $PYTHON_SCRIPT"
 # Run vector indexer with signed URL parameter
 echo "[STARTING] Vector indexer processing..."
 
-# Add debugging before Python execution
-echo "[DEBUG] Testing basic Python execution..."
-python3 --version || echo "[ERROR] Python version check failed"
-
-echo "[DEBUG] Testing Python imports..."
-python3 -c "
-import sys
-print(f'[DEBUG] Python executable: {sys.executable}')
-print(f'[DEBUG] Python version: {sys.version}')
-try:
-    from pathlib import Path
-    print('[DEBUG] ✓ pathlib import OK')
-    from loguru import logger
-    print('[DEBUG] ✓ loguru import OK')
-    import argparse
-    print('[DEBUG] ✓ argparse import OK')
-except Exception as e:
-    print(f'[DEBUG] ✗ Import failed: {e}')
-    import traceback
-    traceback.print_exc()
-" 2>&1
-
-echo "[DEBUG] Testing main_indexer.py syntax..."
-python3 -m py_compile "$PYTHON_SCRIPT" 2>&1 || echo "[ERROR] Syntax check failed"
-
 echo "[DEBUG] About to execute main_indexer.py..."
 if [ -n "$signedUrl" ]; then
     echo "[SIGNED_URL] Using signed URL for dataset processing"

@@ -210,9 +210,7 @@ class ConfigLoader:
 
         # API config
         api_config = indexer_config.get("api", {})
-        flattened_config["api_base_url"] = api_config.get(
-            "base_url"
-        )
+        flattened_config["api_base_url"] = api_config.get("base_url")
         flattened_config["api_timeout"] = api_config.get("timeout", 300)
 
         # Processing config

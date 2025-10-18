@@ -183,15 +183,10 @@ services:
       - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
       - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
       - ./grafana-configs/loki_logger.py:/app/src/vector_indexer/loki_logger.py
-    env_file:
-      - .env
+      - ./.env:/app/.env:ro
     environment:
       - server.port=9010
       - PYTHONPATH=/app:/app/src/vector_indexer
-      - S3_DATA_BUCKET_NAME=rag-search
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_ACCESS_KEY_ID=minioadmin
-      - S3_SECRET_ACCESS_KEY=minioadmin
     ports:
       - 9010:8080
     networks:

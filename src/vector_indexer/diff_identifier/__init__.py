@@ -7,10 +7,10 @@ from diff_identifier.s3_ferry_client import S3FerryClient
 
 __all__ = [
     "DiffDetector",
-    "create_diff_config", 
+    "create_diff_config",
     "DiffConfig",
     "DiffResult",
     "DiffError",
     "VersionManager",
-    "S3FerryClient"
+    "S3FerryClient",
 ]
