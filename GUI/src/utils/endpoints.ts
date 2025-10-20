@@ -27,3 +27,8 @@ export const llmConnectionsEndpoints = {
 export const inferenceEndpoints = {
   VIEW_TEST_INFERENCE_RESULT: (): string => `/rag-search/inference/test`,
 }
+
+export const vaultEndpoints = {
+  CREATE_VAULT_SECRET: (): string => `/rag-search/vault/secret/create`,
+  DELETE_VAULT_SECRET: (): string => `/rag-search/vault/secret/delete`,
+}
