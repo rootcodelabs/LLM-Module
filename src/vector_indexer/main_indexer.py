@@ -268,7 +268,7 @@ class VectorIndexer:
                 self.error_logger.log_processing_stats(self.stats)
                 self._log_final_summary()
 
-                #Step 5: Cleanup datasets folder after successful processing
+                # Step 5: Cleanup datasets folder after successful processing
                 self._cleanup_datasets()
 
                 return self.stats
