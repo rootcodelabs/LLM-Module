@@ -435,13 +435,9 @@ class ConfigurationLoader:
         Args:
             config: Configuration dictionary to update
         """
-        if "providers" not in config:
+        if "providers" not in config or not config["providers"]:
             return
-
         available_providers = config["providers"]
-
-        if not available_providers:
-            return
 
         # Auto-set default provider if not specified
         if "default_provider" not in config:
