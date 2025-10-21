@@ -313,7 +313,7 @@ services:
       - langfuse-worker
       - rag_search_db
     ports:
-      - 3000:3000
+      - 3005:3000
     env_file:
       - .env
     environment:

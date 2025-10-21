@@ -101,7 +101,7 @@ assign_disconnected_response:
     disconnected_response:
       {
         chatId: "${chatId}",
-        content: "The LLM connection is currently unavailable. Your request couldn’t be processed. Please retry shortly.",
+        content: "The LLM connection is currently unavailable. Your request couldn't be processed. Please retry shortly.",
         status: 400
       }
   next: return_connection_disconnected
