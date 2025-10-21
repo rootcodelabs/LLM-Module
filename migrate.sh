@@ -12,4 +12,4 @@ INI_FILE="constants.ini"
 DB_PASSWORD=$(get_ini_value "$INI_FILE" "DB_PASSWORD")
 
 
-docker run --rm --network bykstack -v `pwd`/DSL/Liquibase/changelog:/liquibase/changelog -v `pwd`/DSL/Liquibase/master.yml:/liquibase/master.yml -v `pwd`/DSL/Liquibase/data:/liquibase/data liquibase/liquibase --defaultsFile=/liquibase/changelog/liquibase.properties --changelog-file=master.yml --url=jdbc:postgresql://rag_search_db:5432/rag-search?user=postgres --password=$DB_PASSWORD update
+docker run --rm --network bykstack -v `pwd`/DSL/Liquibase/changelog:/liquibase/changelog -v `pwd`/DSL/Liquibase/master.yml:/liquibase/master.yml -v `pwd`/DSL/Liquibase/data:/liquibase/data liquibase/liquibase:4.33 --defaultsFile=/liquibase/changelog/liquibase.properties --changelog-file=master.yml --url=jdbc:postgresql://rag_search_db:5432/rag-search?user=postgres --password=$DB_PASSWORD update
