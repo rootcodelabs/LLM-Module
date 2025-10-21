@@ -256,48 +256,6 @@ class QdrantContextualSearch:
             )
             return []
 
-    def get_embedding_for_query(
-        self,
-        query: str,
-        environment: str = "production",
-        connection_id: Optional[str] = None,
-    ) -> Optional[List[float]]:
-        """
-        Get embedding for query using existing LLMOrchestrationService infrastructure.
-
-        Args:
-            query: Text to embed
-            environment: Environment for model resolution
-            connection_id: Optional connection ID
-
-        Returns:
-            Query embedding vector or None if failed
-        """
-        try:
-            # Import here to avoid circular dependencies
-            from src.llm_orchestration_service import LLMOrchestrationService
-
-            llm_service = LLMOrchestrationService()
-
-            # Use existing embedding creation method
-            embedding_result = llm_service.create_embeddings_for_indexer(
-                texts=[query],
-                environment=environment,
-                connection_id=connection_id,
-                batch_size=self._config.performance.batch_size,
-            )
-
-            embeddings = embedding_result.get("embeddings", [])
-            if embeddings and len(embeddings) > 0:
-                return embeddings[0]
-            else:
-                logger.error("No embedding returned for query")
-                return None
-
-        except Exception as e:
-            logger.error(f"Failed to get query embedding: {e}")
-            return None
-
     def get_embedding_for_query_with_service(
         self,
         query: str,
