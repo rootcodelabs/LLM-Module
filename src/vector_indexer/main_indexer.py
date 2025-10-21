@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from loguru import logger
+import hashlib
 
 
 # Add src to path for imports
@@ -267,8 +268,8 @@ class VectorIndexer:
                 self.error_logger.log_processing_stats(self.stats)
                 self._log_final_summary()
 
-                # Step 5: Cleanup datasets folder after successful processing
-                # self._cleanup_datasets()
+                #Step 5: Cleanup datasets folder after successful processing
+                self._cleanup_datasets()
 
                 return self.stats
 
@@ -544,7 +545,6 @@ class VectorIndexer:
                         if fallback_hash is None and Path(original_path).exists():
                             try:
                                 # Calculate hash using old method (read_bytes) for backward compatibility
-                                import hashlib
 
                                 file_content = Path(original_path).read_bytes()
                                 fallback_hash = hashlib.sha256(file_content).hexdigest()
