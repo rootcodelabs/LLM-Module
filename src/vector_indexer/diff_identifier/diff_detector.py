@@ -273,7 +273,7 @@ def create_diff_config() -> DiffConfig:
 
         # S3 configuration (required for DVC operations)
         s3_bucket_name = os.getenv("S3_DATA_BUCKET_NAME")
-        s3_bucket_path = os.getenv("S3_BUCKET_PATH")
+        s3_bucket_path = os.getenv("S3_DATA_BUCKET_PATH")
         s3_endpoint_url = os.getenv("S3_ENDPOINT_URL")
         s3_access_key_id = os.getenv("S3_ACCESS_KEY_ID")
         s3_secret_access_key = os.getenv("S3_SECRET_ACCESS_KEY")
@@ -313,10 +313,10 @@ def create_diff_config() -> DiffConfig:
         )
 
         logger.info("Diff configuration loaded successfully")
-        logger.debug(f"S3Ferry URL: {config.s3_ferry_url}")
-        logger.debug(f"Metadata S3 Path: {config.metadata_s3_path}")
-        logger.debug(f"DVC Remote URL: {config.dvc_remote_url}")
-        logger.debug(f"Datasets Path: {config.datasets_path}")
+        logger.info(f"S3Ferry URL: {config.s3_ferry_url}")
+        logger.info(f"Metadata S3 Path: {config.metadata_s3_path}")
+        logger.info(f"DVC Remote URL: {config.dvc_remote_url}")
+        logger.info(f"Datasets Path: {config.datasets_path}")
 
         return config
 
