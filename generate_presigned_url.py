@@ -6,8 +6,8 @@ from typing import List, Dict
 s3_client = boto3.client(
     "s3",
     endpoint_url="http://minio:9000",  # Replace with your MinIO URL
-    aws_access_key_id="",  # Replace with your access key
-    aws_secret_access_key="",  # Replace with your secret key
+    aws_access_key_id="minioadmin",  # Replace with your access key
+    aws_secret_access_key="minioadmin",  # Replace with your secret key
     config=Config(signature_version="s3v4"),  # Hardcoded signature version
     region_name="us-east-1",  # MinIO usually works with any region
 )

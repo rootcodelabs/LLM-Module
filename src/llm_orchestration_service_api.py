@@ -179,8 +179,10 @@ def test_orchestrate_llm_request(
             conversationHistory=[],
             url="test-context",
             environment=request.environment,
-            connection_id=request.connection_id,
+            connection_id=str(request.connectionId),
         )
+
+        logger.info(f"This is full request constructed for testing: {full_request}")
 
         # Process the request using the same logic
         response = orchestration_service.process_orchestration_request(full_request)

@@ -13,6 +13,7 @@ from models.request_models import (
     ConversationItem,
     PromptRefinerOutput,
     ContextGenerationRequest,
+    TestOrchestrationResponse,
 )
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
@@ -42,7 +43,7 @@ class LLMOrchestrationService:
 
     def process_orchestration_request(
         self, request: OrchestrationRequest
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """
         Process an orchestration request with guardrails and return response.
 
@@ -218,7 +219,7 @@ class LLMOrchestrationService:
         guardrails_adapter: NeMoRailsAdapter,
         request: OrchestrationRequest,
         costs_dict: Dict[str, Dict[str, Any]],
-    ) -> Optional[OrchestrationResponse]:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse, None]:
         """Check input guardrails and return blocked response if needed."""
         input_check_result = self._check_input_guardrails(
             guardrails_adapter=guardrails_adapter,
@@ -228,13 +229,24 @@ class LLMOrchestrationService:
 
         if not input_check_result.allowed:
             logger.warning(f"Input blocked by guardrails: {input_check_result.reason}")
-            return OrchestrationResponse(
-                chatId=request.chatId,
-                llmServiceActive=True,
-                questionOutOfLLMScope=False,
-                inputGuardFailed=True,
-                content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
-            )
+            if request.environment == "test":
+                logger.info(
+                    "Test environment detected – returning input guardrail violation message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=True,
+                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=True,
+                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                )
 
         logger.info("Input guardrails check passed")
         return None
@@ -669,7 +681,7 @@ class LLMOrchestrationService:
         relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
         response_generator: Optional[ResponseGeneratorAgent] = None,
         costs_dict: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """
         Generate response using retrieved chunks and ResponseGeneratorAgent only.
         No secondary LLM paths; no citations appended.
@@ -684,13 +696,24 @@ class LLMOrchestrationService:
             logger.warning(
                 "Response generator unavailable – returning technical issue message."
             )
-            return OrchestrationResponse(
-                chatId=request.chatId,
-                llmServiceActive=False,
-                questionOutOfLLMScope=False,
-                inputGuardFailed=False,
-                content=TECHNICAL_ISSUE_MESSAGE,
-            )
+            if request.environment == "test":
+                logger.info(
+                    "Test environment detected – returning technical issue message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
 
         try:
             with llm_manager.use_task_local():
@@ -720,34 +743,65 @@ class LLMOrchestrationService:
 
             if question_out_of_scope:
                 logger.info("Question determined out-of-scope – sending fixed message.")
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,  # service OK; insufficient context
-                    questionOutOfLLMScope=True,
-                    inputGuardFailed=False,
-                    content=OUT_OF_SCOPE_MESSAGE,
-                )
+                if request.environment == "test":
+                    logger.info(
+                        "Test environment detected – returning out-of-scope message."
+                    )
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,  # service OK; insufficient context
+                        questionOutOfLLMScope=True,
+                        inputGuardFailed=False,
+                        content=OUT_OF_SCOPE_MESSAGE,
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,  # service OK; insufficient context
+                        questionOutOfLLMScope=True,
+                        inputGuardFailed=False,
+                        content=OUT_OF_SCOPE_MESSAGE,
+                    )
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
-            return OrchestrationResponse(
-                chatId=request.chatId,
-                llmServiceActive=True,
-                questionOutOfLLMScope=False,
-                inputGuardFailed=False,
-                content=answer,
-            )
+            if request.environment == "test":
+                logger.info("Test environment detected – returning generated answer.")
+                return TestOrchestrationResponse(
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=answer,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=answer,
+                )
 
         except Exception as e:
             logger.error(f"RAG Response generation failed: {str(e)}")
             # Standardized technical issue; no second LLM call, no citations
-            return OrchestrationResponse(
-                chatId=request.chatId,
-                llmServiceActive=False,
-                questionOutOfLLMScope=False,
-                inputGuardFailed=False,
-                content=TECHNICAL_ISSUE_MESSAGE,
-            )
+            if request.environment == "test":
+                logger.info(
+                    "Test environment detected – returning technical issue message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
 
     # ========================================================================
     # Vector Indexer Support Methods (Isolated from RAG Pipeline)

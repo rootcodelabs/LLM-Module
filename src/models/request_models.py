@@ -141,8 +141,8 @@ class TestOrchestrationRequest(BaseModel):
     environment: Literal["production", "test", "development"] = Field(
         ..., description="Environment context"
     )
-    connection_id: Optional[str] = Field(
-        None, description="Optional connection identifier"
+    connectionId: Optional[int] = Field(
+        ..., description="Optional connection identifier"
     )
 
 
