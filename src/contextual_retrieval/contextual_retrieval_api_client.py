@@ -319,32 +319,6 @@ class HTTPClientManager:
                 "is_closed": self._client.is_closed,
             }
 
-            # Try to get connection pool statistics safely
-            # Note: Accessing internal attributes for monitoring only
-            try:
-                transport = getattr(self._client, "_transport", None)
-                if transport and hasattr(transport, "_pool"):
-                    pool = getattr(transport, "_pool", None)
-                    if pool:
-                        # Use getattr with defaults to safely access pool statistics
-                        connections = getattr(pool, "_connections", [])
-                        keepalive_connections = getattr(
-                            pool, "_keepalive_connections", []
-                        )
-                        stats.update(
-                            {
-                                "pool_connections": len(connections)
-                                if connections
-                                else 0,
-                                "keepalive_connections": len(keepalive_connections)
-                                if keepalive_connections
-                                else 0,
-                            }
-                        )
-            except (AttributeError, TypeError):
-                # If we can't access pool stats, just continue without them
-                pass
-
             return stats
 
         except Exception as e:

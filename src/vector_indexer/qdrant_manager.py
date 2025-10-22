@@ -307,6 +307,269 @@ class QdrantManager:
             logger.error(f"Error counting points in {collection_name}: {e}")
             return 0
 
+    async def delete_chunks_by_document_hash(
+        self, collection_name: str, document_hash: str
+    ) -> int:
+        """
+        Delete all chunks associated with a specific document hash.
+
+        Args:
+            collection_name: Name of the Qdrant collection
+            document_hash: SHA256 hash of the document to delete chunks for
+
+        Returns:
+            Number of chunks deleted (estimated as 1 if deletion successful, 0 if nothing to delete)
+
+        Raises:
+            QdrantOperationError: If deletion fails
+        """
+        try:
+            logger.info(
+                f"🗑️  Attempting to delete chunks for document: {document_hash[:12]}... from {collection_name}"
+            )
+
+            # Step 1: Check if chunks exist BEFORE deletion (for accurate reporting)
+            pre_check_payload = {
+                "filter": {
+                    "must": [
+                        {"key": "document_hash", "match": {"value": document_hash}}
+                    ]
+                },
+                "limit": 100,  # Get up to 100 to count
+                "with_payload": False,
+                "with_vector": False,
+            }
+
+            pre_check_response = await self.client.post(
+                f"{self.qdrant_url}/collections/{collection_name}/points/scroll",
+                json=pre_check_payload,
+            )
+
+            chunks_found_before = 0
+            if pre_check_response.status_code == 200:
+                pre_check_data = pre_check_response.json()
+                chunks_found_before = len(
+                    pre_check_data.get("result", {}).get("points", [])
+                )
+                logger.info(f"🔍 Found {chunks_found_before} chunks to delete")
+            else:
+                logger.warning(
+                    f"⚠️  Pre-check query failed with status {pre_check_response.status_code}"
+                )
+
+            # Step 2: Execute deletion using filter
+            delete_payload = {
+                "filter": {
+                    "must": [
+                        {"key": "document_hash", "match": {"value": document_hash}}
+                    ]
+                }
+            }
+
+            logger.debug(f"🔍 Executing delete with filter: {delete_payload}")
+
+            response = await self.client.post(
+                f"{self.qdrant_url}/collections/{collection_name}/points/delete",
+                json=delete_payload,
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+
+                if result.get("status") == "ok":
+                    # Step 3: Verify deletion by checking if chunks still exist
+                    verify_payload = {
+                        "filter": {
+                            "must": [
+                                {
+                                    "key": "document_hash",
+                                    "match": {"value": document_hash},
+                                }
+                            ]
+                        },
+                        "limit": 1,
+                        "with_payload": False,
+                        "with_vector": False,
+                    }
+
+                    verify_response = await self.client.post(
+                        f"{self.qdrant_url}/collections/{collection_name}/points/scroll",
+                        json=verify_payload,
+                    )
+
+                    if verify_response.status_code == 200:
+                        verify_data = verify_response.json()
+                        remaining_chunks = len(
+                            verify_data.get("result", {}).get("points", [])
+                        )
+
+                        if remaining_chunks == 0:
+                            if chunks_found_before > 0:
+                                logger.info(
+                                    f"✅ Successfully deleted {chunks_found_before} chunk(s) from {collection_name}"
+                                )
+                                return chunks_found_before
+                            else:
+                                logger.info(
+                                    f"ℹ️  No chunks found for document {document_hash[:12]}... in {collection_name}"
+                                )
+                                return 0
+                        else:
+                            logger.error(
+                                f"❌ Delete verification failed: {remaining_chunks} chunk(s) still exist!"
+                            )
+                            return 0
+                    else:
+                        # Verification query failed, but delete was accepted
+                        # Assume success based on pre-check count
+                        if chunks_found_before > 0:
+                            logger.warning(
+                                f"⚠️  Delete succeeded but verification failed - assuming {chunks_found_before} chunks deleted"
+                            )
+                            return chunks_found_before
+                        else:
+                            logger.info(
+                                f"ℹ️  Delete completed (verification query failed, found {chunks_found_before} before)"
+                            )
+                            return 0
+                else:
+                    raise QdrantOperationError(
+                        f"Qdrant delete returned error status: {result}"
+                    )
+            else:
+                raise QdrantOperationError(
+                    f"Delete request failed with HTTP {response.status_code}: {response.text}"
+                )
+
+        except QdrantOperationError:
+            # Re-raise QdrantOperationError as-is
+            raise
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to delete chunks for document {document_hash[:12]}...: {e}"
+            )
+            raise QdrantOperationError(
+                f"Failed to delete chunks by document hash: {str(e)}"
+            )
+
+    async def delete_chunks_by_file_path(
+        self, collection_name: str, file_path: str
+    ) -> int:
+        """
+        Delete all chunks associated with a specific file path (fallback method).
+
+        Args:
+            collection_name: Name of the Qdrant collection
+            file_path: Original file path to delete chunks for
+
+        Returns:
+            Number of chunks deleted
+
+        Raises:
+            QdrantOperationError: If deletion fails
+        """
+        try:
+            logger.info(
+                f"🗑️  Deleting chunks for file path: {file_path} from {collection_name}"
+            )
+
+            # Count chunks first
+            scroll_payload = {
+                "filter": {
+                    "must": [{"key": "document_url", "match": {"value": file_path}}]
+                },
+                "limit": 1000,
+                "with_payload": False,
+                "with_vector": False,
+            }
+
+            scroll_response = await self.client.post(
+                f"{self.qdrant_url}/collections/{collection_name}/points/scroll",
+                json=scroll_payload,
+            )
+
+            chunks_to_delete = 0
+            if scroll_response.status_code == 200:
+                scroll_data = scroll_response.json()
+                chunks_to_delete = len(scroll_data.get("result", {}).get("points", []))
+
+            # Delete chunks using filter
+            delete_payload = {
+                "filter": {
+                    "must": [{"key": "document_url", "match": {"value": file_path}}]
+                }
+            }
+
+            response = await self.client.post(
+                f"{self.qdrant_url}/collections/{collection_name}/points/delete",
+                json=delete_payload,
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+                if result.get("status") == "ok":
+                    logger.info(
+                        f"✅ Successfully deleted {chunks_to_delete} chunks for file {file_path}"
+                    )
+                    return chunks_to_delete
+                else:
+                    raise QdrantOperationError(f"Qdrant returned error: {result}")
+            else:
+                raise QdrantOperationError(
+                    f"HTTP {response.status_code}: {response.text}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to delete chunks for file {file_path}: {e}")
+            raise QdrantOperationError(
+                f"Failed to delete chunks by file path: {str(e)}"
+            )
+
+    async def get_chunks_for_document(
+        self, collection_name: str, document_hash: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all chunks associated with a specific document hash.
+
+        Args:
+            collection_name: Name of the Qdrant collection
+            document_hash: SHA256 hash of the document
+
+        Returns:
+            List of chunk records with their metadata
+        """
+        try:
+            scroll_payload = {
+                "filter": {
+                    "must": [
+                        {"key": "document_hash", "match": {"value": document_hash}}
+                    ]
+                },
+                "limit": 1000,
+                "with_payload": True,
+                "with_vector": False,
+            }
+
+            response = await self.client.post(
+                f"{self.qdrant_url}/collections/{collection_name}/points/scroll",
+                json=scroll_payload,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("result", {}).get("points", [])
+            else:
+                logger.warning(
+                    f"Failed to get chunks for document {document_hash[:12]}...: HTTP {response.status_code}"
+                )
+                return []
+
+        except Exception as e:
+            logger.warning(
+                f"Error getting chunks for document {document_hash[:12]}...: {e}"
+            )
+            return []
+
     async def delete_collection(self, collection_name: str) -> bool:
         """Delete a collection (for cleanup/testing)."""
 

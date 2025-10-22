@@ -32,7 +32,7 @@ class LokiLogger:
         # Set default timeout for all requests
         self.timeout = 5
 
-    def _send_to_loki(self, level: str, message: str, **extra_fields):
+    def _send_to_loki(self, level: str, message: str):
         """Send log entry directly to Loki API"""
         try:
             # Create timestamp in nanoseconds (Loki requirement)
@@ -45,14 +45,6 @@ class LokiLogger:
                 "hostname": self.hostname,
             }
 
-            # Add extra fields as labels, filtering out None values except for model_id
-            for key, value in extra_fields.items():
-                if key == "model_id":
-                    # Always include model_id, default to "None" if not provided
-                    labels[key] = str(value) if value is not None else "None"
-                elif value is not None:
-                    labels[key] = str(value)
-
             # Create log entry
             log_entry = {
                 "timestamp": datetime.now().isoformat(),
@@ -60,7 +52,6 @@ class LokiLogger:
                 "message": message,
                 "hostname": self.hostname,
                 "service": self.service_name,
-                **extra_fields,
             }
 
             # Prepare Loki payload
@@ -87,29 +78,16 @@ class LokiLogger:
 
         # Also print to console for immediate feedback
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        model_info = (
-            f" [Model: {extra_fields.get('model_id', 'N/A')}]"
-            if extra_fields.get("model_id")
-            else ""
-        )
-        print(f"[{timestamp}] {level: <8}{model_info} | {message}")
+        print(f"[{timestamp}] {level: <8} | {message}")
 
-    def info(self, message: str, model_id: str | None = None, **extra_fields):
-        if model_id:
-            extra_fields["model_id"] = model_id
-        self._send_to_loki("INFO", message, **extra_fields)
+    def info(self, message: str):
+        self._send_to_loki("INFO", message)
 
-    def error(self, message: str, model_id: str | None = None, **extra_fields):
-        if model_id:
-            extra_fields["model_id"] = model_id
-        self._send_to_loki("ERROR", message, **extra_fields)
+    def error(self, message: str):
+        self._send_to_loki("ERROR", message)
 
-    def warning(self, message: str, model_id: str | None = None, **extra_fields):
-        if model_id:
-            extra_fields["model_id"] = model_id
-        self._send_to_loki("WARNING", message, **extra_fields)
+    def warning(self, message: str):
+        self._send_to_loki("WARNING", message)
 
-    def debug(self, message: str, model_id: str | None = None, **extra_fields):
-        if model_id:
-            extra_fields["model_id"] = model_id
-        self._send_to_loki("DEBUG", message, **extra_fields)
+    def debug(self, message: str):
+        self._send_to_loki("DEBUG", message)

@@ -1,5 +1,6 @@
 """Document loader for scanning and loading documents from datasets folder."""
 
+import hashlib
 import json
 from pathlib import Path
 from typing import List
@@ -69,25 +70,39 @@ class DocumentLoader:
             else:
                 collection_name = collection_dir.name
 
-            document_hash = hash_dir.name
+            # This ensures document_hash is always the SHA-256 of file content
+            try:
+                with open(cleaned_file, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+
+                # Calculate SHA-256 hash of content (same method used everywhere)
+                content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+                logger.debug(
+                    f"Calculated content hash for {cleaned_file.name}: {content_hash[:12]}..."
+                )
+
+            except Exception as e:
+                logger.warning(f"Failed to calculate hash for {cleaned_file}: {e}")
+                continue
 
             # Check metadata file exists
             metadata_file = hash_dir / self.config.metadata_file
             if metadata_file.exists():
                 documents.append(
                     DocumentInfo(
-                        document_hash=document_hash,
+                        document_hash=content_hash,  # Use content hash consistently
                         cleaned_txt_path=str(cleaned_file),
                         source_meta_path=str(metadata_file),
                         dataset_collection=collection_name,
                     )
                 )
                 logger.debug(
-                    f"Found document: {document_hash} in collection: {collection_name}"
+                    f"Found document: {content_hash[:12]}... in collection: {collection_name}"
                 )
             else:
                 logger.warning(
-                    f"Skipping document {document_hash}: missing {self.config.metadata_file}"
+                    f"Skipping document in {hash_dir.name}: missing {self.config.metadata_file}"
                 )
 
         logger.info(f"Discovered {len(documents)} documents for processing")
@@ -98,7 +113,7 @@ class DocumentLoader:
         Load document content and metadata.
 
         Args:
-            doc_info: Document information
+            doc_info: Document information with content hash as document_hash
 
         Returns:
             ProcessingDocument with content and metadata
@@ -122,24 +137,28 @@ class DocumentLoader:
             metadata["dataset_collection"] = doc_info.dataset_collection
 
             logger.debug(
-                f"Loaded document {doc_info.document_hash}: {len(content)} characters"
+                f"Loaded document {doc_info.document_hash[:12]}...: {len(content)} characters"
             )
 
+            # It's already the content hash (calculated in discover_all_documents)
+            # No need to recalculate here - keeps the hash consistent
             return ProcessingDocument(
-                content=content, metadata=metadata, document_hash=doc_info.document_hash
+                content=content,
+                metadata=metadata,
+                document_hash=doc_info.document_hash,  # Already the content hash
             )
 
         except Exception as e:
-            error_msg = f"Failed to load document {doc_info.document_hash}: {e}"
+            error_msg = f"Failed to load document {doc_info.document_hash[:12]}...: {e}"
             logger.error(error_msg)
             raise DocumentLoadError(error_msg) from e
 
     def get_document_by_hash(self, document_hash: str) -> DocumentInfo:
         """
-        Find document by hash.
+        Find document by content hash.
 
         Args:
-            document_hash: Document hash to find
+            document_hash: Document content hash to find
 
         Returns:
             DocumentInfo object
@@ -153,7 +172,7 @@ class DocumentLoader:
             if doc_info.document_hash == document_hash:
                 return doc_info
 
-        raise ValueError(f"Document not found: {document_hash}")
+        raise ValueError(f"Document not found with hash: {document_hash[:12]}...")
 
     def validate_document_structure(self, doc_info: DocumentInfo) -> bool:
         """
@@ -168,11 +187,15 @@ class DocumentLoader:
         try:
             # Check files exist
             if not Path(doc_info.cleaned_txt_path).exists():
-                logger.error(f"Missing cleaned.txt for {doc_info.document_hash}")
+                logger.error(
+                    f"Missing cleaned.txt for document {doc_info.document_hash[:12]}..."
+                )
                 return False
 
             if not Path(doc_info.source_meta_path).exists():
-                logger.error(f"Missing source.meta.json for {doc_info.document_hash}")
+                logger.error(
+                    f"Missing source.meta.json for document {doc_info.document_hash[:12]}..."
+                )
                 return False
 
             # Try to load content with configurable validation
@@ -182,7 +205,8 @@ class DocumentLoader:
                 content = f.read().strip()
                 if len(content) < DocumentConstants.MIN_CONTENT_LENGTH:
                     logger.error(
-                        f"Content too short for {doc_info.document_hash}: {len(content)} chars (min: {DocumentConstants.MIN_CONTENT_LENGTH})"
+                        f"Content too short for document {doc_info.document_hash[:12]}...: "
+                        f"{len(content)} chars (min: {DocumentConstants.MIN_CONTENT_LENGTH})"
                     )
                     return False
 
@@ -191,7 +215,7 @@ class DocumentLoader:
                 metadata = json.load(f)
                 if not isinstance(metadata, dict):
                     logger.error(
-                        f"Invalid metadata format for {doc_info.document_hash}"
+                        f"Invalid metadata format for document {doc_info.document_hash[:12]}..."
                     )
                     return False
 
@@ -199,6 +223,6 @@ class DocumentLoader:
 
         except Exception as e:
             logger.error(
-                f"Document validation failed for {doc_info.document_hash}: {e}"
+                f"Document validation failed for {doc_info.document_hash[:12]}...: {e}"
             )
             return False
