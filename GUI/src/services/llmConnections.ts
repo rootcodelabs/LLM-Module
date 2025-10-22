@@ -1,5 +1,5 @@
 import apiDev from './api-dev';
-import { llmConnectionsEndpoints } from 'utils/endpoints';
+import { llmConnectionsEndpoints, vaultEndpoints } from 'utils/endpoints';
 import { removeCommasFromNumber } from 'utils/commonUtils';
 import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
 
@@ -100,6 +100,47 @@ export interface LLMConnectionFormData {
   embeddingModelApiKey?: string;
 }
 
+// Vault secret service functions
+async function createVaultSecret(connectionId: string, connectionData: LLMConnectionFormData): Promise<void> {
+ 
+  const payload = {
+    connectionId,
+    llmPlatform: connectionData.llmPlatform,
+    llmModel: connectionData.llmModel,
+    embeddingModel: connectionData.embeddingModel,
+    embeddingPlatform: connectionData.embeddingModelPlatform,
+    deploymentEnvironment: connectionData.deploymentEnvironment.toLowerCase(),
+    // AWS credentials
+    ...(connectionData.llmPlatform === 'aws' && {
+      secretKey: connectionData.secretKey || '',
+      accessKey: connectionData.accessKey || '',
+    }),
+    // Azure credentials  
+    ...(connectionData.llmPlatform === 'azure' && {
+      deploymentName: connectionData.deploymentName || '',
+      targetUrl: connectionData.targetUri || '',
+      apiKey: connectionData.apiKey || '',
+    }),
+    embeddingModelApiKey: connectionData.embeddingModelApiKey || '',
+  };
+
+  await apiDev.post(vaultEndpoints.CREATE_VAULT_SECRET(), payload);
+}
+
+async function deleteVaultSecret(connectionId: string, connectionData: Partial<LLMConnectionFormData>): Promise<void> {
+  
+  const payload = {
+    connectionId,
+    llmPlatform: connectionData.llmPlatform || '',
+    llmModel: connectionData.llmModel || '',
+    embeddingModel: connectionData.embeddingModel || '', 
+    embeddingPlatform: connectionData.embeddingModelPlatform || '',
+    deploymentEnvironment: connectionData.deploymentEnvironment?.toLowerCase() || '',
+  };
+
+  await apiDev.post(vaultEndpoints.DELETE_VAULT_SECRET(), payload);
+}
+
 export async function fetchLLMConnectionsPaginated(filters: LLMConnectionFilters): Promise<LLMConnection[]> {
   const queryParams = new URLSearchParams();
 
@@ -151,7 +192,21 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     // Embedding model credentials
     embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
   });
-  return data?.response;
+  
+  const connection = data?.response;
+  
+  // After successful database creation, store secrets in vault
+  if (connection && connection.id) {
+    try {
+      await createVaultSecret(connection.id.toString(), connectionData);
+    } catch (vaultError) {
+      console.error('Failed to store secrets in vault:', vaultError);
+      // Note: We don't throw here to avoid breaking the connection creation flow
+      // The connection is already created in the database
+    }
+  }
+  
+  return connection;
 }
 
 export async function updateLLMConnection(
@@ -180,13 +235,53 @@ export async function updateLLMConnection(
     // Embedding model credentials
     embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
   });
-  return data?.response;
+  
+  const connection = data?.response;
+  
+  // After successful database update, update secrets in vault
+  if (connection) {
+    try {
+      await createVaultSecret(id.toString(), connectionData);
+    } catch (vaultError) {
+      console.error('Failed to update secrets in vault:', vaultError);
+      // Note: We don't throw here to avoid breaking the connection update flow
+      // The connection is already updated in the database
+    }
+  }
+  
+  return connection;
 }
 
 export async function deleteLLMConnection(id: string | number): Promise<void> {
+  // First, get the connection data to extract vault deletion parameters
+  let connectionToDelete: LLMConnection | null = null;
+  try {
+    connectionToDelete = await getLLMConnection(id);
+  } catch (error) {
+    console.error('Failed to get connection data before deletion:', error);
+  }
+  
+  // Delete from database
   await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
     connection_id: id,
   });
+  
+  // After successful database deletion, delete secrets from vault
+  if (connectionToDelete) {
+    try {
+      await deleteVaultSecret(id.toString(), {
+        llmPlatform: connectionToDelete.llmPlatform,
+        llmModel: connectionToDelete.llmModel,
+        embeddingModel: connectionToDelete.embeddingModel,
+        embeddingModelPlatform: connectionToDelete.embeddingPlatform,
+        deploymentEnvironment: connectionToDelete.environment,
+      });
+    } catch (vaultError) {
+      console.error('Failed to delete secrets from vault:', vaultError);
+      // Note: We don't throw here as the database deletion has already succeeded
+      // This is logged for monitoring/debugging purposes
+    }
+  }
 }
 
 export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
