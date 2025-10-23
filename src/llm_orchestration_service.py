@@ -118,7 +118,99 @@ class LLMOrchestrationService:
             components["llm_manager"]
         )
 
+        # Log optimization status for all components
+        self._log_optimization_status(components)
+
         return components
+
+    def _log_optimization_status(self, components: Dict[str, Any]) -> None:
+        """Log optimization status for all initialized components."""
+        try:
+            logger.info("=== OPTIMIZATION STATUS ===")
+
+            self._log_guardrails_status(components)
+            self._log_refiner_status(components)
+            self._log_generator_status(components)
+
+            logger.info("=== END OPTIMIZATION STATUS ===")
+
+        except Exception as e:
+            logger.warning(f"Failed to log optimization status: {str(e)}")
+
+    def _log_guardrails_status(self, components: Dict[str, Any]) -> None:
+        """Log guardrails optimization status."""
+        if not components.get("guardrails_adapter"):
+            logger.info(" Guardrails: Not initialized")
+            return
+
+        try:
+            from src.guardrails.optimized_guardrails_loader import get_guardrails_loader
+
+            guardrails_loader = get_guardrails_loader()
+            _, metadata = guardrails_loader.get_optimized_config_path()
+
+            if metadata.get("optimized", False):
+                logger.info(
+                    f"✓ Guardrails: OPTIMIZED (version: {metadata.get('version', 'unknown')})"
+                )
+                metrics = metadata.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: weighted_accuracy={metrics.get('weighted_accuracy', 'N/A')}"
+                    )
+            else:
+                logger.info(" Guardrails: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f" Guardrails: Status check failed - {str(e)}")
+
+    def _log_refiner_status(self, components: Dict[str, Any]) -> None:
+        """Log refiner optimization status."""
+        if not hasattr(components.get("llm_manager"), "__class__"):
+            logger.info("⚠ Refiner: LLM Manager not available")
+            return
+
+        try:
+            from src.prompt_refine_manager.prompt_refiner import PromptRefinerAgent
+
+            test_refiner = PromptRefinerAgent(llm_manager=components["llm_manager"])
+            refiner_info = test_refiner.get_module_info()
+
+            if refiner_info.get("optimized", False):
+                logger.info(
+                    f"✓ Refiner: OPTIMIZED (version: {refiner_info.get('version', 'unknown')})"
+                )
+                metrics = refiner_info.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+            else:
+                logger.info("⚠ Refiner: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f"⚠ Refiner: Status check failed - {str(e)}")
+
+    def _log_generator_status(self, components: Dict[str, Any]) -> None:
+        """Log generator optimization status."""
+        if not components.get("response_generator"):
+            logger.info(" Generator: Not initialized")
+            return
+
+        try:
+            generator_info = components["response_generator"].get_module_info()
+
+            if generator_info.get("optimized", False):
+                logger.info(
+                    f"✓ Generator: OPTIMIZED (version: {generator_info.get('version', 'unknown')})"
+                )
+                metrics = generator_info.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+            else:
+                logger.info(" Generator: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f" Generator: Status check failed - {str(e)}")
 
     def _execute_orchestration_pipeline(
         self,
@@ -500,6 +592,41 @@ class LLMOrchestrationService:
                 f"({total_costs['total_calls']} calls, "
                 f"{total_costs['total_tokens']} tokens)"
             )
+
+            # Log module versions being used
+            logger.info("\nMODULE VERSIONS IN USE:")
+            try:
+                from src.optimization.optimized_module_loader import get_module_loader
+                from src.guardrails.optimized_guardrails_loader import (
+                    get_guardrails_loader,
+                )
+
+                loader = get_module_loader()
+                guardrails_loader = get_guardrails_loader()
+
+                # Log refiner version
+                _, refiner_meta = loader.load_refiner_module()
+                logger.info(
+                    f"  Refiner: {refiner_meta.get('version', 'unknown')} "
+                    f"({'optimized' if refiner_meta.get('optimized') else 'base'})"
+                )
+
+                # Log generator version
+                _, generator_meta = loader.load_generator_module()
+                logger.info(
+                    f"  Generator: {generator_meta.get('version', 'unknown')} "
+                    f"({'optimized' if generator_meta.get('optimized') else 'base'})"
+                )
+
+                # Log guardrails version
+                _, guardrails_meta = guardrails_loader.get_optimized_config_path()
+                logger.info(
+                    f"  Guardrails: {guardrails_meta.get('version', 'unknown')} "
+                    f"({'optimized' if guardrails_meta.get('optimized') else 'base'})"
+                )
+
+            except Exception as version_error:
+                logger.debug(f"Could not log module versions: {str(version_error)}")
 
         except Exception as e:
             logger.warning(f"Failed to log costs: {str(e)}")

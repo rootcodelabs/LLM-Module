@@ -64,7 +64,38 @@ const TestProductionLLM: FC = () => {
         url: 'https://test-url.example.com',
       };
 
-      const response = await productionInference(request);
+      let response;
+      let attemptCount = 0;
+      const maxAttempts = 2;
+
+      // Retry logic
+      while (attemptCount < maxAttempts) {
+        try {
+          attemptCount++;
+          console.log(`Production Inference Attempt ${attemptCount}/${maxAttempts}`);
+          response = await productionInference(request);
+          
+          // If we get a successful response, break out of retry loop
+          if (!response.status || response.status < 400) {
+            break;
+          }
+          
+          // If first attempt failed with error status, retry once more
+          if (attemptCount < maxAttempts && response.status >= 400) {
+            console.log('Retrying due to error status...');
+            continue;
+          }
+        } catch (err) {
+          // If first attempt threw an error, retry once more
+          if (attemptCount < maxAttempts) {
+            console.log('Retrying due to exception...');
+            continue;
+          }
+          throw err; // Re-throw on final attempt
+        }
+      }
+
+      console.log('Production Inference Response:', response);
 
       // Create bot response message
       let botContent = '';
@@ -76,7 +107,7 @@ const TestProductionLLM: FC = () => {
         botMessageType = 'error';
       } else {
         // Success response
-        botContent = response.content || 'Response received successfully.';
+        botContent = response?.response?.content || 'Response received successfully.';
         
         if (response.questionOutOfLlmScope) {
           botContent += ' (Note: This question appears to be outside the LLM scope)';
@@ -95,10 +126,8 @@ const TestProductionLLM: FC = () => {
       // Show toast notification
       toast.open({
         type: botMessageType,
-        title: botMessageType === 'success' ? t('responseReceived') : t('errorOccurred'),
-        message: botMessageType === 'success' 
-          ? t('successMessage') 
-          : t('errorMessage'),
+        title: t('errorOccurred'),
+        message: t('errorMessage'),
       });
 
     } catch (error) {
