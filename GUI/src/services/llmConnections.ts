@@ -69,6 +69,16 @@ export interface LLMConnectionFilters {
   environment?: string;
   status?: string;
 }
+
+export interface ProductionConnectionFilters {
+  llmPlatform?: string;
+  llmModel?: string;
+  embeddingPlatform?: string;
+  embeddingModel?: string;
+  connectionStatus?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}
 export interface LegacyLLMConnectionFilters {
   page: number;
   pageSize: number;
@@ -164,8 +174,22 @@ export async function getLLMConnection(id: string | number): Promise<LLMConnecti
   return data?.response;
 }
 
-export async function getProductionConnection(): Promise<LLMConnection | null> {
-  const { data } = await apiDev.get(llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION());
+export async function getProductionConnection(filters?: ProductionConnectionFilters): Promise<LLMConnection | null> {
+  const queryParams = new URLSearchParams();
+
+  if (filters?.llmPlatform) queryParams.append('llmPlatform', filters.llmPlatform);
+  if (filters?.llmModel) queryParams.append('llmModel', filters.llmModel);
+  if (filters?.embeddingPlatform) queryParams.append('embeddingPlatform', filters.embeddingPlatform);
+  if (filters?.embeddingModel) queryParams.append('embeddingModel', filters.embeddingModel);
+  if (filters?.connectionStatus) queryParams.append('connectionStatus', filters.connectionStatus);
+  if (filters?.sortBy) queryParams.append('sortBy', filters.sortBy);
+  if (filters?.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
+
+  const url = queryParams.toString() 
+    ? `${llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION()}?${queryParams.toString()}`
+    : llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION();
+    
+  const { data } = await apiDev.get(url);
   return data?.response?.[0] || null;
 }
 

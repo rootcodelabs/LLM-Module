@@ -395,7 +395,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                   options={getLLMModelOptions() || []}
                   placeholder={
                     llmModelsLoading
-                      ? "Loading models..."
+                      ? "Select LLM Model"
                       : llmModelsError
                         ? "Error loading models"
                         : !selectedLLMPlatform
@@ -467,7 +467,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                   options={getEmbeddingModelOptions() || []}
                   placeholder={
                     embeddingModelsLoading
-                      ? "Loading models..."
+                      ? "Select Embedding Model"
                       : embeddingModelsError
                         ? "Error loading models"
                         : !selectedEmbeddingPlatform
