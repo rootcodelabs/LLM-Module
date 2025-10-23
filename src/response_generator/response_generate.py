@@ -6,6 +6,7 @@ import logging
 
 from src.llm_orchestrator_config.llm_cochestrator_constants import OUT_OF_SCOPE_MESSAGE
 from src.utils.cost_utils import get_lm_usage_since
+from src.optimization.optimized_module_loader import get_module_loader
 
 # Configure logging
 logging.basicConfig(
@@ -83,13 +84,77 @@ def _should_flag_out_of_scope(
 class ResponseGeneratorAgent(dspy.Module):
     """
     Creates a grounded, humanized answer from retrieved chunks.
+    Now supports loading optimized modules from DSPy optimization process.
     Returns a dict: {"answer": str, "questionOutOfLLMScope": bool, "usage": dict}
     """
 
-    def __init__(self, max_retries: int = 2) -> None:
+    def __init__(self, max_retries: int = 2, use_optimized: bool = True) -> None:
         super().__init__()
-        self._predictor = dspy.Predict(ResponseGenerator)
         self._max_retries = max(0, int(max_retries))
+
+        # Try to load optimized module
+        self._optimized_metadata = {}
+        if use_optimized:
+            self._predictor = self._load_optimized_or_base()
+        else:
+            logger.info("Using base (non-optimized) generator module")
+            self._predictor = dspy.Predict(ResponseGenerator)
+            self._optimized_metadata = {
+                "component": "generator",
+                "version": "base",
+                "optimized": False,
+            }
+
+    def _load_optimized_or_base(self) -> dspy.Module:
+        """
+        Load optimized generator module if available, otherwise use base.
+
+        Returns:
+            DSPy module (optimized or base)
+        """
+        try:
+            loader = get_module_loader()
+            optimized_module, metadata = loader.load_generator_module()
+
+            self._optimized_metadata = metadata
+
+            if optimized_module is not None:
+                logger.info(
+                    f"✓ Loaded OPTIMIZED generator module "
+                    f"(version: {metadata.get('version', 'unknown')}, "
+                    f"optimizer: {metadata.get('optimizer', 'unknown')})"
+                )
+
+                # Log optimization metrics if available
+                metrics = metadata.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Optimization metrics: "
+                        f"avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+
+                return optimized_module
+            else:
+                logger.warning(
+                    f"Could not load optimized generator module, using base module. "
+                    f"Reason: {metadata.get('error', 'Not found')}"
+                )
+                return dspy.Predict(ResponseGenerator)
+
+        except Exception as e:
+            logger.error(f"Error loading optimized generator: {str(e)}")
+            logger.warning("Falling back to base generator module")
+            self._optimized_metadata = {
+                "component": "generator",
+                "version": "base",
+                "optimized": False,
+                "error": str(e),
+            }
+            return dspy.Predict(ResponseGenerator)
+
+    def get_module_info(self) -> Dict[str, Any]:
+        """Get information about the loaded module."""
+        return self._optimized_metadata.copy()
 
     def _predict_once(
         self, question: str, context_blocks: List[str], citation_labels: List[str]
