@@ -24,7 +24,7 @@ CREATE TABLE llm_connections (
     -- Azure
     embedding_deployment_name VARCHAR(150),  -- for Azure deployments
     embedding_target_uri TEXT,                -- for custom endpoints
-    embedding_api_key TEXT,                   -- secured api key mocked here
+    embedding_azure_api_key TEXT,                   -- secured api key mocked here
     -- AWS Bedrock
     embedding_secret_key TEXT,
     embedding_access_key TEXT,

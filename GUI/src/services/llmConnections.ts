@@ -30,6 +30,13 @@ export interface LLMConnection {
   accessKey?: string;
   // Embedding model credentials
   embeddingModelApiKey?: string;
+  // Embedding AWS Bedrock credentials
+  embeddingAccessKey?: string;
+  embeddingSecretKey?: string;
+  // Embedding Azure credentials
+  embeddingDeploymentName?: string;
+  embeddingTargetUri?: string;
+  embeddingAzureApiKey?: string;
 }
 
 export interface LLMConnectionsResponse {
@@ -108,6 +115,13 @@ export interface LLMConnectionFormData {
   accessKey?: string;
   // Embedding model credentials
   embeddingModelApiKey?: string;
+  // Embedding AWS Bedrock credentials
+  embeddingAccessKey?: string;
+  embeddingSecretKey?: string;
+  // Embedding Azure credentials
+  embeddingDeploymentName?: string;
+  embeddingTargetUri?: string;
+  embeddingAzureApiKey?: string;
 }
 
 // Vault secret service functions
@@ -131,7 +145,17 @@ async function createVaultSecret(connectionId: string, connectionData: LLMConnec
       targetUrl: connectionData.targetUri || '',
       apiKey: connectionData.apiKey || '',
     }),
-    embeddingModelApiKey: connectionData.embeddingModelApiKey || '',
+    // Embedding AWS Bedrock credentials
+    ...(connectionData.embeddingModelPlatform === 'aws' && {
+      embeddingAccessKey: connectionData.embeddingAccessKey || '',
+      embeddingSecretKey: connectionData.embeddingSecretKey || '',
+    }),
+    // Embedding Azure credentials
+    ...(connectionData.embeddingModelPlatform === 'azure' && {
+      embeddingDeploymentName: connectionData.embeddingDeploymentName || '',
+      embeddingTargetUri: connectionData.embeddingTargetUri || '',
+      embeddingAzureApiKey: connectionData.embeddingAzureApiKey || '',
+    }),
   };
 
   await apiDev.post(vaultEndpoints.CREATE_VAULT_SECRET(), payload);
@@ -214,7 +238,13 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     secret_key: maskSensitiveKey(connectionData.secretKey) || "",
     access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
+    // Embedding AWS Bedrock credentials
+    embedding_access_key: maskSensitiveKey(connectionData.embeddingAccessKey) || "",
+    embedding_secret_key: maskSensitiveKey(connectionData.embeddingSecretKey) || "",
+    // Embedding Azure credentials
+    embedding_deployment_name: connectionData.embeddingDeploymentName || "",
+    embedding_target_uri: connectionData.embeddingTargetUri || "",
+    embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
   
   const connection = data?.response;
@@ -257,7 +287,13 @@ export async function updateLLMConnection(
     secret_key: maskSensitiveKey(connectionData.secretKey) || "",
     access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
+    // Embedding AWS Bedrock credentials
+    embedding_access_key: maskSensitiveKey(connectionData.embeddingAccessKey) || "",
+    embedding_secret_key: maskSensitiveKey(connectionData.embeddingSecretKey) || "",
+    // Embedding Azure credentials
+    embedding_deployment_name: connectionData.embeddingDeploymentName || "",
+    embedding_target_uri: connectionData.embeddingTargetUri || "",
+    embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
   
   const connection = data?.response;

@@ -56,9 +56,23 @@ declaration:
         type: string
         description: "AWS access key"
       # Embedding model credentials
-      - field: embedding_model_api_key
+      # Embedding AWS Bedrock credentials
+      - field: embedding_access_key
         type: string
-        description: "Embedding model API key"
+        description: "AWS access key for embedding model"
+      - field: embedding_secret_key
+        type: string
+        description: "AWS secret key for embedding model"
+      # Embedding Azure credentials
+      - field: embedding_deployment_name
+        type: string
+        description: "Azure embedding deployment name"
+      - field: embedding_target_uri
+        type: string
+        description: "Azure embedding endpoint URI"
+      - field: embedding_azure_api_key
+        type: string
+        description: "Azure embedding API key"
 
 extract_request_data:
   assign:
@@ -77,7 +91,12 @@ extract_request_data:
     api_key: ${incoming.body.api_key || ""}
     secret_key: ${incoming.body.secret_key || ""}
     access_key: ${incoming.body.access_key || ""}
-    embedding_model_api_key: ${incoming.body.embedding_model_api_key || ""}
+    # Embedding platform specific credentials
+    embedding_access_key: ${incoming.body.embedding_access_key || ""}
+    embedding_secret_key: ${incoming.body.embedding_secret_key || ""}
+    embedding_deployment_name: ${incoming.body.embedding_deployment_name || ""}
+    embedding_target_uri: ${incoming.body.embedding_target_uri || ""}
+    embedding_azure_api_key: ${incoming.body.embedding_azure_api_key || ""}
     created_at: ${new Date().toISOString()}
   next: validate_environment
 
@@ -138,7 +157,12 @@ add_llm_connection:
       api_key: ${api_key}
       secret_key: ${secret_key}
       access_key: ${access_key}
-      embedding_model_api_key: ${embedding_model_api_key}
+      # Embedding platform specific credentials
+      embedding_access_key: ${embedding_access_key}
+      embedding_secret_key: ${embedding_secret_key}
+      embedding_deployment_name: ${embedding_deployment_name}
+      embedding_target_uri: ${embedding_target_uri}
+      embedding_azure_api_key: ${embedding_azure_api_key}
   result: connection_result
   next: assign_connection_response
 

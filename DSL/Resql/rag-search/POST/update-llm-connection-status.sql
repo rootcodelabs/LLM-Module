@@ -19,5 +19,4 @@ RETURNING
     target_uri,
     api_key,
     secret_key,
-    access_key,
-    embedding_model_api_key;
+    access_key;

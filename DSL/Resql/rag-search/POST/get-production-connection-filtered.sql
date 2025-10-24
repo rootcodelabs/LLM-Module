@@ -18,7 +18,11 @@ SELECT
     api_key,
     secret_key,
     access_key,
-    embedding_model_api_key,
+    embedding_secret_key,
+    embedding_access_key,
+    embedding_deployment_name,
+    embedding_target_uri,
+    embedding_azure_api_key,
     -- Calculate budget status based on usage percentage and configured thresholds
     CASE 
         WHEN used_budget IS NULL OR used_budget = 0 OR (used_budget::DECIMAL / monthly_budget::DECIMAL) < (warn_budget_threshold::DECIMAL / 100.0) THEN 'within_budget'

@@ -38,6 +38,13 @@ export type LLMConnectionFormData = {
   apiKey?: string;
   // Embedding model credentials
   embeddingModelApiKey?: string;
+  // Embedding AWS Bedrock credentials
+  embeddingAccessKey?: string;
+  embeddingSecretKey?: string;
+  // Embedding Azure credentials
+  embeddingDeploymentName?: string;
+  embeddingTargetUri?: string;
+  embeddingAzureApiKey?: string;
 };
 
 type LLMConnectionFormProps = {
@@ -71,7 +78,6 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       llmModel: '',
       embeddingModelPlatform: '',
       embeddingModel: '',
-      embeddingModelApiKey: '',
       monthlyBudget: '',
       warnBudget: '',
       stopBudget: '',
@@ -85,6 +91,14 @@ const LLMConnectionForm: React.FC<LLMConnectionFormProps> = ({
       targetUri: '',
       apiKey: '',
       // Embedding model credentials
+      embeddingModelApiKey: '',
+      // Embedding AWS Bedrock credentials
+      embeddingAccessKey: '',
+      embeddingSecretKey: '',
+      // Embedding Azure credentials
+      embeddingDeploymentName: '',
+      embeddingTargetUri: '',
+      embeddingAzureApiKey: '',
       ...defaultValues,
     },
     mode: 'onChange',
@@ -126,6 +140,10 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
   const [secretKeyReplaceMode, setSecretKeyReplaceMode] = React.useState(isEditing);
   const [accessKeyReplaceMode, setAccessKeyReplaceMode] = React.useState(isEditing);
   const [embeddingApiKeyReplaceMode, setEmbeddingApiKeyReplaceMode] = React.useState(isEditing);
+  // Embedding platform specific replace modes
+  const [embeddingSecretKeyReplaceMode, setEmbeddingSecretKeyReplaceMode] = React.useState(isEditing);
+  const [embeddingAccessKeyReplaceMode, setEmbeddingAccessKeyReplaceMode] = React.useState(isEditing);
+  const [embeddingAzureApiKeyReplaceMode, setEmbeddingAzureApiKeyReplaceMode] = React.useState(isEditing);
 
   const resetLLMCredentialFields = () => {
     setValue('accessKey', '');
@@ -144,9 +162,18 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
   const resetEmbeddingModelCredentialFields = () => {
     setValue('embeddingModelApiKey', '');
     setValue('embeddingModel', '');
+    // Reset embedding platform specific fields
+    setValue('embeddingAccessKey', '');
+    setValue('embeddingSecretKey', '');
+    setValue('embeddingDeploymentName', '');
+    setValue('embeddingTargetUri', '');
+    setValue('embeddingAzureApiKey', '');
 
-    // Reset replace mode state when platform changes
+    // Reset replace mode states when platform changes
     setEmbeddingApiKeyReplaceMode(false);
+    setEmbeddingSecretKeyReplaceMode(false);
+    setEmbeddingAccessKeyReplaceMode(false);
+    setEmbeddingAzureApiKeyReplaceMode(false);
   };
   // Model options based on selected platform
   const getLLMModelOptions = () => {
@@ -306,6 +333,165 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                   type={isEditing ? 'text' : 'password'}
                   placeholder="Enter your LLM API key"
                   error={errors.apiKey?.message}
+                  {...field}
+                />
+              )}
+            />
+          </div>
+        );
+    }
+  };
+
+  const renderEmbeddingPlatformSpecificFields = () => {
+    switch (selectedEmbeddingPlatform) {
+      case 'aws':
+        return (
+          <>
+            <div className="form-row">
+              <p className='form-label'>Embedding Access Key</p>
+              <p className='form-description'>AWS Access Key for Bedrock embedding service</p>
+              <Controller
+                name="embeddingAccessKey"
+                control={control}
+                rules={{ required: 'Embedding Access Key is required for AWS Bedrock' }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    type={isEditing ? 'text' : 'password'}
+                    placeholder="Enter AWS Access Key for embeddings"
+                    error={errors.embeddingAccessKey?.message}
+                    readOnly={embeddingAccessKeyReplaceMode}
+                    showEndButton={embeddingAccessKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setEmbeddingAccessKeyReplaceMode(false);
+                      setValue('embeddingAccessKey', '');
+                    }}
+                    endButtonText="Change"
+                    {...field}
+                  />
+                )}
+              />
+            </div>
+            <div className="form-row">
+              <p className='form-label'>Embedding Secret Key</p>
+              <p className='form-description'>AWS Secret Key for Bedrock embedding service</p>
+              <Controller
+                name="embeddingSecretKey"
+                control={control}
+                rules={{ required: 'Embedding Secret Key is required for AWS Bedrock' }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    type={isEditing ? 'text' : 'password'}
+                    placeholder="Enter AWS Secret Key for embeddings"
+                    error={errors.embeddingSecretKey?.message}
+                    readOnly={embeddingSecretKeyReplaceMode}
+                    showEndButton={embeddingSecretKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setEmbeddingSecretKeyReplaceMode(false);
+                      setValue('embeddingSecretKey', '');
+                    }}
+                    endButtonText="Change"
+                    {...field}
+                  />
+                )}
+              />
+            </div>
+          </>
+        );
+      case 'azure':
+        return (
+          <>
+            <div className="form-row">
+              <p className='form-label'>Embedding Deployment Name</p>
+              <p className='form-description'>Azure OpenAI embedding deployment name</p>
+              <Controller
+                name="embeddingDeploymentName"
+                control={control}
+                rules={{ required: 'Embedding Deployment Name is required for Azure OpenAI' }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    placeholder="Enter embedding deployment name"
+                    error={errors.embeddingDeploymentName?.message}
+                    {...field}
+                  />
+                )}
+              />
+            </div>
+            <div className="form-row">
+              <p className='form-label'>Embedding Endpoint / Target URI</p>
+              <p className='form-description'>Azure OpenAI embedding service endpoint URL</p>
+              <Controller
+                name="embeddingTargetUri"
+                control={control}
+                rules={{
+                  required: 'Embedding Endpoint is required for Azure OpenAI',
+                  pattern: {
+                    value: /^https?:\/\/.+/,
+                    message: 'Please enter a valid URL starting with http:// or https://'
+                  }
+                }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    placeholder="https://your-resource.openai.azure.com/"
+                    error={errors.embeddingTargetUri?.message}
+                    {...field}
+                  />
+                )}
+              />
+            </div>
+            <div className="form-row">
+              <p className='form-label'>Embedding API Key</p>
+              <p className='form-description'>Azure OpenAI embedding API key</p>
+              <Controller
+                name="embeddingAzureApiKey"
+                control={control}
+                rules={{ required: 'Embedding API Key is required for Azure OpenAI' }}
+                render={({ field }) => (
+                  <FormInput
+                    label=""
+                    type={isEditing ? 'text' : 'password'}
+                    placeholder="Enter Azure OpenAI embedding API key"
+                    error={errors.embeddingAzureApiKey?.message}
+                    readOnly={embeddingAzureApiKeyReplaceMode}
+                    showEndButton={embeddingAzureApiKeyReplaceMode}
+                    onEndButtonClick={() => {
+                      setEmbeddingAzureApiKeyReplaceMode(false);
+                      setValue('embeddingAzureApiKey', '');
+                    }}
+                    endButtonText="Change"
+                    {...field}
+                  />
+                )}
+              />
+            </div>
+          </>
+        );
+
+      default:
+        return (
+          <div className="form-row">
+            <p className='form-label'>Embedding Model API Key</p>
+            <p className='form-description'>API key of your embedding model</p>
+            <Controller
+              name="embeddingModelApiKey"
+              control={control}
+              rules={{ required: 'Embedding API Key is required' }}
+              render={({ field }) => (
+                <FormInput
+                  label=""
+                  type={isEditing ? 'text' : 'password'}
+                  placeholder="Enter your Embedding API key"
+                  error={errors.embeddingModelApiKey?.message}
+                  readOnly={embeddingApiKeyReplaceMode}
+                  showEndButton={embeddingApiKeyReplaceMode}
+                  onEndButtonClick={() => {
+                    setEmbeddingApiKeyReplaceMode(false);
+                    setValue('embeddingModelApiKey', '');
+                  }}
+                  endButtonText="Change"
                   {...field}
                 />
               )}
@@ -486,32 +672,8 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
             />
           </div>
 
-          <div className="form-row">
-            <p className='form-label'>Embedding Model API Key</p>
-            <p className='form-description'>API key of your embedding model</p>
-
-            <Controller
-              name="embeddingModelApiKey"
-              control={control}
-              rules={{ required: 'Embedding API Key is required' }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  type={isEditing ? 'text' : 'password'}
-                  placeholder="Enter your Embedding API key"
-                  error={errors.embeddingModelApiKey?.message}
-                  readOnly={embeddingApiKeyReplaceMode}
-                  showEndButton={embeddingApiKeyReplaceMode}
-                  onEndButtonClick={() => {
-                    setEmbeddingApiKeyReplaceMode(false);
-                    setValue('embeddingModelApiKey', '');
-                  }}
-                  endButtonText="Change"
-                  {...field}
-                />
-              )}
-            />
-          </div>
+          {/* Embedding Platform-specific fields */}
+          {renderEmbeddingPlatformSpecificFields()}
         </div>
 
         <div className="form-section">
