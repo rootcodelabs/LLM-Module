@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from llm_orchestrator_config import LLMManager, LLMProvider
 from src.utils.cost_utils import get_lm_usage_since
+from src.optimization.optimized_module_loader import get_module_loader
 
 LOGGER = logging.getLogger(__name__)
 
@@ -104,9 +105,12 @@ def _dedupe_keep_order(items: list[str], limit: int) -> list[str]:
 
 
 class PromptRefinerAgent(dspy.Module):
-    """Config-driven Prompt Refiner that emits N rewrites from history + question.
+    """
+    Config-driven Prompt Refiner that emits N rewrites from history + question.
 
     Uses DSPy 2.5+ best practices with proper structured outputs and adapters.
+
+    Now supports loading optimized modules from DSPy optimization process.
     """
 
     def __init__(
@@ -116,6 +120,7 @@ class PromptRefinerAgent(dspy.Module):
         default_n: int = 5,
         llm_manager: Optional[LLMManager] = None,
         use_json_adapter: bool = True,
+        use_optimized: bool = True,
     ) -> None:
         super().__init__()
         if default_n <= 0:
@@ -132,8 +137,74 @@ class PromptRefinerAgent(dspy.Module):
         self._provider = provider
         self._use_json_adapter = use_json_adapter
 
-        # Use ChainOfThought for better reasoning about how to rewrite
-        self._predictor = dspy.Predict(PromptRefiner)
+        # Try to load optimized module
+        self._optimized_metadata = {}
+        if use_optimized:
+            self._predictor = self._load_optimized_or_base()
+        else:
+            LOGGER.info("Using base (non-optimized) refiner module")
+            self._predictor = dspy.Predict(PromptRefiner)
+            self._optimized_metadata = {
+                "component": "refiner",
+                "version": "base",
+                "optimized": False,
+            }
+
+    def _load_optimized_or_base(self) -> dspy.Module:
+        """
+        Load optimized refiner module if available, otherwise use base.
+
+        Returns:
+            DSPy module (optimized or base)
+        """
+        try:
+            loader = get_module_loader()
+            optimized_module, metadata = loader.load_refiner_module()
+
+            self._optimized_metadata = metadata
+
+            if optimized_module is not None:
+                LOGGER.info(
+                    f"✓ Loaded OPTIMIZED refiner module "
+                    f"(version: {metadata.get('version', 'unknown')}, "
+                    f"optimizer: {metadata.get('optimizer', 'unknown')})"
+                )
+
+                # Log optimization metrics if available
+                metrics = metadata.get("metrics", {})
+                if metrics:
+                    LOGGER.info(
+                        f"  Optimization metrics: "
+                        f"avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+
+                return optimized_module
+            else:
+                LOGGER.warning(
+                    f"Could not load optimized refiner module, using base module. "
+                    f"Reason: {metadata.get('error', 'Not found')}"
+                )
+                return dspy.Predict(PromptRefiner)
+
+        except Exception as e:
+            LOGGER.error(f"Error loading optimized refiner: {str(e)}")
+            LOGGER.warning("Falling back to base refiner module")
+            self._optimized_metadata = {
+                "component": "refiner",
+                "version": "base",
+                "optimized": False,
+                "error": str(e),
+            }
+            return dspy.Predict(PromptRefiner)
+
+    def get_module_info(self) -> Dict[str, Any]:
+        """
+        Get information about the currently loaded module.
+
+        Returns:
+            Dict with module version, optimization status, and metrics
+        """
+        return self._optimized_metadata.copy()
 
     def _get_adapter_context(self):
         """Return appropriate adapter context manager."""
@@ -223,7 +294,7 @@ class PromptRefinerAgent(dspy.Module):
         """Generate refined questions and return structured output with usage info.
 
         Returns:
-            Dict with 'original_question', 'refined_questions', and 'usage' keys
+            Dict with 'original_question', 'refined_questions', 'usage', and 'module_info' keys
         """
         # Record history length before operation
         lm = dspy.settings.lm
@@ -239,4 +310,5 @@ class PromptRefinerAgent(dspy.Module):
             "original_question": question,
             "refined_questions": refined,
             "usage": usage_info,
+            "module_info": self.get_module_info(),
         }

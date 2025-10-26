@@ -12,7 +12,6 @@ from nemoguardrails.llm.providers import register_llm_provider
 from loguru import logger
 
 from src.guardrails.dspy_nemo_adapter import DSPyNeMoLLM
-from src.guardrails.rails_config import RAILS_CONFIG_PATH
 from src.llm_orchestrator_config.llm_manager import LLMManager
 from src.utils.cost_utils import get_lm_usage_since
 
@@ -76,6 +75,7 @@ class NeMoRailsAdapter:
     def _ensure_initialized(self) -> None:
         """
         Lazy initialization of NeMo Rails with DSPy LLM.
+        Supports loading optimized guardrails configuration.
 
         Raises:
             RuntimeError: If initialization fails
@@ -95,21 +95,42 @@ class NeMoRailsAdapter:
             # Step 2: Register custom LLM provider
             self._register_custom_provider()
 
-            # Step 3: Load rails configuration from YAML file
+            # Step 3: Load rails configuration (optimized or base)
             try:
-                if not RAILS_CONFIG_PATH.exists():
+                from src.guardrails.optimized_guardrails_loader import (
+                    get_guardrails_loader,
+                )
+
+                # Try to load optimized config
+                guardrails_loader = get_guardrails_loader()
+                config_path, metadata = guardrails_loader.get_optimized_config_path()
+
+                if not config_path.exists():
                     raise FileNotFoundError(
-                        f"Rails config file not found: {RAILS_CONFIG_PATH}"
+                        f"Rails config file not found: {config_path}"
                     )
 
-                rails_config = RailsConfig.from_path(str(RAILS_CONFIG_PATH))
-                logger.info(f"Loaded rails config from: {RAILS_CONFIG_PATH}")
+                rails_config = RailsConfig.from_path(str(config_path))
+
+                # Log which config is being used
+                if metadata.get("optimized", False):
+                    logger.info(
+                        f"Loaded OPTIMIZED guardrails config "
+                        f"(version: {metadata.get('version', 'unknown')})"
+                    )
+                    metrics = metadata.get("metrics", {})
+                    if metrics:
+                        logger.info(
+                            f" Optimization metrics: "
+                            f"weighted_accuracy={metrics.get('weighted_accuracy', 'N/A')}"
+                        )
+                else:
+                    logger.info(f"Loaded BASE guardrails config from: {config_path}")
+
             except Exception as yaml_error:
-                logger.error(
-                    f"Failed to load Rails YAML configuration: {str(yaml_error)}"
-                )
+                logger.error(f"Failed to load Rails configuration: {str(yaml_error)}")
                 raise RuntimeError(
-                    f"Rails YAML configuration error: {str(yaml_error)}"
+                    f"Rails configuration error: {str(yaml_error)}"
                 ) from yaml_error
 
             # Step 4: Initialize LLMRails with custom DSPy LLM

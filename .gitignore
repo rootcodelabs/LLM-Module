@@ -5,5 +5,7 @@ __pycache__/
 .pytest_cache/
 .env
 tim-db
+datasets
+logs/
 data_sets
-vault/agent-out/
+vault/agent-out

@@ -614,7 +614,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
             <div className="form-row">
               <p className='form-label'>Disconnect Budget Threshold</p>
               <p className='form-description'>Your LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches
-                this percentage of your monthly budget</p>
+                this percentage of your monthly budget.</p>
 
               <Controller
                 name="stopBudget"

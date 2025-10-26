@@ -140,10 +140,19 @@ add_llm_connection:
       access_key: ${access_key}
       embedding_model_api_key: ${embedding_model_api_key}
   result: connection_result
+  next: assign_connection_response
+
+assign_connection_response:
+  assign:
+    response: {
+      id: "${connection_result.response.body[0].id}",
+      status: 201,
+      operationSuccess: true
+    }
   next: return_success
 
 return_success:
-  return: "LLM connection added successfully"
+  return: ${response}
   status: 200
   next: end
 
