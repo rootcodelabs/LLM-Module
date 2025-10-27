@@ -126,7 +126,7 @@ export interface LLMConnectionFormData {
 
 // Vault secret service functions
 async function createVaultSecret(connectionId: string, connectionData: LLMConnectionFormData): Promise<void> {
- 
+
   const payload = {
     connectionId,
     llmPlatform: connectionData.llmPlatform,
@@ -162,12 +162,12 @@ async function createVaultSecret(connectionId: string, connectionData: LLMConnec
 }
 
 async function deleteVaultSecret(connectionId: string, connectionData: Partial<LLMConnectionFormData>): Promise<void> {
-  
+
   const payload = {
     connectionId,
     llmPlatform: connectionData.llmPlatform || '',
     llmModel: connectionData.llmModel || '',
-    embeddingModel: connectionData.embeddingModel || '', 
+    embeddingModel: connectionData.embeddingModel || '',
     embeddingPlatform: connectionData.embeddingModelPlatform || '',
     deploymentEnvironment: connectionData.deploymentEnvironment?.toLowerCase() || '',
   };
@@ -209,10 +209,10 @@ export async function getProductionConnection(filters?: ProductionConnectionFilt
   if (filters?.sortBy) queryParams.append('sortBy', filters.sortBy);
   if (filters?.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
 
-  const url = queryParams.toString() 
+  const url = queryParams.toString()
     ? `${llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION()}?${queryParams.toString()}`
     : llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION();
-    
+
   const { data } = await apiDev.get(url);
   return data?.response?.[0] || null;
 }
@@ -246,9 +246,9 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     embedding_target_uri: connectionData.embeddingTargetUri || "",
     embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
-  
+
   const connection = data?.response;
-  
+
   // After successful database creation, store secrets in vault
   if (connection && connection.id) {
     try {
@@ -259,7 +259,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
       // The connection is already created in the database
     }
   }
-  
+
   return connection;
 }
 
@@ -295,20 +295,22 @@ export async function updateLLMConnection(
     embedding_target_uri: connectionData.embeddingTargetUri || "",
     embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
-  
+
   const connection = data?.response;
-  
-  // After successful database update, update secrets in vault
-  if (connection) {
+
+  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*') 
+    || connectionData.accessKey && !connectionData.accessKey?.includes('*') 
+    || connectionData.apiKey && !connectionData.apiKey?.includes('*') 
+    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*') 
+    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*') 
+    || connectionData.embeddingAzureApiKey && !connectionData.embeddingAzureApiKey?.includes('*'))) {
     try {
       await createVaultSecret(id.toString(), connectionData);
     } catch (vaultError) {
       console.error('Failed to update secrets in vault:', vaultError);
-      // Note: We don't throw here to avoid breaking the connection update flow
-      // The connection is already updated in the database
     }
   }
-  
+
   return connection;
 }
 
@@ -320,12 +322,12 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
   } catch (error) {
     console.error('Failed to get connection data before deletion:', error);
   }
-  
+
   // Delete from database
   await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
     connection_id: id,
   });
-  
+
   // After successful database deletion, delete secrets from vault
   if (connectionToDelete) {
     try {
@@ -353,9 +355,9 @@ export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
     return null;
   }
 }
-  
+
 export async function updateLLMConnectionStatus(
-  id: string | number, 
+  id: string | number,
   status: 'active' | 'inactive'
 ): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION_STATUS(), {
