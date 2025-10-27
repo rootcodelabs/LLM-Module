@@ -54,7 +54,7 @@ services:
       - ./DSL/DMapper/rag-search/hbs:/workspace/app/views/rag-search
       - ./DSL/DMapper/rag-search/lib:/workspace/app/lib
     ports:
-      - 3000:3000
+      - 3001:3000
     networks:
       - bykstack
 
@@ -120,17 +120,15 @@ services:
       - ./DSL/DatasetGenerator/output_datasets:/app/output_datasets
     networks:
       - bykstack
-
+   
   gui:
     container_name: gui
     environment:
       - NODE_ENV=development
-      - REACT_APP_RUUTER_API_URL=http://localhost/ruuter-public
-      - REACT_APP_RUUTER_PRIVATE_API_URL=http://localhost/ruuter-private
-      - REACT_APP_EXTERNAL_API_URL=http://localhost/dataset-gen-service
-      - REACT_APP_CUSTOMER_SERVICE_LOGIN=http://localhost/authentication-layer/et/dev-auth
-      - REACT_APP_NOTIFICATION_NODE_URL=http://localhost/notifications-node
-      - REACT_APP_CSP=upgrade-insecure-requests; default-src 'self'; font-src 'self' data:; img-src 'self' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; connect-src 'self' http://localhost ws://localhost;
+      - REACT_APP_RUUTER_API_URL=http://localhost:8086
+      - REACT_APP_RUUTER_PRIVATE_API_URL=http://localhost:8088  
+      - REACT_APP_CUSTOMER_SERVICE_LOGIN=http://localhost:3004/et/dev-auth
+      - REACT_APP_CSP=upgrade-insecure-requests; default-src 'self'; font-src 'self' data:; img-src 'self' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; connect-src 'self' http://localhost:8086 http://localhost:8088 http://localhost:3004 http://localhost:3005 ws://localhost;
       - DEBUG_ENABLED=true
       - CHOKIDAR_USEPOLLING=true
       - PORT=3001
@@ -155,6 +153,44 @@ services:
     cpus: "0.5"
     mem_limit: "1G"
     restart: unless-stopped
+
+  rag-s3-ferry:
+    image: s3-ferry:latest
+    container_name: rag-s3-ferry
+    volumes:
+      - shared-volume:/app/shared
+      - cron_data:/app/data
+      - ./datasets:/app/datasets  # Access to datasets folder for diff identifier operations
+    env_file:
+      - .env
+    ports:
+      - "3006:3000"
+    networks:
+      - bykstack
+    depends_on:
+      minio:
+        condition: service_started
+
+  cron-manager:
+    container_name: cron-manager
+    image: cron-manager-python:latest
+    user: "root"
+    volumes:
+      - ./DSL/CronManager/DSL:/DSL
+      - ./DSL/CronManager/script:/app/scripts
+      - ./src/vector_indexer:/app/src/vector_indexer
+      - cron_data:/app/data
+      - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
+      - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
+      - ./grafana-configs/loki_logger.py:/app/src/vector_indexer/loki_logger.py
+      - ./.env:/app/.env:ro
+    environment:
+      - server.port=9010
+      - PYTHONPATH=/app:/app/src/vector_indexer
+    ports:
+      - 9010:8080
+    networks:
+      - bykstack
 
   qdrant:
     image: qdrant/qdrant:v1.15.1
@@ -277,7 +313,7 @@ services:
       - langfuse-worker
       - rag_search_db
     ports:
-      - 3000:3000
+      - 3005:3000
     env_file:
       - .env
     environment:
@@ -406,7 +442,7 @@ services:
       - ./vault/config:/vault/config          # contains vault.hcl
       - ./vault/logs:/vault/logs
     expose:
-      - "8200"
+    - "8200"
     networks:
       - bykstack
     restart: unless-stopped
@@ -431,7 +467,6 @@ services:
     networks:
       - bykstack
     restart: unless-stopped
-
 
   # LLM Orchestration Service
   llm-orchestration-service:
@@ -487,6 +522,10 @@ volumes:
     name: vault-data
   vault-agent-out:
     name: vault-agent-out
+  shared-volume:
+    name: shared-volume
+  cron_data:
+    name: cron_data
 
 networks:
   bykstack:

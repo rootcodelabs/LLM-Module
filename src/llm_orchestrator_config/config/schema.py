@@ -8,7 +8,7 @@ from llm_orchestrator_config.types import LLMProvider
 class VaultConfig(BaseModel):
     """Configuration for HashiCorp Vault integration."""
 
-    url: str = "http://localhost:8200"
+    url: str = "http://vault:8200"
     token: str = ""
     enabled: bool = True
 
