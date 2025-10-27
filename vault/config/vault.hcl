@@ -39,7 +39,7 @@ cluster_addr = "http://vault:8201"
 # Security and performance settings
 disable_mlock = false
 disable_cache = false
-ui            = flase
+ui = false
 
 # Default lease and maximum lease durations
 default_lease_ttl = "168h"  # 7 days

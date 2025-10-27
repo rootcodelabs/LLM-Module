@@ -489,6 +489,23 @@
     "classes": "Classes",
     "stopWords": "Stop Words",
     "incomingTexts": "Incoming Texts",
-    "testModel": "Test Model"
+    "testModel": "Test Model",
+    "testProductionLLM": "Test Production LLM",
+    "clearChat": "Clear Chat",
+    "welcomeTitle": "Welcome to Production LLM Testing",
+    "welcomeSubtitle": "Start a conversation by typing a message below.",
+    "messagePlaceholder": "Type your message here... (Press Enter to send, Shift+Enter for new line)",
+    "sendButton": "Send",
+    "sendingButton": "Sending...",
+    "responseReceived": "Response Received",
+    "errorOccurred": "Error",
+    "successMessage": "Successfully received response from production LLM",
+    "errorMessage": "Failed to get response from production LLM",
+    "connectionError": "Connection Error",
+    "connectionErrorMessage": "Unable to connect to the production LLM service.",
+    "chatCleared": "Chat Cleared",
+    "chatClearedMessage": "All messages have been cleared.",
+    "warningTitle": "Warning",
+    "emptyMessageWarning": "Please enter a message before sending."
   }
 }

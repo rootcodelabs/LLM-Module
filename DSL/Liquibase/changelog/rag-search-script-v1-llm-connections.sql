@@ -10,14 +10,17 @@ CREATE TABLE llm_connections (
     embedding_platform VARCHAR(100) NOT NULL, -- e.g. Azure AI, OpenAI
     embedding_model VARCHAR(100) NOT NULL,    -- e.g. Ada-200-1
     
-    -- Budget and Environment
+    -- Budget and Usage Tracking
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
     used_budget NUMERIC(12,2) DEFAULT 0.00,  -- e.g. 250.00
-    environment VARCHAR(50) NOT NULL,
+    warn_budget_threshold NUMERIC(5) DEFAULT 80, -- percentage to warn at
+    stop_budget_threshold NUMERIC(5) DEFAULT 100, -- percentage to stop at
+    disconnect_on_budget_exceed BOOLEAN DEFAULT TRUE,
     
     -- Metadata
     connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
     created_at TIMESTAMP DEFAULT NOW(),
+    environment VARCHAR(50) NOT NULL,
 
     -- Mocked Credentials and Access Info
     -- Azure
@@ -118,3 +121,20 @@ INSERT INTO embedding_models (platform_id, model_key, model_name) VALUES
 CREATE INDEX idx_llm_models_platform_id ON llm_models(platform_id);
 CREATE INDEX idx_embedding_models_platform_id ON embedding_models(platform_id);
 
+CREATE TABLE public.agency_sync (
+    agency_id         VARCHAR(50) PRIMARY KEY,
+    agency_data_hash  VARCHAR(255),
+    data_url          TEXT,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.agency_sync (agency_id, created_at) VALUES 
+('AGENCY001', NOW());
+
+CREATE TABLE public.mock_ckb (
+    client_id         VARCHAR(50) PRIMARY KEY,
+    client_data_hash  VARCHAR(255) NOT NULL,
+    signed_s3_url     TEXT NOT NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);
