@@ -13,7 +13,7 @@ import BudgetBanner from 'components/molecules/BudgetBanner';
 import './LLMConnections.scss';
 import { platforms, trainingStatuses } from 'config/dataModelsConfig';
 import LLMConnectionCard from 'components/molecules/LLMConnectionCard';
-import { fetchLLMConnectionsPaginated, LLMConnectionFilters, LLMConnection, getProductionConnection } from 'services/llmConnections';
+import { fetchLLMConnectionsPaginated, LLMConnectionFilters, LLMConnection, getProductionConnection, ProductionConnectionFilters } from 'services/llmConnections';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
 
 const LLMConnections: FC = () => {
@@ -35,10 +35,17 @@ const LLMConnections: FC = () => {
     queryFn: () => fetchLLMConnectionsPaginated(filters),
   });
 
-  // Fetch production connection separately
+  // Fetch production connection separately with potential filters
+  const [productionFilters, setProductionFilters] = useState<ProductionConnectionFilters>({
+    sortBy: 'created_at',
+    sortOrder: 'desc',
+    llmPlatform: '',
+    llmModel: '',
+  });
+  
   const { data: productionConnection, isLoading: isProductionLoading } = useQuery({
-    queryKey: llmConnectionsQueryKeys.production(),
-    queryFn: getProductionConnection,
+    queryKey: llmConnectionsQueryKeys.production(productionFilters),
+    queryFn: () => getProductionConnection(productionFilters),
   });
 
 
@@ -50,11 +57,23 @@ const LLMConnections: FC = () => {
     setFilters(prev => ({ ...prev, pageNumber: pageIndex }));
   }, [pageIndex]);
 
+  // Sync production filters with main filters on component mount
+  useEffect(() => {
+    setProductionFilters(prev => ({
+      ...prev,
+      llmPlatform: filters.llmPlatform || '',
+      llmModel: filters.llmModel || '',
+      sortBy: filters.sortBy || 'created_at',
+      sortOrder: filters.sortOrder || 'desc',
+    }));
+  }, [filters.llmPlatform, filters.llmModel, filters.sortBy, filters.sortOrder]);
+
   const handleFilterChange = (
     name: string,
     value: string | number | undefined | { name: string; id: string }
   ) => {
     let filterUpdate: Partial<LLMConnectionFilters> = {};
+    let productionFilterUpdate: Partial<ProductionConnectionFilters> = {};
 
     if (name === 'sorting') {
       // Handle sorting format - no conversion needed, use snake_case directly
@@ -63,16 +82,34 @@ const LLMConnections: FC = () => {
 
       filterUpdate = {
         sortBy: sortBy,
+        sortOrder: sortOrder as 'asc' | 'desc' 
+      };
+
+      productionFilterUpdate = {
+        sortBy: sortBy,
         sortOrder: sortOrder as 'asc' | 'desc'
       };
     } else {
       filterUpdate = { [name]: value };
+
+      // Update production filters for relevant fields
+      if (name === 'llmPlatform' || name === 'llmModel') {
+        productionFilterUpdate = { [name]: value as string };
+      }
     }
 
     setFilters((prevFilters) => ({
       ...prevFilters,
       ...filterUpdate,
     }));
+
+    // Update production filters if relevant
+    if (Object.keys(productionFilterUpdate).length > 0) {
+      setProductionFilters((prevFilters) => ({
+        ...prevFilters,
+        ...productionFilterUpdate,
+      }));
+    }
 
     // Reset to first page when filters change
     if (name !== 'pageNumber') {
@@ -192,6 +229,12 @@ const LLMConnections: FC = () => {
                           llmModel: '',
                           environment: '',
                         });
+                        setProductionFilters({
+                          sortBy: 'created_at',
+                          sortOrder: 'desc',
+                          llmPlatform: '',
+                          llmModel: '',
+                        });
                         setPageIndex(1);
                       }}
                       appearance={ButtonAppearanceTypes.SECONDARY}
@@ -202,7 +245,7 @@ const LLMConnections: FC = () => {
                 </div>
               </div>
 
-              {productionConnection && (
+              {productionConnection && filters?.environment !== "testing" && (
                 <div className="m-30-0">
                   <p>Production LLM Connection</p>
                   <div className="grid-container m-30-0">

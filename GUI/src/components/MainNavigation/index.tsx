@@ -34,6 +34,12 @@ const MainNavigation: FC = () => {
       label: 'Test LLM',
       path: '/test-llm',
       icon: <MdSearch />
+    },
+    {
+      id: 'testProductionLLM',
+      label: 'Test Production LLM',
+      path: '/test-production-llm',
+      icon: <MdSearch />
     }
   ];
 

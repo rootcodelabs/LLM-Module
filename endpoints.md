@@ -357,10 +357,39 @@ GET /ruuter-private/llm/connections/list
 | `llmPlatform` | `string` | Filter by LLM platform |
 | `llmModel` | `string` | Filter by LLM model |
 | `deploymentEnvironment` | `string` | Filter by environment (Testing / Production) |
+| `pageNumber` | `number` | Page number (1-based) |
+| `pageSize` | `number` | Number of items per page |
+| `sortBy` | `string` | Field to sort by |
+| `sortOrder` | `string` | Sort order: 'asc' or 'desc' |
 
 ### Example Request
 ```http
 GET /ruuter-private/llm/connections/list?llmPlatform=OpenAI&deploymentEnvironment=Testing&model=GPT4
+```
+
+---
+
+## 5. Get Production LLM Connection (with filters)
+
+### Endpoint
+```http
+GET /ruuter-private/llm/connections/production
+```
+
+### Query Parameters (Optional for filtering)
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `llmPlatform` | `string` | Filter by LLM platform |
+| `llmModel` | `string` | Filter by LLM model |
+| `embeddingPlatform` | `string` | Filter by embedding platform |
+| `embeddingModel` | `string` | Filter by embedding model |
+| `connectionStatus` | `string` | Filter by connection status |
+| `sortBy` | `string` | Field to sort by |
+| `sortOrder` | `string` | Sort order: 'asc' or 'desc' |
+
+### Example Request
+```http
+GET /ruuter-private/llm/connections/production?llmPlatform=OpenAI&connectionStatus=active
 ```
 
 ### Response (200 OK)

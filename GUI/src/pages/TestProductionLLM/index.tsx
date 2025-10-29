@@ -124,11 +124,11 @@ const TestProductionLLM: FC = () => {
       setMessages(prev => [...prev, botMessage]);
 
       // Show toast notification
-      toast.open({
-        type: botMessageType,
-        title: t('errorOccurred'),
-        message: t('errorMessage'),
-      });
+      // toast.open({
+      //   type: botMessageType,
+      //   title: t('errorOccurred'),
+      //   message: t('errorMessage'),
+      // });
 
     } catch (error) {
       console.error('Error sending message:', error);
