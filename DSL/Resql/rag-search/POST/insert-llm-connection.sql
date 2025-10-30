@@ -16,7 +16,11 @@ INSERT INTO llm_connections (
     api_key,
     secret_key,
     access_key,
-    embedding_model_api_key
+    embedding_access_key,
+    embedding_secret_key,
+    embedding_deployment_name,
+    embedding_target_uri,
+    embedding_azure_api_key
 ) VALUES (
     :connection_name,
     :llm_platform,
@@ -35,7 +39,11 @@ INSERT INTO llm_connections (
     :api_key,
     :secret_key,
     :access_key,
-    :embedding_model_api_key
+    :embedding_access_key,
+    :embedding_secret_key,
+    :embedding_deployment_name,
+    :embedding_target_uri,
+    :embedding_azure_api_key
 ) RETURNING 
     id, 
     connection_name,
@@ -55,4 +63,8 @@ INSERT INTO llm_connections (
     api_key,
     secret_key,
     access_key,
-    embedding_model_api_key;
+    embedding_secret_key,
+    embedding_access_key,
+    embedding_deployment_name,
+    embedding_target_uri,
+    embedding_azure_api_key

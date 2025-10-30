@@ -15,8 +15,8 @@ const CreateLLMConnection = () => {
     
     // Query to check for existing production connection
     const { data: existingProductionConnection } = useQuery({
-      queryKey: ['production-connection'],
-      queryFn: getProductionConnection,
+      queryKey: llmConnectionsQueryKeys.production(),
+      queryFn: () => getProductionConnection(),
     });
     
     const createConnectionMutation = useMutation({

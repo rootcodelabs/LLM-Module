@@ -30,6 +30,13 @@ export interface LLMConnection {
   accessKey?: string;
   // Embedding model credentials
   embeddingModelApiKey?: string;
+  // Embedding AWS Bedrock credentials
+  embeddingAccessKey?: string;
+  embeddingSecretKey?: string;
+  // Embedding Azure credentials
+  embeddingDeploymentName?: string;
+  embeddingTargetUri?: string;
+  embeddingAzureApiKey?: string;
 }
 
 export interface LLMConnectionsResponse {
@@ -69,6 +76,16 @@ export interface LLMConnectionFilters {
   environment?: string;
   status?: string;
 }
+
+export interface ProductionConnectionFilters {
+  llmPlatform?: string;
+  llmModel?: string;
+  embeddingPlatform?: string;
+  embeddingModel?: string;
+  connectionStatus?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}
 export interface LegacyLLMConnectionFilters {
   page: number;
   pageSize: number;
@@ -98,11 +115,18 @@ export interface LLMConnectionFormData {
   accessKey?: string;
   // Embedding model credentials
   embeddingModelApiKey?: string;
+  // Embedding AWS Bedrock credentials
+  embeddingAccessKey?: string;
+  embeddingSecretKey?: string;
+  // Embedding Azure credentials
+  embeddingDeploymentName?: string;
+  embeddingTargetUri?: string;
+  embeddingAzureApiKey?: string;
 }
 
 // Vault secret service functions
 async function createVaultSecret(connectionId: string, connectionData: LLMConnectionFormData): Promise<void> {
- 
+
   const payload = {
     connectionId,
     llmPlatform: connectionData.llmPlatform,
@@ -121,19 +145,29 @@ async function createVaultSecret(connectionId: string, connectionData: LLMConnec
       targetUrl: connectionData.targetUri || '',
       apiKey: connectionData.apiKey || '',
     }),
-    embeddingModelApiKey: connectionData.embeddingModelApiKey || '',
+    // Embedding AWS Bedrock credentials
+    ...(connectionData.embeddingModelPlatform === 'aws' && {
+      embeddingAccessKey: connectionData.embeddingAccessKey || '',
+      embeddingSecretKey: connectionData.embeddingSecretKey || '',
+    }),
+    // Embedding Azure credentials
+    ...(connectionData.embeddingModelPlatform === 'azure' && {
+      embeddingDeploymentName: connectionData.embeddingDeploymentName || '',
+      embeddingTargetUri: connectionData.embeddingTargetUri || '',
+      embeddingAzureApiKey: connectionData.embeddingAzureApiKey || '',
+    }),
   };
 
   await apiDev.post(vaultEndpoints.CREATE_VAULT_SECRET(), payload);
 }
 
 async function deleteVaultSecret(connectionId: string, connectionData: Partial<LLMConnectionFormData>): Promise<void> {
-  
+
   const payload = {
     connectionId,
     llmPlatform: connectionData.llmPlatform || '',
     llmModel: connectionData.llmModel || '',
-    embeddingModel: connectionData.embeddingModel || '', 
+    embeddingModel: connectionData.embeddingModel || '',
     embeddingPlatform: connectionData.embeddingModelPlatform || '',
     deploymentEnvironment: connectionData.deploymentEnvironment?.toLowerCase() || '',
   };
@@ -164,8 +198,22 @@ export async function getLLMConnection(id: string | number): Promise<LLMConnecti
   return data?.response;
 }
 
-export async function getProductionConnection(): Promise<LLMConnection | null> {
-  const { data } = await apiDev.get(llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION());
+export async function getProductionConnection(filters?: ProductionConnectionFilters): Promise<LLMConnection | null> {
+  const queryParams = new URLSearchParams();
+
+  if (filters?.llmPlatform) queryParams.append('llmPlatform', filters.llmPlatform);
+  if (filters?.llmModel) queryParams.append('llmModel', filters.llmModel);
+  if (filters?.embeddingPlatform) queryParams.append('embeddingPlatform', filters.embeddingPlatform);
+  if (filters?.embeddingModel) queryParams.append('embeddingModel', filters.embeddingModel);
+  if (filters?.connectionStatus) queryParams.append('connectionStatus', filters.connectionStatus);
+  if (filters?.sortBy) queryParams.append('sortBy', filters.sortBy);
+  if (filters?.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
+
+  const url = queryParams.toString()
+    ? `${llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION()}?${queryParams.toString()}`
+    : llmConnectionsEndpoints.GET_PRODUCTION_CONNECTION();
+
+  const { data } = await apiDev.get(url);
   return data?.response?.[0] || null;
 }
 
@@ -190,11 +238,17 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
     secret_key: maskSensitiveKey(connectionData.secretKey) || "",
     access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
+    // Embedding AWS Bedrock credentials
+    embedding_access_key: maskSensitiveKey(connectionData.embeddingAccessKey) || "",
+    embedding_secret_key: maskSensitiveKey(connectionData.embeddingSecretKey) || "",
+    // Embedding Azure credentials
+    embedding_deployment_name: connectionData.embeddingDeploymentName || "",
+    embedding_target_uri: connectionData.embeddingTargetUri || "",
+    embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
-  
+
   const connection = data?.response;
-  
+
   // After successful database creation, store secrets in vault
   if (connection && connection.id) {
     try {
@@ -205,7 +259,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
       // The connection is already created in the database
     }
   }
-  
+
   return connection;
 }
 
@@ -233,22 +287,30 @@ export async function updateLLMConnection(
     secret_key: maskSensitiveKey(connectionData.secretKey) || "",
     access_key: maskSensitiveKey(connectionData.accessKey) || "",
     // Embedding model credentials
-    embedding_model_api_key: maskSensitiveKey(connectionData.embeddingModelApiKey) || "",
+    // Embedding AWS Bedrock credentials
+    embedding_access_key: maskSensitiveKey(connectionData.embeddingAccessKey) || "",
+    embedding_secret_key: maskSensitiveKey(connectionData.embeddingSecretKey) || "",
+    // Embedding Azure credentials
+    embedding_deployment_name: connectionData.embeddingDeploymentName || "",
+    embedding_target_uri: connectionData.embeddingTargetUri || "",
+    embedding_azure_api_key: maskSensitiveKey(connectionData.embeddingAzureApiKey) || "",
   });
-  
+
   const connection = data?.response;
-  
-  // After successful database update, update secrets in vault
-  if (connection) {
+
+  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*') 
+    || connectionData.accessKey && !connectionData.accessKey?.includes('*') 
+    || connectionData.apiKey && !connectionData.apiKey?.includes('*') 
+    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*') 
+    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*') 
+    || connectionData.embeddingAzureApiKey && !connectionData.embeddingAzureApiKey?.includes('*'))) {
     try {
       await createVaultSecret(id.toString(), connectionData);
     } catch (vaultError) {
       console.error('Failed to update secrets in vault:', vaultError);
-      // Note: We don't throw here to avoid breaking the connection update flow
-      // The connection is already updated in the database
     }
   }
-  
+
   return connection;
 }
 
@@ -260,12 +322,12 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
   } catch (error) {
     console.error('Failed to get connection data before deletion:', error);
   }
-  
+
   // Delete from database
   await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
     connection_id: id,
   });
-  
+
   // After successful database deletion, delete secrets from vault
   if (connectionToDelete) {
     try {
@@ -293,9 +355,9 @@ export async function checkBudgetStatus(): Promise<BudgetStatus | null> {
     return null;
   }
 }
-  
+
 export async function updateLLMConnectionStatus(
-  id: string | number, 
+  id: string | number,
   status: 'active' | 'inactive'
 ): Promise<LLMConnection> {
   const { data } = await apiDev.post(llmConnectionsEndpoints.UPDATE_LLM_CONNECTION_STATUS(), {

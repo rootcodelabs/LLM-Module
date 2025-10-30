@@ -1,5 +1,5 @@
 import { PaginationState, SortingState } from '@tanstack/react-table';
-import { LLMConnectionFilters, LegacyLLMConnectionFilters } from 'services/llmConnections';
+import { LLMConnectionFilters, LegacyLLMConnectionFilters, ProductionConnectionFilters } from 'services/llmConnections';
 import { InferenceRequest } from 'services/inference';
 
 
@@ -30,7 +30,7 @@ export const llmConnectionsQueryKeys = {
   details: () => [...llmConnectionsQueryKeys.all(), 'detail'] as const,
   detail: (id: string | number) => [...llmConnectionsQueryKeys.details(), id] as const,
   budgetStatus: () => [...llmConnectionsQueryKeys.all(), 'budget-status'] as const,
-  production: () => [...llmConnectionsQueryKeys.all(), 'production'] as const,
+  production: (filters?: ProductionConnectionFilters) => [...llmConnectionsQueryKeys.all(), 'production', filters] as const,
 };
 
 export const inferenceQueryKeys = {

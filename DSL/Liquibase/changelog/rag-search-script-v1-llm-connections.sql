@@ -1,39 +1,40 @@
 -- Schema for LLM Connections
 CREATE TABLE llm_connections (
+    -- Metadata
     id SERIAL PRIMARY KEY,
     connection_name VARCHAR(255) NOT NULL DEFAULT '',
+    connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
+    created_at TIMESTAMP DEFAULT NOW(),
+    environment VARCHAR(50) NOT NULL,
+
     -- LLM Model Configuration
     llm_platform VARCHAR(100) NOT NULL,       -- e.g. Azure AI, OpenAI
     llm_model VARCHAR(100) NOT NULL,          -- e.g. GPT-4o
-    
+    -- Azure
+    deployment_name VARCHAR(150),  -- for Azure deployments
+    target_uri TEXT,                -- for custom endpoints
+    api_key TEXT,                   -- secured api key mocked here
+    -- AWS Bedrock
+    secret_key TEXT,
+    access_key TEXT, 
+
     -- Embedding Model Configuration
     embedding_platform VARCHAR(100) NOT NULL, -- e.g. Azure AI, OpenAI
     embedding_model VARCHAR(100) NOT NULL,    -- e.g. Ada-200-1
-    
+    -- Azure
+    embedding_deployment_name VARCHAR(150),  -- for Azure deployments
+    embedding_target_uri TEXT,                -- for custom endpoints
+    embedding_azure_api_key TEXT,                   -- secured api key mocked here
+    -- AWS Bedrock
+    embedding_secret_key TEXT,
+    embedding_access_key TEXT,
+
     -- Budget and Usage Tracking
     monthly_budget NUMERIC(12,2) NOT NULL,    -- e.g. 1000.00
     used_budget NUMERIC(12,2) DEFAULT 0.00,  -- e.g. 250.00
     warn_budget_threshold NUMERIC(5) DEFAULT 80, -- percentage to warn at
     stop_budget_threshold NUMERIC(5) DEFAULT 100, -- percentage to stop at
-    disconnect_on_budget_exceed BOOLEAN DEFAULT TRUE,
-    
-    -- Metadata
-    connection_status VARCHAR(50) DEFAULT 'active',      -- active / inactive
-    created_at TIMESTAMP DEFAULT NOW(),
-    environment VARCHAR(50) NOT NULL,
-
-    -- Mocked Credentials and Access Info
-    -- Azure
-    deployment_name VARCHAR(150),  -- for Azure deployments
-    target_uri TEXT,                -- for custom endpoints
-    api_key TEXT,                   -- secured api key mocked here
-
-    -- AWS Bedrock
-    secret_key TEXT,
-    access_key TEXT, 
-
-    -- Embedding Model 
-    embedding_model_api_key TEXT
+    disconnect_on_budget_exceed BOOLEAN DEFAULT TRUE
 );
 
 CREATE TABLE inference_results (

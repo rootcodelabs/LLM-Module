@@ -18,7 +18,12 @@ SET
     secret_key = :secret_key,
     access_key = :access_key,
     -- Embedding model credentials
-    embedding_model_api_key = :embedding_model_api_key
+    -- Embedding platform specific credentials
+    embedding_access_key = :embedding_access_key,
+    embedding_secret_key = :embedding_secret_key,
+    embedding_deployment_name = :embedding_deployment_name,
+    embedding_target_uri = :embedding_target_uri,
+    embedding_azure_api_key = :embedding_azure_api_key
 WHERE id = :connection_id
 RETURNING 
     id, 
@@ -39,4 +44,8 @@ RETURNING
     api_key,
     secret_key,
     access_key,
-    embedding_model_api_key;
+    embedding_secret_key,
+    embedding_access_key,
+    embedding_deployment_name,
+    embedding_target_uri,
+    embedding_azure_api_key;
