@@ -6,8 +6,9 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'mocks/**'
       - 'data/**'
+      - 'docker-compose-test.yml'
+      - 'Dockerfile.llm_orchestration_service'
       - '.github/workflows/deepeval-red-team-tests.yml'
   workflow_dispatch:
     inputs:
@@ -24,7 +25,7 @@ on:
 jobs:
   security-assessment:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -41,15 +42,43 @@ jobs:
       - name: Install dependencies (locked)
         run: uv sync --frozen
 
-      - name: Run Complete Security Assessment
+      - name: Create test directories with proper permissions
+        run: |
+          mkdir -p test-vault/agents/llm
+          mkdir -p test-vault/agent-out
+          # Set ownership to current user and make writable
+          sudo chown -R $(id -u):$(id -g) test-vault
+          chmod -R 777 test-vault
+          # Ensure the agent-out directory is world-readable after writes
+          sudo chmod -R a+rwX test-vault/agent-out
+
+      - name: Build Docker images
+        run: docker compose -f docker-compose-test.yml build
+
+      - name: Run Red Team Security Tests with testcontainers
         id: run_tests
         continue-on-error: true
         env:
+          # LLM API Keys
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Azure OpenAI - Chat Model
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          # Azure OpenAI - Embedding Model
+          AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+          # Testing mode
+          TESTING_MODE: "true"
         run: |
-          # Run all security tests in one comprehensive session
-          uv run python -m pytest tests/deepeval_tests/red_team_tests.py::TestRAGSystemRedTeaming -v --tb=short
+          # Run tests with testcontainers managing Docker Compose
+          uv run python -m pytest tests/deepeval_tests/red_team_tests.py::TestRAGSystemRedTeaming -v --tb=short --log-cli-level=INFO
+
+      - name: Fix permissions on test artifacts
+        if: always()
+        run: |
+          sudo chown -R $(id -u):$(id -g) test-vault || true
+          sudo chmod -R a+rX test-vault || true
 
       - name: Generate Security Report
         if: always()
@@ -57,6 +86,16 @@ jobs:
           if [ -f tests/deepeval_tests/red_team_report_generator.py ]; then
             uv run python tests/deepeval_tests/red_team_report_generator.py || true
           fi
+
+      - name: Save test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-results
+          path: |
+            pytest_captured_results.json
+            security_report.md
+          retention-days: 30
 
       - name: Comment PR with Security Results
         if: always() && github.event_name == 'pull_request'
@@ -165,3 +204,9 @@ jobs:
             echo "ERROR: No test results file found"
             exit 1
           fi
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          docker compose -f docker-compose-test.yml down -v --remove-orphans || true
+          docker system prune -f || true

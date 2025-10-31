@@ -53,6 +53,11 @@ class OrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+    # Testing-only fields (populated when TESTING_MODE=true)
+    retrieval_context: Optional[List[Dict[str, Any]]] = Field(
+        default=None, exclude=True
+    )
+    refined_questions: Optional[List[str]] = Field(default=None, exclude=True)
 
 
 # New models for embedding and context generation
@@ -157,3 +162,15 @@ class TestOrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+
+class DeepEvalTestOrchestrationResponse(BaseModel):
+    """Extended response model for testing with additional evaluation data."""
+
+    chatId: str
+    llmServiceActive: bool
+    questionOutOfLLMScope: bool
+    inputGuardFailed: bool
+    content: str
+    retrieval_context: Optional[List[Dict[str, Any]]] = None
+    refined_questions: Optional[List[str]] = None
+    expected_output: Optional[str] = None  # For DeepEval

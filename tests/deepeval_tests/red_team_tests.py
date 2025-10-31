@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import datetime
 import pytest
+import requests
 
 from deepteam import red_team
 from deepteam.attacks.single_turn import (
@@ -35,7 +36,6 @@ from deepteam.vulnerabilities import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from mocks.dummy_llm_orchestrator import process_query
 
 
 class ComprehensiveResultCollector:
@@ -192,11 +192,9 @@ class TestRAGSystemRedTeaming:
         ]
 
         cls.multi_turn_attacks = [
-            LinearJailbreaking(turns=3, weight=1),  # Reduced turns for faster execution
+            LinearJailbreaking(turns=3, weight=1),
             SequentialJailbreak(type="dialogue", persona="student", weight=1),
-            CrescendoJailbreaking(
-                max_rounds=5, max_backtracks=5, weight=1
-            ),  # Reduced complexity
+            CrescendoJailbreaking(max_rounds=5, max_backtracks=5, weight=1),
         ]
 
         # All vulnerabilities organized by category
@@ -230,17 +228,46 @@ class TestRAGSystemRedTeaming:
             f"Loaded {len(cls.all_vulnerabilities)} vulnerabilities for comprehensive testing"
         )
 
+        # Store orchestration URL for use in tests
+        cls.orchestration_url = None
+
+    def setup_method(self, method):
+        """Setup method called before each test - captures orchestration client."""
+        # This will be set by the orchestration_client fixture
+        pass
+
     async def model_callback(self, input_text: str, language: str = "en") -> str:
-        """Model callback function for DeepTeam red teaming."""
+        """Model callback function for DeepTeam red teaming - uses orchestration API."""
         try:
             if not input_text or len(input_text.strip()) == 0:
                 return "I cannot process empty queries."
 
-            result = process_query(
-                question=input_text, provider="anthropic", include_contexts=True
+            # Use the orchestration service endpoint
+            api_request = {
+                "chatId": f"redteam-{datetime.datetime.now().timestamp()}",
+                "message": input_text,
+                "authorId": "redteam-tester",
+                "conversationHistory": [],
+                "url": "https://test.example.com",
+                "environment": "test",
+                "connection_id": "evalconnection-1",
+            }
+
+            response = requests.post(
+                f"{self.orchestration_url}/orchestrate-test",
+                json=api_request,
+                timeout=60,
             )
-            return result["response"]
+            response.raise_for_status()
+            result = response.json()
+
+            return result.get("content", "No response generated")
+
+        except requests.exceptions.RequestException as e:
+            print(f"API request failed: {e}")
+            return f"Error processing query: {str(e)}"
         except Exception as e:
+            print(f"Model callback error: {e}")
             return f"Error processing query: {str(e)}"
 
     def _evaluate_results(self, red_team_results: Any) -> bool:
@@ -265,10 +292,14 @@ class TestRAGSystemRedTeaming:
             print(f"Evaluation error: {e}")
             return False
 
-    def test_comprehensive_security_assessment(self):
+    def test_comprehensive_security_assessment(self, orchestration_client):
         """Run comprehensive security assessment covering all attack vectors and vulnerabilities."""
+        # Get orchestration URL from fixture
+        self.orchestration_url = orchestration_client.base_url
+
         print("\n" + "=" * 80)
         print("STARTING COMPREHENSIVE RAG SYSTEM SECURITY ASSESSMENT")
+        print(f"Orchestration URL: {self.orchestration_url}")
         print("=" * 80)
 
         start_time = datetime.datetime.now()

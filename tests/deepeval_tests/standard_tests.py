@@ -4,6 +4,7 @@ from typing import Dict, Any
 from pathlib import Path
 import sys
 import datetime
+import requests
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics.answer_relevancy.answer_relevancy import AnswerRelevancyMetric
 from deepeval.metrics import (
@@ -14,7 +15,6 @@ from deepeval.metrics import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from mocks.dummy_llm_orchestrator import process_query
 
 
 class StandardResultCollector:
@@ -108,7 +108,7 @@ def save_results_fixture():
 
 
 class TestRAGSystem:
-    """Test suite for RAG system evaluation using DeepEval metrics."""
+    """Test suite for RAG system evaluation using DeepEval metrics via API."""
 
     @classmethod
     def setup_class(cls):
@@ -130,21 +130,67 @@ class TestRAGSystem:
         print(f"Loaded {len(cls.test_data)} test cases")
 
     def create_test_case(
-        self, data_item: Dict[str, Any], provider: str = "anthropic"
+        self, data_item: Dict[str, Any], orchestration_url: str
     ) -> LLMTestCase:
-        """Create a DeepEval test case from data item."""
-        # Generate actual output using the dummy orchestrator
-        result = process_query(
-            question=data_item["input"], provider=provider, include_contexts=True
-        )
+        """Create a DeepEval test case by calling the orchestration API."""
 
-        llm_test_case = LLMTestCase(
-            input=data_item["input"],
-            actual_output=result["response"],
-            expected_output=data_item["expected_output"],
-            retrieval_context=result["retrieval_context"],
-        )
-        return llm_test_case
+        # Prepare API request
+        api_request = {
+            "chatId": f"test-{data_item.get('id', 'unknown')}",
+            "message": data_item["input"],
+            "authorId": "deepeval-tester",
+            "conversationHistory": [],
+            "url": "https://test.example.com",
+            "environment": "test",
+            "connection_id": "evalconnection-1",
+        }
+
+        # Call the testing endpoint
+        try:
+            response = requests.post(
+                f"{orchestration_url}/orchestrate-test", json=api_request, timeout=60
+            )
+            response.raise_for_status()
+            result = response.json()
+            print("=" * 80)
+            print("API RESPONSE DEBUG")
+            print("=" * 80)
+            print(f"Response keys: {list(result.keys())}")
+            print(f"Full response: {json.dumps(result, indent=2)}")
+            print("=" * 80)
+            # Extract data from API response
+            actual_output = result.get("content", "")
+            retrieval_context = result.get("retrieval_context", [])
+            if retrieval_context is None:
+                retrieval_context = []
+
+            # Convert retrieval context to strings for DeepEval
+            retrieval_context_strings = []
+            if retrieval_context and isinstance(retrieval_context, list):
+                retrieval_context_strings = [
+                    chunk.get("content", "") if isinstance(chunk, dict) else str(chunk)
+                    for chunk in retrieval_context
+                ]
+
+            # Create DeepEval test case
+            llm_test_case = LLMTestCase(
+                input=data_item["input"],
+                actual_output=actual_output,
+                expected_output=data_item["expected_output"],
+                retrieval_context=retrieval_context_strings,
+            )
+
+            return llm_test_case
+
+        except requests.exceptions.RequestException as e:
+            print(f"API request failed: {e}")
+            # Return a test case with error message
+            return LLMTestCase(
+                input=data_item["input"],
+                actual_output=f"API Error: {str(e)}",
+                expected_output=data_item["expected_output"],
+                retrieval_context=[],
+            )
 
     @pytest.mark.parametrize(
         "test_item",
@@ -159,9 +205,14 @@ class TestRAGSystem:
             )
         ],
     )
-    def test_all_metrics(self, test_item: Dict[str, Any]):
+    def test_all_metrics(self, test_item: Dict[str, Any], orchestration_client):
         """Test all metrics for each test case and collect results."""
-        test_case = self.create_test_case(test_item)
+
+        # Get orchestration service URL from fixture
+        orchestration_url = orchestration_client.base_url
+
+        # Create test case by calling API
+        test_case = self.create_test_case(test_item, orchestration_url)
 
         # Get test case index for consistent numbering
         test_case_num = self.test_data.index(test_item) + 1
