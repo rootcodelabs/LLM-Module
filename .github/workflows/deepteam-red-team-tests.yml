@@ -67,11 +67,11 @@ jobs:
           if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
             echo "missing=true" >> $GITHUB_OUTPUT
             echo "secrets_list=${MISSING_SECRETS[*]}" >> $GITHUB_OUTPUT
-            echo "❌ Missing required secrets: ${MISSING_SECRETS[*]}"
+            echo " Missing required secrets: ${MISSING_SECRETS[*]}"
             exit 1
           else
             echo "missing=false" >> $GITHUB_OUTPUT
-            echo "✅ All required secrets are configured"
+            echo " All required secrets are configured"
           fi
       
       - name: Comment PR with missing secrets error
@@ -105,7 +105,7 @@ jobs:
             
             3. Re-run the workflow after adding the secrets
             
-            ### ⚠️ Security Note
+            ###  Security Note
             Without proper API credentials, we cannot assess the system's security posture against adversarial attacks.
             
             ---
