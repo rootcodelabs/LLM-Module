@@ -1,0 +1,67 @@
+# Vector Indexer Configuration - TEST ENVIRONMENT
+vector_indexer:
+  # API Configuration
+  api:
+    base_url: "http://llm-orchestration-service:8100"
+    qdrant_url: "http://qdrant:6333"
+    timeout: 300
+
+  # Processing Configuration - TEST VALUES
+  processing:
+    environment: "test"  # ← TEST ENVIRONMENT
+    connection_id: "evalconnection-1"  # ← TEST CONNECTION
+    batch_delay_seconds: 0.1
+    context_delay_seconds: 0.05
+
+  # Chunking Configuration
+  chunking:
+    chunk_size: 800
+    chunk_overlap: 100
+    min_chunk_size: 50
+    max_chunk_size: 2000
+    chars_per_token: 4
+    tokenizer_encoding: "cl100k_base"
+
+  # Concurrency Configuration
+  concurrency:
+    max_concurrent_documents: 3
+    max_concurrent_chunks_per_doc: 5
+
+  # Batch Configuration
+  batching:
+    embedding_batch_size: 10
+    context_batch_size: 5
+
+  # Error Handling
+  error_handling:
+    max_retries: 3
+    retry_delay_base: 2
+    continue_on_failure: true
+    log_failures: true
+
+  # Logging Configuration
+  logging:
+    level: "DEBUG"
+    failure_log_file: "logs/test_vector_indexer_failures.jsonl"
+    processing_log_file: "logs/test_vector_indexer_processing.log"
+    stats_log_file: "logs/test_vector_indexer_stats.json"
+
+  # Dataset Configuration
+  dataset:
+    base_path: "datasets"
+    metadata_file: "source.meta.json"
+    target_file: "cleaned.txt"
+
+  # Document Loader Configuration
+  document_loader:
+    target_file: "cleaned.txt"
+    metadata_file: "source.meta.json"
+    min_content_length: 10
+    max_content_length: 10000000
+    encoding: "utf-8"
+    required_metadata_fields:
+      - "source_url"
+    enable_content_caching: false
+    max_scan_depth: 5
+    min_file_size_bytes: 1
+    max_file_size_bytes: 50000000

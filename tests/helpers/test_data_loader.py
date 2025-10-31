@@ -11,42 +11,35 @@ def load_test_data_into_qdrant(
     orchestration_url: str,
     qdrant_url: str,
 ) -> None:
-    """
-    Load test documents into Qdrant contextual collections for retrieval testing.
-
-    Uses the LLM Orchestration Service's embedding endpoint to create embeddings
-    and stores them in the contextual_chunks_azure collection (matching production setup).
-
-    Args:
-        orchestration_url: URL of the orchestration service
-        qdrant_url: URL of Qdrant service
-    """
+    """Load test documents into Qdrant contextual collections for retrieval testing."""
     logger.info("Loading test data into Qdrant contextual collections...")
 
-    # Test documents matching the test dataset
     test_documents = get_test_documents()
 
     try:
-        # Step 1: Create embeddings via orchestration service
+        # Create embeddings via orchestration service
         texts = [doc["contextual_content"] for doc in test_documents]
 
         logger.info(f"Creating embeddings for {len(texts)} documents...")
+        
+        # CRITICAL: Use correct test environment values
         embedding_response = requests.post(
             f"{orchestration_url}/embeddings",
             json={
                 "texts": texts,
-                "environment": "test",
-                "connection_id": "evalconnection-1",  # Must match Vault secret
+                "environment": "test",  # ← MUST be "test"
+                "connection_id": "evalconnection-1",  # ← MUST match Vault
                 "batch_size": 50,
             },
             timeout=120,
         )
-
+        
+        # Debug logging
+        logger.info(f"Embedding API response status: {embedding_response.status_code}")
         if embedding_response.status_code != 200:
-            logger.error(f"Embedding API error: {embedding_response.status_code}")
-            logger.error(f"Response: {embedding_response.text}")
+            logger.error(f"Embedding API error: {embedding_response.text}")
             raise RuntimeError(f"Embedding creation failed: {embedding_response.text}")
-
+        
         embeddings_data = embedding_response.json()
 
         # Debug: Log the actual response structure
