@@ -31,18 +31,130 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        id: validate_secrets
+        run: |
+          echo "Validating required environment variables..."
+          MISSING_SECRETS=()
+          
+          # Check Azure OpenAI secrets
+          if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_ENDPOINT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_API_KEY }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_API_KEY")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_DEPLOYMENT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+          fi
+          
+          # Check other LLM API keys
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            MISSING_SECRETS+=("ANTHROPIC_API_KEY")
+          fi
+          
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            MISSING_SECRETS+=("OPENAI_API_KEY")
+          fi
+          
+          # If any secrets are missing, fail
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "missing=true" >> $GITHUB_OUTPUT
+            echo "secrets_list=${MISSING_SECRETS[*]}" >> $GITHUB_OUTPUT
+            echo "❌ Missing required secrets: ${MISSING_SECRETS[*]}"
+            exit 1
+          else
+            echo "missing=false" >> $GITHUB_OUTPUT
+            echo "✅ All required secrets are configured"
+          fi
+      
+      - name: Comment PR with missing secrets error
+        if: failure() && steps.validate_secrets.outputs.missing == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const missingSecrets = '${{ steps.validate_secrets.outputs.secrets_list }}'.split(' ');
+            const secretsList = missingSecrets.map(s => `- \`${s}\``).join('\n');
+            
+            const comment = `## 🛡️ Red Team Security Tests: Missing Required Secrets
+            
+            The Red Team security assessment cannot run because the following GitHub secrets are not configured:
+            
+            ${secretsList}
+            
+            ### How to Fix
+            
+            1. Go to **Settings** → **Secrets and variables** → **Actions**
+            2. Add the missing secrets with the appropriate values:
+            
+            **Azure OpenAI Configuration:**
+            - \`AZURE_OPENAI_ENDPOINT\` - Your Azure OpenAI resource endpoint (e.g., \`https://your-resource.openai.azure.com/\`)
+            - \`AZURE_OPENAI_API_KEY\` - Your Azure OpenAI API key
+            - \`AZURE_OPENAI_DEPLOYMENT\` - Chat model deployment name (e.g., \`gpt-4o-mini\`)
+            - \`AZURE_OPENAI_EMBEDDING_DEPLOYMENT\` - Embedding model deployment name (e.g., \`text-embedding-3-large\`)
+            
+            **Additional LLM APIs:**
+            - \`ANTHROPIC_API_KEY\` - Anthropic API key (for guardrails)
+            - \`OPENAI_API_KEY\` - OpenAI API key (optional fallback)
+            
+            3. Re-run the workflow after adding the secrets
+            
+            ### ⚠️ Security Note
+            Without proper API credentials, we cannot assess the system's security posture against adversarial attacks.
+            
+            ---
+            *Workflow: ${context.workflow} | Run: [#${context.runNumber}](${context.payload.repository.html_url}/actions/runs/${context.runId})*`;
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existingComment = comments.data.find(
+              comment => comment.user.login === 'github-actions[bot]' &&
+                comment.body.includes('Red Team Security Tests: Missing Required Secrets')
+            );
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
       - name: Set up Python
+        if: success()
         uses: actions/setup-python@v5
         with:
           python-version-file: '.python-version'
 
       - name: Set up uv
+        if: success()
         uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies (locked)
+        if: success()
         run: uv sync --frozen
 
       - name: Create test directories with proper permissions
+        if: success()
         run: |
           mkdir -p test-vault/agents/llm
           mkdir -p test-vault/agent-out
@@ -53,9 +165,11 @@ jobs:
           sudo chmod -R a+rwX test-vault/agent-out
 
       - name: Build Docker images
+        if: success()
         run: docker compose -f docker-compose-test.yml build
 
       - name: Run Red Team Security Tests with testcontainers
+        if: success()
         id: run_tests
         continue-on-error: true
         env:
