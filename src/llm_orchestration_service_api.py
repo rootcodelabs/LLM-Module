@@ -300,7 +300,7 @@ async def get_available_embedding_models(
         logger.error(f"Failed to get embedding models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("orchestrate-test")
+@app.post("orchestrate-test")
 def orchestrate_llm_request_test(
     http_request: Request,
     request: OrchestrationRequest,
