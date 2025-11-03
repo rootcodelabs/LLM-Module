@@ -82,7 +82,7 @@ jobs:
             const missingSecrets = '${{ steps.validate_secrets.outputs.secrets_list }}'.split(' ');
             const secretsList = missingSecrets.map(s => `- \`${s}\``).join('\n');
             
-            const comment = `## 🛡️ Red Team Security Tests: Missing Required Secrets
+            const comment = `##  Red Team Security Tests: Missing Required Secrets
             
             The Red Team security assessment cannot run because the following GitHub secrets are not configured:
             

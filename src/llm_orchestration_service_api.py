@@ -1,4 +1,5 @@
 """LLM Orchestration Service API - FastAPI application."""
+
 import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
@@ -18,7 +19,7 @@ from models.request_models import (
     ContextGenerationRequest,
     ContextGenerationResponse,
     EmbeddingErrorResponse,
-    DeepEvalTestOrchestrationResponse
+    DeepEvalTestOrchestrationResponse,
 )
 
 
@@ -299,6 +300,7 @@ async def get_available_embedding_models(
     except Exception as e:
         logger.error(f"Failed to get embedding models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("orchestrate-test")
 def orchestrate_llm_request_test(

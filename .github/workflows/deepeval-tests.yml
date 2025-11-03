@@ -71,7 +71,7 @@ jobs:
             const missingSecrets = '${{ steps.validate_secrets.outputs.secrets_list }}'.split(' ');
             const secretsList = missingSecrets.map(s => `- \`${s}\``).join('\n');
             
-            const comment = `## ⚠️ DeepEval Tests: Missing Required Secrets
+            const comment = `##  DeepEval Tests: Missing Required Secrets
             
             The DeepEval RAG system tests cannot run because the following GitHub secrets are not configured:
             

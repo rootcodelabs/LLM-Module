@@ -1084,7 +1084,7 @@ class LLMOrchestrationService:
                     logger.info(
                         "Test environment detected – returning out-of-scope message."
                     )
-                    
+
                     return TestOrchestrationResponse(
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
@@ -1092,8 +1092,7 @@ class LLMOrchestrationService:
                         content=OUT_OF_SCOPE_MESSAGE,
                     )
                 else:
-                    
-                    response =  OrchestrationResponse(
+                    response = OrchestrationResponse(
                         chatId=request.chatId,
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
@@ -1103,7 +1102,7 @@ class LLMOrchestrationService:
                     if testing_mode:
                         response.retrieval_context = retrieval_context
                         response.refined_questions = refined_output.refined_questions
-                    return response 
+                    return response
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
@@ -1116,7 +1115,7 @@ class LLMOrchestrationService:
                     content=answer,
                 )
             else:
-                response =  OrchestrationResponse(
+                response = OrchestrationResponse(
                     chatId=request.chatId,
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,

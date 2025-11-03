@@ -21,7 +21,7 @@ def load_test_data_into_qdrant(
         texts = [doc["contextual_content"] for doc in test_documents]
 
         logger.info(f"Creating embeddings for {len(texts)} documents...")
-        
+
         # CRITICAL: Use correct test environment values
         embedding_response = requests.post(
             f"{orchestration_url}/embeddings",
@@ -33,13 +33,13 @@ def load_test_data_into_qdrant(
             },
             timeout=120,
         )
-        
+
         # Debug logging
         logger.info(f"Embedding API response status: {embedding_response.status_code}")
         if embedding_response.status_code != 200:
             logger.error(f"Embedding API error: {embedding_response.text}")
             raise RuntimeError(f"Embedding creation failed: {embedding_response.text}")
-        
+
         embeddings_data = embedding_response.json()
 
         # Debug: Log the actual response structure

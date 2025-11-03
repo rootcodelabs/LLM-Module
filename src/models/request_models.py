@@ -163,6 +163,7 @@ class TestOrchestrationResponse(BaseModel):
     )
     content: str = Field(..., description="Response content with citations")
 
+
 class DeepEvalTestOrchestrationResponse(BaseModel):
     """Extended response model for testing with additional evaluation data."""
 
