@@ -474,7 +474,7 @@ services:
     networks:
       - bykstack
     entrypoint: ["/bin/sh"]
-    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 777 /agent/out && sh /vault-init.sh"]
+    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 770 /agent/out && sh /vault-init.sh"]
     restart: "no"
 
   vault-agent-llm:
