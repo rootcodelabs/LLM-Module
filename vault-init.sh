@@ -94,6 +94,7 @@ path "secret/data/embeddings/*" { capabilities = ["create", "read", "update", "d
         --header="X-Vault-Token: $ROOT_TOKEN" \
         "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/role-id" | \
         grep -o '"role_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
+    mkdir -p /agent/credentials
     echo "$ROLE_ID" > /agent/credentials/role_id
     
     # Generate secret_id
@@ -149,6 +150,7 @@ else
             --header="X-Vault-Token: $ROOT_TOKEN" \
             "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/secret-id" | \
             grep -o '"secret_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
+        mkdir -p /agent/credentials
         echo "$SECRET_ID" > /agent/credentials/secret_id
         chmod 644 /agent/credentials/secret_id
         
