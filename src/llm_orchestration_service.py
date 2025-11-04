@@ -993,6 +993,7 @@ class LLMOrchestrationService:
         No secondary LLM paths; no citations appended.
         """
         logger.info("Starting RAG response generation")
+        testing_mode = os.getenv("TESTING_MODE", "false").lower() == "true"
 
         if costs_dict is None:
             costs_dict = {}
@@ -1067,12 +1068,23 @@ class LLMOrchestrationService:
                     },
                     output=answer,
                 )
+            retrieval_context: List[Dict[str, Any]] | None = None
+            if testing_mode and relevant_chunks:
+                retrieval_context = [
+                    {
+                        "content": chunk.get("content", ""),
+                        "score": chunk.get("score", 0.0),
+                        "metadata": chunk.get("meta", {}),
+                    }
+                    for chunk in relevant_chunks
+                ]
             if question_out_of_scope:
                 logger.info("Question determined out-of-scope – sending fixed message.")
                 if request.environment == "test":
                     logger.info(
                         "Test environment detected – returning out-of-scope message."
                     )
+
                     return TestOrchestrationResponse(
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
@@ -1080,13 +1092,17 @@ class LLMOrchestrationService:
                         content=OUT_OF_SCOPE_MESSAGE,
                     )
                 else:
-                    return OrchestrationResponse(
+                    response = OrchestrationResponse(
                         chatId=request.chatId,
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
                         content=OUT_OF_SCOPE_MESSAGE,
                     )
+                    if testing_mode:
+                        response.retrieval_context = retrieval_context
+                        response.refined_questions = refined_output.refined_questions
+                    return response
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
@@ -1099,13 +1115,17 @@ class LLMOrchestrationService:
                     content=answer,
                 )
             else:
-                return OrchestrationResponse(
+                response = OrchestrationResponse(
                     chatId=request.chatId,
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=answer,
                 )
+                if testing_mode:
+                    response.retrieval_context = retrieval_context
+                    response.refined_questions = refined_output.refined_questions
+                return response
 
         except Exception as e:
             logger.error(f"RAG Response generation failed: {str(e)}")

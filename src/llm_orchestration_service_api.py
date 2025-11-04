@@ -1,5 +1,6 @@
 """LLM Orchestration Service API - FastAPI application."""
 
+import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
 
@@ -18,6 +19,7 @@ from models.request_models import (
     ContextGenerationRequest,
     ContextGenerationResponse,
     EmbeddingErrorResponse,
+    DeepEvalTestOrchestrationResponse,
 )
 
 
@@ -298,6 +300,81 @@ async def get_available_embedding_models(
     except Exception as e:
         logger.error(f"Failed to get embedding models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("orchestrate-test")
+def orchestrate_llm_request_test(
+    http_request: Request,
+    request: OrchestrationRequest,
+) -> DeepEvalTestOrchestrationResponse:
+    """
+    Process LLM orchestration request with additional testing data.
+
+    This endpoint is only available when TESTING_MODE=true and returns
+    retrieval context and refined questions for DeepEval metrics evaluation.
+
+    Args:
+        http_request: FastAPI Request object for accessing app state
+        request: OrchestrationRequest containing user message and context
+
+    Returns:
+        DeepEvalTestOrchestrationResponse: Response with LLM output, status flags, and test data
+
+    Raises:
+        HTTPException: For processing errors or if not in testing mode
+    """
+    # Check if testing mode is enabled
+    testing_mode = os.getenv("TESTING_MODE", "false").lower() == "true"
+    if not testing_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Testing endpoint not available in production mode",
+        )
+
+    try:
+        logger.info(f"Received TEST orchestration request for chatId: {request.chatId}")
+
+        if not hasattr(http_request.app.state, "orchestration_service"):
+            logger.error("Orchestration service not found in app state")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        orchestration_service = http_request.app.state.orchestration_service
+        if orchestration_service is None:
+            logger.error("Orchestration service is None")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        # Process the request (will include test data due to TESTING_MODE env var)
+        response = orchestration_service.process_orchestration_request(request)
+
+        # Convert to test response with additional fields
+        test_response = DeepEvalTestOrchestrationResponse(
+            chatId=response.chatId,
+            llmServiceActive=response.llmServiceActive,
+            questionOutOfLLMScope=response.questionOutOfLLMScope,
+            inputGuardFailed=response.inputGuardFailed,
+            content=response.content,
+            retrieval_context=response.retrieval_context,
+            refined_questions=response.refined_questions,
+            expected_output=None,  # Will be populated by test framework
+        )
+
+        logger.info(f"Successfully processed TEST request for chatId: {request.chatId}")
+        return test_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error processing TEST request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred",
+        )
 
 
 if __name__ == "__main__":
