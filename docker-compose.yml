@@ -469,7 +469,7 @@ services:
     volumes:
       - vault-data:/vault/data
       - vault-agent-creds:/agent/credentials
-      - vault-agent-token:/agent/out              # Add this line
+      - vault-agent-token:/agent/out
       - ./vault-init.sh:/vault-init.sh:ro
     networks:
       - bykstack

@@ -88,13 +88,15 @@ path "secret/data/embeddings/*" { capabilities = ["create", "read", "update", "d
         --header='Content-Type: application/json' \
         "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service" >/dev/null
     
+    # Ensure credentials directory exists
+    mkdir -p /agent/credentials
+    
     # Get role_id
     echo "Getting role_id..."
     ROLE_ID=$(wget -q -O- \
         --header="X-Vault-Token: $ROOT_TOKEN" \
         "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/role-id" | \
         grep -o '"role_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
-    mkdir -p /agent/credentials
     echo "$ROLE_ID" > /agent/credentials/role_id
     
     # Generate secret_id
@@ -144,19 +146,22 @@ else
         ROOT_TOKEN=$(grep -o '"root_token":"[^"]*"' "$UNSEAL_KEYS_FILE" | cut -d':' -f2 | tr -d '"')
         export VAULT_TOKEN="$ROOT_TOKEN"
         
+        # Ensure credentials directory exists
+        mkdir -p /agent/credentials
+        
         # Regenerate secret_id after unseal
         echo "Regenerating secret_id..."
         SECRET_ID=$(wget -q -O- --post-data='' \
             --header="X-Vault-Token: $ROOT_TOKEN" \
             "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/secret-id" | \
             grep -o '"secret_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
-        mkdir -p /agent/credentials
         echo "$SECRET_ID" > /agent/credentials/secret_id
         chmod 644 /agent/credentials/secret_id
         
         # Ensure role_id exists
         if [ ! -f /agent/credentials/role_id ]; then
             echo "Copying role_id..."
+            mkdir -p /agent/credentials
             ROLE_ID=$(wget -q -O- \
                 --header="X-Vault-Token: $ROOT_TOKEN" \
                 "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/role-id" | \
