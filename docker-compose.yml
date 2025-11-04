@@ -184,11 +184,15 @@ services:
       - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
       - ./grafana-configs/loki_logger.py:/app/src/vector_indexer/loki_logger.py
       - ./.env:/app/.env:ro
+      - vault-agent-token:/agent/out:ro  # Mount vault token for accessing vault secrets
     environment:
       - server.port=9010
       - PYTHONPATH=/app:/app/src/vector_indexer
+      - VAULT_ADDR=http://vault:8200
     ports:
       - 9010:8080
+    depends_on:
+      - vault-agent-llm
     networks:
       - bykstack
 
@@ -442,15 +446,16 @@ services:
       - ./vault/config:/vault/config:ro
       - ./vault/logs:/vault/logs
     expose:
-    - "8200"
+      - "8200"
     networks:
       - bykstack
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "vault", "status", "-format=json"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8200/v1/sys/health || exit 0"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   vault-init:
     image: hashicorp/vault:1.20.3
@@ -464,11 +469,12 @@ services:
     volumes:
       - vault-data:/vault/data
       - vault-agent-creds:/agent/credentials
+      - vault-agent-token:/agent/out              # Add this line
       - ./vault-init.sh:/vault-init.sh:ro
     networks:
       - bykstack
     entrypoint: ["/bin/sh"]
-    command: ["-c", "apk add --no-cache curl jq && chmod +x /vault-init.sh && /vault-init.sh"]
+    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 777 /agent/out && sh /vault-init.sh"]
     restart: "no"
 
   vault-agent-llm:

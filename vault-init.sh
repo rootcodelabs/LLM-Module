@@ -69,11 +69,11 @@ if [ ! -f "$INIT_FLAG" ]; then
     
     # Create policy
     echo "Creating llm-orchestration policy..."
-    POLICY='path "secret/metadata/llm/*" { capabilities = ["list"] }
-path "secret/data/llm/*" { capabilities = ["read"] }
+    POLICY='path "secret/metadata/llm/*" { capabilities = ["list", "delete"] }
+path "secret/data/llm/*" { capabilities = ["create", "read", "update", "delete"] }
 path "auth/token/lookup-self" { capabilities = ["read"] }
-path "secret/metadata/embeddings/*" { capabilities = ["list"] }
-path "secret/data/embeddings/*" { capabilities = ["read"] }'
+path "secret/metadata/embeddings/*" { capabilities = ["list", "delete"] }
+path "secret/data/embeddings/*" { capabilities = ["create", "read", "update", "delete"] }'
     
     POLICY_JSON=$(echo "$POLICY" | jq -Rs '{"policy":.}')
     wget -q -O- --post-data="$POLICY_JSON" \
@@ -104,7 +104,7 @@ path "secret/data/embeddings/*" { capabilities = ["read"] }'
         grep -o '"secret_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
     echo "$SECRET_ID" > /agent/credentials/secret_id
     
-    chmod 600 /agent/credentials/role_id /agent/credentials/secret_id
+    chmod 644 /agent/credentials/role_id /agent/credentials/secret_id
     
     # Mark as initialized
     touch "$INIT_FLAG"
@@ -150,7 +150,7 @@ else
             "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/secret-id" | \
             grep -o '"secret_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
         echo "$SECRET_ID" > /agent/credentials/secret_id
-        chmod 600 /agent/credentials/secret_id
+        chmod 644 /agent/credentials/secret_id
         
         # Ensure role_id exists
         if [ ! -f /agent/credentials/role_id ]; then
@@ -160,7 +160,7 @@ else
                 "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service/role-id" | \
                 grep -o '"role_id":"[^"]*"' | cut -d':' -f2 | tr -d '"')
             echo "$ROLE_ID" > /agent/credentials/role_id
-            chmod 600 /agent/credentials/role_id
+            chmod 644 /agent/credentials/role_id
         fi
     else
         echo "Vault is unsealed. No action needed."
