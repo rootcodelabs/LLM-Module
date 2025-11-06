@@ -387,5 +387,17 @@
     "inferenceErrorMessage": "Järeldamise tulemuse saamine ebaõnnestus. Palun proovi uuesti.",
     "classificationFailed": "Järeldamine ebaõnnestus. Palun proovi uuesti.",
     "closeButton": "Sulge"
+  },
+  "budgetBanner": {
+    "productionDisabled": "Tootmise LLM ühendus keelatud",
+    "budgetExceededDescription": "{{platform}} integratsioon on oma eelarve ületanud. Uuenda eelarvet LLM ühenduse taasaktiveerimiseks.",
+    "budgetUsageMessage": "{{percentage}}% ühenduse eelarvest on kasutatud.",
+    "budgetUsageDescription": "{{platform}} integratsioon on kasutanud {{percentage}}% oma eelarvest. Vaata üle ühenduse eelarve, et vältida katkestusi",
+    "reviewBudgetButton": "Vaata Eelarvet",
+    "updateBudgetButton": "Uuenda Eelarvet",
+    "platforms": {
+      "aws": "AWS Bedrock",
+      "azure": "Azure OpenAI"
+    }
   }
 }

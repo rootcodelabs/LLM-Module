@@ -387,5 +387,17 @@
     "inferenceErrorMessage": "Failed to get inference result. Please try again.",
     "classificationFailed": "Inference failed. Please try again.",
     "closeButton": "Close"
+  },
+  "budgetBanner": {
+    "productionDisabled": "Production LLM connection disabled",
+    "budgetExceededDescription": "{{platform}} integration has exceeded its budget. Update budget to reactivate LLM connection.",
+    "budgetUsageMessage": "{{percentage}}% of connection budget is used.",
+    "budgetUsageDescription": "{{platform}} integration has used {{percentage}}% of its budget. Review connection budget to avoid disconnections",
+    "reviewBudgetButton": "Review Budget",
+    "updateBudgetButton": "Update Budget",
+    "platforms": {
+      "aws": "AWS Bedrock",
+      "azure": "Azure OpenAI"
+    }
   }
 }
