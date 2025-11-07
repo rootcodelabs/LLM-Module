@@ -12,7 +12,10 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug"
+    "test:debug": "playwright test --debug",
+    "test:chrome": "playwright test --project=chromium",
+    "test:chrome:headed": "playwright test --project=chromium --headed",
+    "test:chrome:debug": "playwright test --project=chromium --debug"
   },
   "dependencies": {
     "@buerokratt-ria/styles": "^0.0.1",
