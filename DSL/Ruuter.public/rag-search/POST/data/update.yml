@@ -54,7 +54,35 @@ check_has_match:
     - condition: ${agency_data_hash === importResult.response.body.response[0].clientDataHash}
       next: noAgencyData
     - condition: true
-      next: execute_cron_manager
+      next: sync_agency_hash_with_client_data_hash
+
+sync_agency_hash_with_client_data_hash:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/update-agency-hash"
+    body:
+      agencyId: ${single_agency_id}
+      newAgencyDataHash: ${client_data_hash}
+  result: sync_agency_hash_result
+  next: log_sync_agency_hash_result
+  on_error: handle_agency_hash_update_error
+
+log_sync_agency_hash_result:
+  log: "Agency hash sync result: ${JSON.stringify(sync_agency_hash_result.response)}"
+  next: execute_cron_manager
+
+handle_agency_hash_update_error:
+  log: "ERROR: Failed to update agency hash - ${sync_agency_hash_result.error || 'Unknown error'}"
+  next: assign_agency_hash_error_response
+
+assign_agency_hash_error_response:
+  assign:
+    format_res: {
+      message: "Failed to update agency data hash. Data synchronization aborted.",
+      operationSuccessful: false,
+      error: "AGENCY_HASH_UPDATE_FAILED"
+    }
+  next: return_bad_request
 
 execute_cron_manager:
   call: http.post
@@ -64,24 +92,42 @@ execute_cron_manager:
       signedUrl: ${signed_s3_url}
       clientDataHash: ${client_data_hash}
   result: res
-  next: log_new_data_present
+  next: assign_success_response
 
-log_new_data_present:
-  log: "New data present - synchronization required"
+assign_success_response:
+  assign:
+    format_res: {
+      message: "Data synchronization initiated successfully",
+      operationSuccessful: true,
+    }
+  next: return_ok
+
+assign_fail_response:
+  assign:
+    format_res: {
+      message: "Data synchronization failed",
+      operationSuccessful: false,
+    }
+  next: return_bad_request
+
+return_ok:
+  status: 200
+  return: ${format_res}
   next: end
 
-assignNoAgencyResponse:
-  assign:
-    no_agency_response:
-      success: false
-      message: "No agency data available for sync"
-  next: noAgencyData
+return_bad_request:
+  status: 400
+  return: ${format_res}
+  next: end
 
 noAgencyData:
   assign:
     response_data:
       success: true
       message: "No sync required - data is up to date"
+  next: return_no_sync_needed
+
+return_no_sync_needed:
   status: 200
   return: ${response_data}
   next: end
