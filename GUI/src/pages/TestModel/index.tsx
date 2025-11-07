@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Button, FormSelect, FormTextarea } from 'components';
+import { Button, FormSelect, FormTextarea, Collapsible } from 'components';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
 import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,25 @@ const TestLLM: FC = () => {
     connectionId: null,
     text: '',
   });
+
+  //Todo: Remove once backend is integrated
+  const context = [
+    {
+      rank: 1,
+      chunkRetrieved: "sample context 1"
+    },
+    {
+      rank: 3,
+      chunkRetrieved: "sample context 2"
+    },
+    {
+      rank: 2,
+      chunkRetrieved: "sample context 3"
+    }
+  ];
+
+  // Sort context by rank
+  const sortedContext = context.sort((a, b) => a.rank - b.rank);
 
   // Fetch LLM connections for dropdown - using the working legacy endpoint for now
   const { data: connections, isLoading: isLoadingConnections } = useQuery({
@@ -99,7 +118,7 @@ const TestLLM: FC = () => {
                 onSelectionChange={(selection) => {
                   handleChange('connectionId', selection?.value as string);
                 }}
-                value={testLLM?.connectionId === null ? 'Connection does not exist' : undefined} 
+                value={testLLM?.connectionId === null ? 'Connection does not exist' : undefined}
                 defaultValue={testLLM?.connectionId ?? undefined}
               />
             </div>
@@ -128,13 +147,31 @@ const TestLLM: FC = () => {
 
           {inferenceResult && (
             <div className="inference-results-container">
-            <div className="result-item">
-              <strong>Response:</strong>
-              <div className="response-content">
-                {inferenceResult.content}
+              <div className="result-item">
+                <strong>Response:</strong>
+                <div className="response-content">
+                  {inferenceResult.content}
+                </div>
+              </div>
+              
+              {/* Context Section */}
+              <div className="context-section">
+                <Collapsible title={`Context (${sortedContext.length} chunks)`} defaultOpen={false}>
+                  <div className="context-list">
+                    {sortedContext.map((contextItem, index) => (
+                      <div key={index} className="context-item">
+                        <div className="context-rank">
+                          <strong>Rank {contextItem.rank}</strong>
+                        </div>
+                        <div className="context-content">
+                          {contextItem.chunkRetrieved}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Collapsible>
               </div>
             </div>
-          </div>
           )}
 
           {/* Error State */}
