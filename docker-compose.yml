@@ -434,7 +434,6 @@ services:
   vault:
     image: hashicorp/vault:1.20.3
     container_name: vault
-    user: "0"
     cap_add:
       - IPC_LOCK
     command: ["vault", "server", "-config=/vault/config/vault.hcl"]
@@ -474,13 +473,12 @@ services:
     networks:
       - bykstack
     entrypoint: ["/bin/sh"]
-    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 777 /agent/out && sh /vault-init.sh"]
+    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 770 /agent/out && chown -R vault:vault /agent/credentials /agent/out && su vault -s /bin/sh /vault-init.sh"]
     restart: "no"
 
   vault-agent-llm:
     image: hashicorp/vault:1.20.3
     container_name: vault-agent-llm
-    user: "0"
     command: ["vault", "agent", "-config=/agent/config/agent.hcl", "-log-level=info"]
     depends_on:
       vault-init:
