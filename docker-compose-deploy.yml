@@ -1,0 +1,559 @@
+services:
+  ruuter-public:
+    container_name: ruuter-public
+    image: ghcr.io/buerokratt/ruuter:v2.2.8
+    environment:
+      - application.cors.allowedOrigins=http://localhost:8086,http://localhost:3001,http://localhost:3003,http://localhost:3004,http://localhost:8080,http://localhost:8000,http://localhost:8090
+      - application.httpCodesAllowList=200,201,202,204,400,401,403,500
+      - application.internalRequests.allowedIPs=127.0.0.1
+      - application.logging.displayRequestContent=true
+      - application.logging.displayResponseContent=true
+      - application.logging.printStackTrace=true
+      - application.internalRequests.disabled=true
+      - server.port=8086
+    volumes:
+      - ./DSL/Ruuter.public:/DSL
+      - ./constants.ini:/app/constants.ini
+    ports:
+      - 8086:8086
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "512M"
+  
+  ruuter-private:
+    container_name: ruuter-private
+    image: ghcr.io/buerokratt/ruuter:v2.2.8
+    environment:
+      - application.cors.allowedOrigins=http://localhost:3001,http://localhost:3003,http://localhost:8088,http://localhost:3002,http://localhost:3004,http://localhost:8000
+      - application.httpCodesAllowList=200,201,202,400,401,403,500
+      - application.internalRequests.allowedIPs=127.0.0.1
+      - application.logging.displayRequestContent=true
+      - application.logging.displayResponseContent=true
+      - application.logging.printStackTrace=true
+      - application.internalRequests.disabled=true
+      - server.port=8088
+    volumes:
+      - ./DSL/Ruuter.private:/DSL
+      - ./constants.ini:/app/constants.ini
+    ports:
+      - 8088:8088
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "512M"
+
+  data-mapper:
+    container_name: data-mapper
+    image: ghcr.io/buerokratt/data-mapper:v2.2.23
+    environment:
+      - PORT=3000
+      - CONTENT_FOLDER=/data
+    volumes:
+      - ./DSL:/data
+      - ./DSL/DMapper/rag-search/hbs:/workspace/app/views/rag-search
+      - ./DSL/DMapper/rag-search/lib:/workspace/app/lib
+    ports:
+      - 3001:3000
+    networks:
+      - bykstack
+
+  tim:
+    container_name: tim
+    image: ghcr.io/buerokratt/tim:v2.3.6
+    depends_on:
+      tim-postgresql:
+        condition: service_started
+    environment:
+      - SECURITY_ALLOWLIST_JWT=ruuter-private,ruuter-public,data-mapper,resql,tim,tim-postgresql,chat-widget,authentication-layer,127.0.0.1,::1
+      - KEY_PASS=ppjjpp
+    ports:
+      - 8085:8085
+    networks:
+      - bykstack
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    cpus: "0.5"
+    mem_limit: "512M"
+
+  tim-postgresql:
+    container_name: tim-postgresql
+    image: postgres:14.1
+    environment:
+      - POSTGRES_USER=tim
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_DB=tim
+      # - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - ./tim-db:/var/lib/postgresql/data
+    ports:
+      - 9876:5432
+    networks:
+      - bykstack
+
+  authentication-layer:
+    container_name: authentication-layer
+    image: ghcr.io/buerokratt/authentication-layer:v1.1.1
+    ports:
+      - 3004:3004
+    networks:
+      - bykstack
+
+  resql:
+    container_name: resql
+    image: ghcr.io/buerokratt/resql:v1.3.6
+    depends_on:
+      rag_search_db:
+        condition: service_started
+    environment:
+      - sqlms.datasources.[0].name=byk
+      - sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://rag_search_db:5432/rag-search #For LocalDb Use
+      # sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://171.22.247.13:5435/byk?sslmode=require
+      - sqlms.datasources.[0].username=postgres
+      - sqlms.datasources.[0].password=dbadmin
+      - logging.level.org.springframework.boot=INFO
+    ports:
+      - 8082:8082
+    volumes:
+      - ./DSL/Resql:/DSL
+      - ./shared:/shared
+      - ./DSL/DatasetGenerator/output_datasets:/app/output_datasets
+    networks:
+      - bykstack
+   
+  gui:
+    container_name: gui
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_RUUTER_API_URL=http://localhost:8086
+      - REACT_APP_RUUTER_PRIVATE_API_URL=http://localhost:8088  
+      - REACT_APP_CUSTOMER_SERVICE_LOGIN=http://localhost:3004/et/dev-auth
+      - REACT_APP_CSP=upgrade-insecure-requests; default-src 'self'; font-src 'self' data:; img-src 'self' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; connect-src 'self' http://localhost:8086 http://localhost:8088 http://localhost:3004 http://localhost:3005 ws://localhost;
+      - DEBUG_ENABLED=true
+      - CHOKIDAR_USEPOLLING=true
+      - PORT=3001
+      - REACT_APP_SERVICE_ID=conversations,settings,monitoring
+      - REACT_APP_ENABLE_HIDDEN_FEATURES=TRUE
+      - VITE_HOST=0.0.0.0
+      - VITE_PORT=3001
+      - HOST=0.0.0.0
+      - VITE_ALLOWED_HOSTS=localhost,127.0.0.1
+      - HMR=false
+      - FAST_REFRESH=false
+    build:
+      context: ./GUI
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3003:3001"
+    volumes:
+      - /app/node_modules
+      - ./GUI:/app
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "1G"
+    restart: unless-stopped
+
+  rag-s3-ferry:
+    image: ghcr.io/buerokratt/s3-ferry:PRE-ALPHA-1.1.1
+    container_name: rag-s3-ferry
+    volumes:
+      - shared-volume:/app/shared
+      - cron_data:/app/data
+      - ./datasets:/app/datasets  # Access to datasets folder for diff identifier operations
+    env_file:
+      - .env
+    ports:
+      - "3006:3000"
+    networks:
+      - bykstack
+    depends_on:
+      minio:
+        condition: service_started
+
+  cron-manager:
+    container_name: cron-manager
+    image: ghcr.io/buerokratt/cron-manager-python:latest
+    user: "root"
+    volumes:
+      - ./DSL/CronManager/DSL:/DSL
+      - ./DSL/CronManager/script:/app/scripts
+      - ./src/vector_indexer:/app/src/vector_indexer
+      - cron_data:/app/data
+      - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
+      - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
+      - ./grafana-configs/loki_logger.py:/app/src/vector_indexer/loki_logger.py
+      - ./.env:/app/.env:ro
+      - vault-agent-token:/agent/out:ro  # Mount vault token for accessing vault secrets
+    environment:
+      - server.port=9010
+      - PYTHONPATH=/app:/app/src/vector_indexer
+      - VAULT_ADDR=http://vault:8200
+    ports:
+      - 9010:8080
+    depends_on:
+      - vault-agent-llm
+    networks:
+      - bykstack
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    restart: always
+    container_name: qdrant
+    ports:
+      - 6333:6333 # http client 
+      - 6334:6334 # grpc client
+    expose:
+      - 6333
+      - 6334
+      - 6335
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - bykstack
+
+  # Logging Stack - Loki and Grafana
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./grafana-configs/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    networks:
+      - bykstack
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: grafana
+    ports:
+      - "4005:3000"
+    env_file:
+      - .env
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-configs/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./grafana-configs/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./grafana-configs/grafana-dashboard-deployment.json:/etc/grafana/dashboards/deployment.json
+    networks:
+      - bykstack
+    depends_on:
+      - loki
+    restart: unless-stopped
+  
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    restart: always
+    depends_on: &langfuse-depends-on
+      rag_search_db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:3030:3030
+    env_file:
+      - .env
+    environment: &langfuse-worker-env
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      DATABASE_URL: ${DATABASE_URL}
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES}
+      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED}
+      LANGFUSE_USE_AZURE_BLOB: ${LANGFUSE_USE_AZURE_BLOB}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE}
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE}
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX}
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED}
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET}
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX}
+      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION}
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT}
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT}
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID}
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY}
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE}
+      LANGFUSE_INGESTION_QUEUE_DELAY_MS: ${LANGFUSE_INGESTION_QUEUE_DELAY_MS}
+      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: ${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_AUTH: ${REDIS_AUTH}
+      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED}
+      REDIS_TLS_CA: ${REDIS_TLS_CA}
+      REDIS_TLS_CERT: ${REDIS_TLS_CERT}
+      REDIS_TLS_KEY: ${REDIS_TLS_KEY}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS}
+      SMTP_CONNECTION_URL: ${SMTP_CONNECTION_URL}
+    networks:
+      - bykstack
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    restart: always
+    depends_on:
+      - langfuse-worker
+      - rag_search_db
+    ports:
+      - 3005:3000
+    env_file:
+      - .env
+    environment:
+      <<: *langfuse-worker-env
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
+    networks:
+      - bykstack
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server
+    restart: always
+    user: "101:101"
+    env_file:
+      - .env
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - 127.0.0.1:8123:8123
+      - 127.0.0.1:9000:9000
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    networks:
+      - bykstack
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    env_file:
+      - .env
+    entrypoint: sh
+    command: -c "
+      export MINIO_ROOT_USER=$${S3_ACCESS_KEY_ID:-minio} && \
+      export MINIO_ROOT_PASSWORD=$${S3_SECRET_ACCESS_KEY:-miniosecret} && \
+      export MINIO_BROWSER_REDIRECT_URL=$${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9091} && \
+      mkdir -p /data/rag-search/resources/langfuse && \
+      mkdir -p /data/rag-search/resources/models && \
+      mkdir -p /data/rag-search/resources/datasets && \
+      mkdir -p /data/rag-search/resources/qdrant && \
+      mkdir -p /data/rag-search/resources/system && \
+      minio server /data --address \":9000\" --console-address \":9001\"
+      "
+    ports:
+      - 9090:9000
+      - 127.0.0.1:9091:9001
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+    networks:
+      - bykstack
+
+  redis:
+    image: docker.io/redis:7
+    restart: always
+    env_file:
+      - .env
+    command: >
+      --requirepass ${REDIS_AUTH:-myredissecret}
+    ports:
+      - 127.0.0.1:6379:6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+    networks:
+      - bykstack
+
+  rag_search_db:
+    container_name: rag_search_db
+    image: postgres:14.1
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
+      POSTGRES_DB: ${POSTGRES_DB:-rag-search}
+    ports:
+      - 5436:5432
+    volumes:
+      - rag-search-db:/var/lib/postgresql/data
+    networks:
+      - bykstack
+
+  vault:
+    image: hashicorp/vault:1.20.3
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_SKIP_VERIFY_CONFIG_PERMISSIONS: "true"
+    volumes:
+      - vault-data:/vault/file
+      - ./vault/config:/vault/config:ro
+      - ./vault/logs:/vault/logs
+    expose:
+      - "8200"
+    networks:
+      - bykstack
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8200/v1/sys/health || exit 0"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  vault-init:
+    image: hashicorp/vault:1.20.3
+    container_name: vault-init
+    user: "0"
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - vault-data:/vault/data
+      - vault-agent-creds:/agent/credentials
+      - vault-agent-token:/agent/out
+      - ./vault-init.sh:/vault-init.sh:ro
+    networks:
+      - bykstack
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 770 /agent/out && chown -R vault:vault /agent/credentials /agent/out && su vault -s /bin/sh /vault-init.sh"]
+    restart: "no"
+
+  vault-agent-llm:
+    image: hashicorp/vault:1.20.3
+    container_name: vault-agent-llm
+    command: ["vault", "agent", "-config=/agent/config/agent.hcl", "-log-level=info"]
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./vault/agents/llm/agent.hcl:/agent/config/agent.hcl:ro
+      - vault-agent-creds:/agent/credentials:ro
+      - vault-agent-token:/agent/out
+    networks:
+      - bykstack
+    restart: unless-stopped
+
+  # LLM Orchestration Service
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: always
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=/agent/out/token
+    volumes:
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      - ./src/optimization/optimized_modules:/app/src/optimization/optimized_modules
+      - llm_orchestration_logs:/app/logs
+      - vault-agent-token:/agent/out:ro
+    networks:
+      - bykstack
+    depends_on:
+      - vault
+      - vault-agent-llm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  loki-data:
+    name: loki-data
+  grafana-data:
+    name: grafana-data
+  llm_orchestration_logs:
+    name: llm_orchestration_logs
+  qdrant_data:
+    name: qdrant_data
+  rag-search-db:
+    name: rag-search-db
+  langfuse_clickhouse_data:
+    name: langfuse_clickhouse_data
+  langfuse_clickhouse_logs:
+    name: langfuse_clickhouse_logs
+  minio_data:
+    name: minio_data
+  vault-data:
+    name: vault-data
+  shared-volume:
+    name: shared-volume
+  cron_data:
+    name: cron_data
+  vault-agent-creds:
+    name: vault-agent-creds
+  vault-agent-token:
+    name: vault-agent-token
+
+networks:
+  bykstack:
+    name: bykstack
+    driver: bridge
