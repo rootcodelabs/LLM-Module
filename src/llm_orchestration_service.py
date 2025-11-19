@@ -1,11 +1,13 @@
 """LLM Orchestration Service - Business logic for LLM orchestration."""
 
-from typing import Optional, List, Dict, Union, Any
+from typing import Optional, List, Dict, Union, Any, AsyncIterator
 import json
-import asyncio
 import os
 from loguru import logger
 from langfuse import Langfuse, observe
+import dspy
+from datetime import datetime
+import json as json_module
 
 from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
@@ -24,9 +26,10 @@ from src.llm_orchestrator_config.llm_cochestrator_constants import (
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
 )
-from src.utils.cost_utils import calculate_total_costs
+from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
+from src.response_generator.response_generate import stream_response_native
 
 
 class LangfuseConfig:
@@ -165,6 +168,372 @@ class LLMOrchestrationService:
                 langfuse.flush()
             self._log_costs(costs_dict)
             return self._create_error_response(request)
+
+    @observe(name="streaming_generation", as_type="generation", capture_output=False)
+    async def stream_orchestration_response(
+        self, request: OrchestrationRequest
+    ) -> AsyncIterator[str]:
+        """
+        Stream orchestration response with validation-first guardrails.
+
+        Pipeline:
+        1. Input Guardrails Check (blocking)
+        2. Prompt Refinement (blocking)
+        3. Chunk Retrieval (blocking)
+        4. Out-of-scope Check (blocking, quick)
+        5. Stream through NeMo Guardrails (validation-first)
+
+        Args:
+            request: The orchestration request containing user message and context
+
+        Yields:
+            SSE-formatted strings: "data: {json}\\n\\n"
+
+        SSE Message Format:
+            {
+                "chatId": "...",
+                "payload": {"content": "..."},
+                "timestamp": "...",
+                "sentTo": []
+            }
+
+        Content Types:
+            - Regular token: "Python", " is", " awesome"
+            - Stream complete: "END"
+            - Input blocked: INPUT_GUARDRAIL_VIOLATION_MESSAGE
+            - Out of scope: OUT_OF_SCOPE_MESSAGE
+            - Guardrail failed: OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
+            - Technical error: TECHNICAL_ISSUE_MESSAGE
+        """
+
+        # Track costs after streaming completes
+        costs_dict: Dict[str, Dict[str, Any]] = {}
+        streaming_start_time = datetime.now()
+
+        try:
+            logger.info(
+                f"[{request.chatId}] Starting streaming orchestration "
+                f"(environment: {request.environment})"
+            )
+
+            # Initialize all service components
+            components = self._initialize_service_components(request)
+
+            # STEP 1: CHECK INPUT GUARDRAILS (blocking)
+            logger.info(f"[{request.chatId}] Step 1: Checking input guardrails")
+
+            if components["guardrails_adapter"]:
+                input_check_result = await self._check_input_guardrails_async(
+                    guardrails_adapter=components["guardrails_adapter"],
+                    user_message=request.message,
+                    costs_dict=costs_dict,
+                )
+
+                if not input_check_result.allowed:
+                    logger.warning(
+                        f"[{request.chatId}] Input blocked by guardrails: "
+                        f"{input_check_result.reason}"
+                    )
+                    yield self._format_sse(
+                        request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
+                    )
+                    yield self._format_sse(request.chatId, "END")
+                    self._log_costs(costs_dict)
+                    return
+
+            logger.info(f"[{request.chatId}] Input guardrails passed ✓")
+
+            # STEP 2: REFINE USER PROMPT (blocking)
+            logger.info(f"[{request.chatId}] Step 2: Refining user prompt")
+
+            refined_output, refiner_usage = self._refine_user_prompt(
+                llm_manager=components["llm_manager"],
+                original_message=request.message,
+                conversation_history=request.conversationHistory,
+            )
+            costs_dict["prompt_refiner"] = refiner_usage
+
+            logger.info(f"[{request.chatId}] Prompt refinement complete ✓")
+
+            # STEP 3: RETRIEVE CONTEXT CHUNKS (blocking)
+            logger.info(f"[{request.chatId}] Step 3: Retrieving context chunks")
+
+            relevant_chunks = await self._safe_retrieve_contextual_chunks(
+                components["contextual_retriever"], refined_output, request
+            )
+
+            if relevant_chunks is None or len(relevant_chunks) == 0:
+                logger.info(f"[{request.chatId}] No relevant chunks - out of scope")
+                yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                yield self._format_sse(request.chatId, "END")
+                self._log_costs(costs_dict)
+                return
+
+            logger.info(f"[{request.chatId}] Retrieved {len(relevant_chunks)} chunks ✓")
+
+            # STEP 4: QUICK OUT-OF-SCOPE CHECK (blocking)
+            logger.info(f"[{request.chatId}] Step 4: Checking if question is in scope")
+
+            is_out_of_scope = await self._check_scope_async(
+                llm_manager=components["llm_manager"],
+                response_generator=components["response_generator"],
+                user_message=refined_output.original_question,
+                context_chunks=relevant_chunks,
+            )
+
+            if is_out_of_scope:
+                logger.info(f"[{request.chatId}] Question out of scope")
+                yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                yield self._format_sse(request.chatId, "END")
+                self._log_costs(costs_dict)
+                return
+
+            logger.info(f"[{request.chatId}] Question is in scope ✓")
+
+            # STEP 5: STREAM THROUGH NEMO GUARDRAILS (validation-first)
+            logger.info(
+                f"[{request.chatId}] Step 5: Starting streaming through NeMo Guardrails "
+                f"(validation-first, chunk_size=5)"
+            )
+
+            # Record history length before streaming
+            lm = dspy.settings.lm
+            history_length_before = (
+                len(lm.history) if lm and hasattr(lm, "history") else 0
+            )
+
+            # Create the async generator that yields tokens from NATIVE LLM streaming
+            
+
+            async def bot_response_generator() -> AsyncIterator[str]:
+                """Generator that yields tokens from NATIVE DSPy LLM streaming."""
+                async for token in stream_response_native(
+                    agent=components["response_generator"],
+                    question=refined_output.original_question,
+                    chunks=relevant_chunks,
+                    max_blocks=10,
+                ):
+                    yield token
+
+            try:
+                if components["guardrails_adapter"]:
+                    # Use NeMo's stream_with_guardrails helper method
+                    # This properly integrates the external generator with NeMo's validation
+                    chunk_count = 0
+                    bot_generator = bot_response_generator()
+
+                    try:
+                        async for validated_chunk in components[
+                            "guardrails_adapter"
+                        ].stream_with_guardrails(
+                            user_message=refined_output.original_question,
+                            bot_message_generator=bot_generator,
+                        ):
+                            chunk_count += 1
+
+                            # Check if this is an error message from guardrails
+                            if isinstance(
+                                validated_chunk, str
+                            ) and validated_chunk.startswith('{"error"'):
+                                logger.warning(
+                                    f"[{request.chatId}] Guardrails violation detected"
+                                )
+                                # Send the violation message and end stream
+                                yield self._format_sse(
+                                    request.chatId, OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
+                                )
+                                yield self._format_sse(request.chatId, "END")
+
+                                # Log the violation
+                                logger.warning(
+                                    f"[{request.chatId}] Output blocked by guardrails: {validated_chunk}"
+                                )
+
+                                # Extract usage and log costs
+                                usage_info = get_lm_usage_since(history_length_before)
+                                costs_dict["streaming_generation"] = usage_info
+                                self._log_costs(costs_dict)
+
+                                # Close the bot generator properly
+                                try:
+                                    await bot_generator.aclose()
+                                except Exception as close_err:
+                                    logger.debug(
+                                        f"Generator cleanup error (expected): {close_err}"
+                                    )
+                                return
+
+                            # Log first few chunks for debugging
+                            if chunk_count <= 10:
+                                logger.debug(
+                                    f"[{request.chatId}] Validated chunk {chunk_count}: {repr(validated_chunk)}"
+                                )
+
+                            # Yield the validated chunk to client
+                            yield self._format_sse(request.chatId, validated_chunk)
+                    except GeneratorExit:
+                        # Client disconnected - clean up generator
+                        logger.info(
+                            f"[{request.chatId}] Client disconnected during streaming"
+                        )
+                        try:
+                            await bot_generator.aclose()
+                        except Exception:
+                            pass
+                        raise
+
+                    logger.info(
+                        f"[{request.chatId}] Stream completed successfully "
+                        f"({chunk_count} chunks streamed)"
+                    )
+                    yield self._format_sse(request.chatId, "END")
+
+                else:
+                    # No guardrails - stream directly
+                    logger.warning(
+                        f"[{request.chatId}] Streaming without guardrails validation"
+                    )
+                    chunk_count = 0
+                    async for token in bot_response_generator():
+                        chunk_count += 1
+                        yield self._format_sse(request.chatId, token)
+
+                    yield self._format_sse(request.chatId, "END")
+
+                # Extract usage information after streaming completes
+                usage_info = get_lm_usage_since(history_length_before)
+                costs_dict["streaming_generation"] = usage_info
+
+                # Calculate streaming duration
+                streaming_duration = (
+                    datetime.now() - streaming_start_time
+                ).total_seconds()
+                logger.info(
+                    f"[{request.chatId}] Streaming completed in {streaming_duration:.2f}s"
+                )
+
+                # Log costs and trace
+                self._log_costs(costs_dict)
+
+                if self.langfuse_config.langfuse_client:
+                    langfuse = self.langfuse_config.langfuse_client
+                    total_costs = calculate_total_costs(costs_dict)
+
+                    langfuse.update_current_generation(
+                        model=components["llm_manager"]
+                        .get_provider_info()
+                        .get("model", "unknown"),
+                        usage_details={
+                            "input": usage_info.get("total_prompt_tokens", 0),
+                            "output": usage_info.get("total_completion_tokens", 0),
+                            "total": usage_info.get("total_tokens", 0),
+                        },
+                        cost_details={
+                            "total": total_costs.get("total_cost", 0.0),
+                        },
+                        metadata={
+                            "streaming": True,
+                            "streaming_duration_seconds": streaming_duration,
+                            "chunks_streamed": chunk_count,
+                            "cost_breakdown": costs_dict,
+                            "chat_id": request.chatId,
+                            "environment": request.environment,
+                        },
+                    )
+                    langfuse.flush()
+
+            except GeneratorExit:
+                # Generator closed early - this is expected for client disconnects
+                logger.info(f"[{request.chatId}] Stream generator closed early")
+                usage_info = get_lm_usage_since(history_length_before)
+                costs_dict["streaming_generation"] = usage_info
+                self._log_costs(costs_dict)
+                raise
+            except Exception as stream_error:
+                logger.error(f"[{request.chatId}] Streaming error: {stream_error}")
+                logger.exception("Full streaming traceback:")
+                yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+                yield self._format_sse(request.chatId, "END")
+
+                usage_info = get_lm_usage_since(history_length_before)
+                costs_dict["streaming_generation"] = usage_info
+                self._log_costs(costs_dict)
+                return
+
+        except Exception as e:
+            logger.error(f"[{request.chatId}] Error in streaming: {e}")
+            logger.exception("Full traceback:")
+
+            yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+            yield self._format_sse(request.chatId, "END")
+
+            self._log_costs(costs_dict)
+
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "streaming": True,
+                        "streaming_failed": True,
+                    }
+                )
+                langfuse.flush()
+
+    def _format_sse(self, chat_id: str, content: str) -> str:
+        """
+        Format SSE message with exact specification.
+
+        Args:
+            chat_id: Chat/channel identifier
+            content: Content to send (token, "END", error message, etc.)
+
+        Returns:
+            SSE-formatted string: "data: {json}\\n\\n"
+        """
+
+        payload = {
+            "chatId": chat_id,
+            "payload": {"content": content},
+            "timestamp": str(int(datetime.now().timestamp() * 1000)),
+            "sentTo": [],
+        }
+        return f"data: {json_module.dumps(payload)}\n\n"
+
+    async def _check_scope_async(
+        self,
+        llm_manager: LLMManager,
+        response_generator: ResponseGeneratorAgent,
+        user_message: str,
+        context_chunks: List[Dict[str, Any]],
+    ) -> bool:
+        """
+        Quick async check if question is out of scope.
+
+        DEPRECATED: Use response_generator.check_scope_quick() instead.
+        This method is kept for backward compatibility.
+
+        Args:
+            llm_manager: LLM manager instance (unused, kept for compatibility)
+            response_generator: Response generator instance
+            user_message: User's question
+            context_chunks: RAG context chunks
+
+        Returns:
+            True if out of scope, False otherwise
+        """
+        try:
+            # Use the new quick scope check method
+            return await response_generator.check_scope_quick(
+                question=user_message,
+                chunks=context_chunks,
+                max_blocks=10,
+            )
+        except Exception as e:
+            logger.error(f"Scope check error: {e}")
+            # On error, assume in-scope to allow streaming to proceed
+            return False
 
     @observe(name="initialize_service_components", as_type="span")
     def _initialize_service_components(
@@ -422,7 +791,7 @@ class LLMOrchestrationService:
         logger.info("Input guardrails check passed")
         return None
 
-    def _safe_retrieve_contextual_chunks(
+    async def _safe_retrieve_contextual_chunks(
         self,
         contextual_retriever: Optional[ContextualRetriever],
         refined_output: PromptRefinerOutput,
@@ -434,25 +803,20 @@ class LLMOrchestrationService:
             return []
 
         try:
-            # Define async wrapper for initialization and retrieval
-            async def async_retrieve():
-                # Ensure retriever is initialized
-                if not contextual_retriever.initialized:
-                    initialization_success = await contextual_retriever.initialize()
-                    if not initialization_success:
-                        logger.warning("Failed to initialize contextual retriever")
-                        return None
+            # Ensure retriever is initialized
+            if not contextual_retriever.initialized:
+                initialization_success = await contextual_retriever.initialize()
+                if not initialization_success:
+                    logger.warning("Failed to initialize contextual retriever")
+                    return None
 
-                relevant_chunks = await contextual_retriever.retrieve_contextual_chunks(
-                    original_question=refined_output.original_question,
-                    refined_questions=refined_output.refined_questions,
-                    environment=request.environment,
-                    connection_id=request.connection_id,
-                )
-                return relevant_chunks
-
-            # Run async retrieval synchronously
-            relevant_chunks = asyncio.run(async_retrieve())
+            # Call the async method directly (DO NOT use asyncio.run())
+            relevant_chunks = await contextual_retriever.retrieve_contextual_chunks(
+                original_question=refined_output.original_question,
+                refined_questions=refined_output.refined_questions,
+                environment=request.environment,
+                connection_id=request.connection_id,
+            )
 
             if relevant_chunks is None:
                 return None
@@ -560,6 +924,79 @@ class LLMOrchestrationService:
             raise
 
     @observe(name="check_input_guardrails", as_type="span")
+    async def _check_input_guardrails_async(
+        self,
+        guardrails_adapter: NeMoRailsAdapter,
+        user_message: str,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> GuardrailCheckResult:
+        """
+        Check user input against guardrails and track costs (async version).
+
+        Args:
+            guardrails_adapter: The guardrails adapter instance
+            user_message: The user message to check
+            costs_dict: Dictionary to store cost information
+
+        Returns:
+            GuardrailCheckResult: Result of the guardrail check
+        """
+        logger.info("Starting input guardrails check")
+
+        try:
+            # Use async version for streaming context
+            result = await guardrails_adapter.check_input_async(user_message)
+
+            # Store guardrail costs
+            costs_dict["input_guardrails"] = result.usage
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    input=user_message,
+                    metadata={
+                        "guardrail_type": "input",
+                        "allowed": result.allowed,
+                        "verdict": result.verdict,
+                        "blocked_reason": result.reason if not result.allowed else None,
+                        "error": result.error if result.error else None,
+                    },
+                    usage_details={
+                        "input": result.usage.get("total_prompt_tokens", 0),
+                        "output": result.usage.get("total_completion_tokens", 0),
+                        "total": result.usage.get("total_tokens", 0),
+                    },  # type: ignore
+                    cost_details={
+                        "total": result.usage.get("total_cost", 0.0),
+                    },
+                )
+            logger.info(
+                f"Input guardrails check completed: allowed={result.allowed}, "
+                f"cost=${result.usage.get('total_cost', 0):.6f}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Input guardrails check failed: {str(e)}")
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "guardrail_type": "input",
+                    }
+                )
+            # Return conservative result on error
+            return GuardrailCheckResult(
+                allowed=False,
+                verdict="yes",
+                content="Error during input guardrail check",
+                error=str(e),
+                usage={},
+            )
+
+    @observe(name="check_input_guardrails", as_type="span")
     def _check_input_guardrails(
         self,
         guardrails_adapter: NeMoRailsAdapter,
@@ -567,7 +1004,7 @@ class LLMOrchestrationService:
         costs_dict: Dict[str, Dict[str, Any]],
     ) -> GuardrailCheckResult:
         """
-        Check user input against guardrails and track costs.
+        Check user input against guardrails and track costs (sync version for non-streaming).
 
         Args:
             guardrails_adapter: The guardrails adapter instance
