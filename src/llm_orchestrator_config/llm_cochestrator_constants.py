@@ -16,8 +16,11 @@ INPUT_GUARDRAIL_VIOLATION_MESSAGE = "I apologize, but I'm unable to assist with 
 OUTPUT_GUARDRAIL_VIOLATION_MESSAGE = "I apologize, but I'm unable to provide a response as it may violate our usage policies."
 
 GUARDRAILS_BLOCKED_PHRASES = [
-            "i'm sorry, i can't respond to that",
-            "i cannot respond to that",
-            "cannot help with that",
-            "against policy",
-        ]
+    "i'm sorry, i can't respond to that",
+    "i cannot respond to that",
+    "i cannot help with that",
+    "this is against policy",
+]
+
+# Streaming configuration
+STREAMING_ALLOWED_ENVS = {"production"}

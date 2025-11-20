@@ -26,11 +26,15 @@ from src.llm_orchestrator_config.llm_cochestrator_constants import (
     TECHNICAL_ISSUE_MESSAGE,
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
-    GUARDRAILS_BLOCKED_PHRASES
+    GUARDRAILS_BLOCKED_PHRASES,
 )
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
+from src.llm_orchestrator_config.exceptions import (
+    ContextualRetrieverInitializationError,
+    ContextualRetrievalFailureError,
+)
 
 
 class LangfuseConfig:
@@ -40,7 +44,7 @@ class LangfuseConfig:
         self.langfuse_client: Optional[Langfuse] = None
         self._initialize_langfuse()
 
-    def _initialize_langfuse(self):
+    def _initialize_langfuse(self) -> None:
         """Initialize Langfuse client with Vault secrets."""
         try:
             from llm_orchestrator_config.vault.vault_client import VaultAgentClient
@@ -242,7 +246,7 @@ class LLMOrchestrationService:
                     self._log_costs(costs_dict)
                     return
 
-            logger.info(f"[{request.chatId}] Input guardrails passed ✓")
+            logger.info(f"[{request.chatId}] Input guardrails passed ")
 
             # STEP 2: REFINE USER PROMPT (blocking)
             logger.info(f"[{request.chatId}] Step 2: Refining user prompt")
@@ -254,23 +258,38 @@ class LLMOrchestrationService:
             )
             costs_dict["prompt_refiner"] = refiner_usage
 
-            logger.info(f"[{request.chatId}] Prompt refinement complete ✓")
+            logger.info(f"[{request.chatId}] Prompt refinement complete ")
 
             # STEP 3: RETRIEVE CONTEXT CHUNKS (blocking)
             logger.info(f"[{request.chatId}] Step 3: Retrieving context chunks")
 
-            relevant_chunks = await self._safe_retrieve_contextual_chunks(
-                components["contextual_retriever"], refined_output, request
-            )
+            try:
+                relevant_chunks = await self._safe_retrieve_contextual_chunks(
+                    components["contextual_retriever"], refined_output, request
+                )
+            except (
+                ContextualRetrieverInitializationError,
+                ContextualRetrievalFailureError,
+            ) as e:
+                logger.warning(
+                    f"[{request.chatId}] Contextual retrieval failed: {str(e)}"
+                )
+                logger.info(
+                    f"[{request.chatId}] Returning out-of-scope due to retrieval failure"
+                )
+                yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                yield self._format_sse(request.chatId, "END")
+                self._log_costs(costs_dict)
+                return
 
-            if relevant_chunks is None or len(relevant_chunks) == 0:
+            if len(relevant_chunks) == 0:
                 logger.info(f"[{request.chatId}] No relevant chunks - out of scope")
                 yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
                 yield self._format_sse(request.chatId, "END")
                 self._log_costs(costs_dict)
                 return
 
-            logger.info(f"[{request.chatId}] Retrieved {len(relevant_chunks)} chunks ✓")
+            logger.info(f"[{request.chatId}] Retrieved {len(relevant_chunks)} chunks ")
 
             # STEP 4: QUICK OUT-OF-SCOPE CHECK (blocking)
             logger.info(f"[{request.chatId}] Step 4: Checking if question is in scope")
@@ -288,7 +307,7 @@ class LLMOrchestrationService:
                 self._log_costs(costs_dict)
                 return
 
-            logger.info(f"[{request.chatId}] Question is in scope ✓")
+            logger.info(f"[{request.chatId}] Question is in scope ")
 
             # STEP 5: STREAM THROUGH NEMO GUARDRAILS (validation-first)
             logger.info(
@@ -338,7 +357,10 @@ class LLMOrchestrationService:
                                 # Check if the chunk is primarily a blocked phrase
                                 for phrase in blocked_phrases:
                                     # More robust check: ensure the phrase is the main content
-                                    if phrase.lower() in chunk_lower and len(chunk_lower) <= len(phrase.lower()) + 20:
+                                    if (
+                                        phrase.lower() in chunk_lower
+                                        and len(chunk_lower) <= len(phrase.lower()) + 20
+                                    ):
                                         is_guardrail_error = True
                                         break
 
@@ -369,7 +391,6 @@ class LLMOrchestrationService:
                                     logger.debug(
                                         f"Generator cleanup error (expected): {close_err}"
                                     )
-                                return
 
                             # Log first few chunks for debugging
                             if chunk_count <= 10:
@@ -468,7 +489,6 @@ class LLMOrchestrationService:
                 usage_info = get_lm_usage_since(history_length_before)
                 costs_dict["streaming_generation"] = usage_info
                 self._log_costs(costs_dict)
-                return
 
         except Exception as e:
             logger.error(f"[{request.chatId}] Error in streaming: {e}")
@@ -571,7 +591,7 @@ class LLMOrchestrationService:
 
             if metadata.get("optimized", False):
                 logger.info(
-                    f"✓ Guardrails: OPTIMIZED (version: {metadata.get('version', 'unknown')})"
+                    f" Guardrails: OPTIMIZED (version: {metadata.get('version', 'unknown')})"
                 )
                 metrics = metadata.get("metrics", {})
                 if metrics:
@@ -586,7 +606,7 @@ class LLMOrchestrationService:
     def _log_refiner_status(self, components: Dict[str, Any]) -> None:
         """Log refiner optimization status."""
         if not hasattr(components.get("llm_manager"), "__class__"):
-            logger.info("⚠ Refiner: LLM Manager not available")
+            logger.info(" Refiner: LLM Manager not available")
             return
 
         try:
@@ -597,7 +617,7 @@ class LLMOrchestrationService:
 
             if refiner_info.get("optimized", False):
                 logger.info(
-                    f"✓ Refiner: OPTIMIZED (version: {refiner_info.get('version', 'unknown')})"
+                    f" Refiner: OPTIMIZED (version: {refiner_info.get('version', 'unknown')})"
                 )
                 metrics = refiner_info.get("metrics", {})
                 if metrics:
@@ -605,9 +625,9 @@ class LLMOrchestrationService:
                         f"  Metrics: avg_quality={metrics.get('average_quality', 'N/A')}"
                     )
             else:
-                logger.info("⚠ Refiner: BASE (no optimization)")
+                logger.info(" Refiner: BASE (no optimization)")
         except Exception as e:
-            logger.warning(f"⚠ Refiner: Status check failed - {str(e)}")
+            logger.warning(f" Refiner: Status check failed - {str(e)}")
 
     def _log_generator_status(self, components: Dict[str, Any]) -> None:
         """Log generator optimization status."""
@@ -620,7 +640,7 @@ class LLMOrchestrationService:
 
             if generator_info.get("optimized", False):
                 logger.info(
-                    f"✓ Generator: OPTIMIZED (version: {generator_info.get('version', 'unknown')})"
+                    f" Generator: OPTIMIZED (version: {generator_info.get('version', 'unknown')})"
                 )
                 metrics = generator_info.get("metrics", {})
                 if metrics:
@@ -657,10 +677,15 @@ class LLMOrchestrationService:
         costs_dict["prompt_refiner"] = refiner_usage
 
         # Step 3: Retrieve relevant chunks using contextual retrieval
-        relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
-            components["contextual_retriever"], refined_output, request
-        )
-        if relevant_chunks is None:  # Retrieval failed
+        try:
+            relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
+                components["contextual_retriever"], refined_output, request
+            )
+        except (
+            ContextualRetrieverInitializationError,
+            ContextualRetrievalFailureError,
+        ) as e:
+            logger.warning(f"Contextual retrieval failed: {str(e)}")
             return self._create_out_of_scope_response(request)
 
         # Handle zero chunks scenario - return out-of-scope response
@@ -772,7 +797,7 @@ class LLMOrchestrationService:
         contextual_retriever: Optional[ContextualRetriever],
         refined_output: PromptRefinerOutput,
         request: OrchestrationRequest,
-    ) -> Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]]:
+    ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
         """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
         import asyncio
 
@@ -792,16 +817,24 @@ class LLMOrchestrationService:
                         contextual_retriever, refined_output, request
                     )
                 )
+        except (
+            ContextualRetrieverInitializationError,
+            ContextualRetrievalFailureError,
+        ):
+            # Re-raise our custom exceptions
+            raise
         except Exception as e:
             logger.error(f"Error in synchronous contextual chunks retrieval: {str(e)}")
-            return None
+            raise ContextualRetrievalFailureError(
+                f"Synchronous contextual retrieval wrapper failed: {str(e)}"
+            ) from e
 
     async def _safe_retrieve_contextual_chunks(
         self,
         contextual_retriever: Optional[ContextualRetriever],
         refined_output: PromptRefinerOutput,
         request: OrchestrationRequest,
-    ) -> Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]]:
+    ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
         """Safely retrieve chunks using contextual retrieval with error handling."""
         if not contextual_retriever:
             logger.info("Contextual Retriever not available, skipping chunk retrieval")
@@ -812,8 +845,10 @@ class LLMOrchestrationService:
             if not contextual_retriever.initialized:
                 initialization_success = await contextual_retriever.initialize()
                 if not initialization_success:
-                    logger.warning("Failed to initialize contextual retriever")
-                    return None
+                    logger.error("Failed to initialize contextual retriever")
+                    raise ContextualRetrieverInitializationError(
+                        "Contextual retriever failed to initialize"
+                    )
 
             # Call the async method directly (DO NOT use asyncio.run())
             relevant_chunks = await contextual_retriever.retrieve_contextual_chunks(
@@ -823,17 +858,18 @@ class LLMOrchestrationService:
                 connection_id=request.connection_id,
             )
 
-            if relevant_chunks is None:
-                return None
-
             logger.info(
                 f"Successfully retrieved {len(relevant_chunks)} contextual chunks"
             )
             return relevant_chunks
+        except ContextualRetrieverInitializationError:
+            # Re-raise our custom exceptions
+            raise
         except Exception as retrieval_error:
-            logger.warning(f"Contextual chunk retrieval failed: {str(retrieval_error)}")
-            logger.warning("Returning out-of-scope message due to retrieval failure")
-            return None
+            logger.error(f"Contextual chunk retrieval failed: {str(retrieval_error)}")
+            raise ContextualRetrievalFailureError(
+                f"Contextual chunk retrieval failed: {str(retrieval_error)}"
+            ) from retrieval_error
 
     def handle_output_guardrails(
         self,

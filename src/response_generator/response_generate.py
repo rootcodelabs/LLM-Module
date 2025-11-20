@@ -222,12 +222,14 @@ class ResponseGeneratorAgent(dspy.Module):
         output_stream = None
         try:
             # Build context
-            context_blocks, citation_labels, has_real_context = build_context_and_citations(
-                chunks, use_top_k=max_blocks
+            context_blocks, citation_labels, has_real_context = (
+                build_context_and_citations(chunks, use_top_k=max_blocks)
             )
 
             if not has_real_context:
-                logger.warning("No real context available for streaming, yielding nothing.")
+                logger.warning(
+                    "No real context available for streaming, yielding nothing."
+                )
                 return
 
             # Get the streamified predictor
@@ -236,7 +238,9 @@ class ResponseGeneratorAgent(dspy.Module):
             # Call the streamified predictor
             logger.info("Calling streamified predictor with signature inputs...")
             output_stream = stream_predictor(
-                question=question, context_blocks=context_blocks, citations=citation_labels
+                question=question,
+                context_blocks=context_blocks,
+                citations=citation_labels,
             )
 
             stream_started = False
@@ -250,7 +254,9 @@ class ResponseGeneratorAgent(dspy.Module):
                             yield chunk.chunk  # Yield the token string
                     elif isinstance(chunk, dspy.Prediction):
                         # The final prediction object is yielded last
-                        logger.info("Streaming complete, final Prediction object received.")
+                        logger.info(
+                            "Streaming complete, final Prediction object received."
+                        )
                         full_answer = getattr(chunk, "answer", "[No answer field]")
                         logger.debug(f"Full streamed answer: {full_answer}")
             except GeneratorExit:
@@ -421,7 +427,7 @@ async def stream_response_native(
 ) -> AsyncIterator[str]:
     """
     Compatibility wrapper for the new stream_response method.
-    
+
     DEPRECATED: Use agent.stream_response() instead.
     This function is kept for backward compatibility.
 
