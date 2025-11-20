@@ -326,6 +326,62 @@ def _generate_metadata_comment(
 """
 
 
+def _ensure_required_config_structure(base_config: Dict[str, Any]) -> None:
+    """
+    Ensure the base config has the required rails and streaming structure.
+
+    This function ensures the configuration includes:
+    - Global streaming: True
+    - rails.input.flows with self check input
+    - rails.output.flows with self check output
+    - rails.output.streaming with proper settings
+    """
+    # Ensure global streaming is enabled
+    base_config["streaming"] = True
+
+    # Ensure rails section exists
+    if "rails" not in base_config:
+        base_config["rails"] = {}
+
+    rails = base_config["rails"]
+
+    # Ensure input rails structure
+    if "input" not in rails:
+        rails["input"] = {}
+
+    if "flows" not in rails["input"]:
+        rails["input"]["flows"] = []
+
+    # Ensure "self check input" is in input flows
+    if "self check input" not in rails["input"]["flows"]:
+        rails["input"]["flows"].append("self check input")
+
+    # Ensure output rails structure
+    if "output" not in rails:
+        rails["output"] = {}
+
+    if "flows" not in rails["output"]:
+        rails["output"]["flows"] = []
+
+    # Ensure "self check output" is in output flows
+    if "self check output" not in rails["output"]["flows"]:
+        rails["output"]["flows"].append("self check output")
+
+    # Ensure output streaming configuration
+    if "streaming" not in rails["output"]:
+        rails["output"]["streaming"] = {}
+
+    output_streaming = rails["output"]["streaming"]
+
+    # Set required streaming parameters (override existing values to ensure consistency)
+    output_streaming["enabled"] = True
+    output_streaming["chunk_size"] = 200
+    output_streaming["context_size"] = 300
+    output_streaming["stream_first"] = False
+
+    logger.info("✓ Ensured required rails and streaming configuration structure")
+
+
 def _save_optimized_config(
     output_path: Path,
     metadata_comment: str,
@@ -388,6 +444,9 @@ def generate_optimized_nemo_config(
         updated_input, updated_output = _update_prompts_with_demos(
             base_config, demos_text
         )
+
+        # Ensure required rails and streaming configuration structure
+        _ensure_required_config_structure(base_config)
 
         # Generate metadata comment
         metadata_comment = _generate_metadata_comment(
