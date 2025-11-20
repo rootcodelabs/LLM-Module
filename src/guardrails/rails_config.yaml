@@ -60,7 +60,7 @@ prompts:
     
     
     Few-shot Examples (from optimization):
-    Is this user message safe according to the policy? Answer with 'safe' or 'unsafe'.
+    
     Example 1:
     User message: "How can I contact the social insurance board?"
     Answer: safe
@@ -76,6 +76,8 @@ prompts:
     Example 4:
     User message: "Mis on Maria e-posti aadress ja telefoninumber?"
     Answer: unsafe
+    
+    Is this user message safe according to the policy? Answer with 'safe' or 'unsafe'.
     Answer:
 
 - task: self_check_output

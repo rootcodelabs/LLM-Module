@@ -40,9 +40,9 @@ class ScopeChecker(dspy.Signature):
     """Quick check if question can be answered from context.
 
     Rules:
-    - Return true ONLY if context is completely insufficient
-    - Return false if context has ANY relevant information
-    - Be lenient - prefer false over true
+    - Return True ONLY if context is completely insufficient
+    - Return False if context has ANY relevant information
+    - Be lenient - prefer False over True
     """
 
     question: str = dspy.InputField()
@@ -113,7 +113,7 @@ class ResponseGeneratorAgent(dspy.Module):
         self._max_retries = max(0, int(max_retries))
 
         # Attribute to cache the streamified predictor
-        self._stream_predictor: Optional[dspy.Module] = None
+        self._stream_predictor: Optional[Any] = None
 
         # Try to load optimized module
         self._optimized_metadata = {}
@@ -181,6 +181,107 @@ class ResponseGeneratorAgent(dspy.Module):
         """Get information about the loaded module."""
         return self._optimized_metadata.copy()
 
+    def _get_stream_predictor(self) -> Any:
+        """Get or create the cached streamified predictor."""
+        if self._stream_predictor is None:
+            logger.info("Initializing streamify wrapper for ResponseGeneratorAgent")
+
+            # Define a listener for the 'answer' field of the ResponseGenerator signature
+            answer_listener = StreamListener(signature_field_name="answer")
+
+            # Wrap the internal predictor
+            # self._predictor is the dspy.Predict(ResponseGenerator) or optimized module
+            self._stream_predictor = dspy.streamify(
+                self._predictor, stream_listeners=[answer_listener]
+            )
+            logger.info("Streamify wrapper created and cached on agent.")
+
+        return self._stream_predictor
+
+    async def stream_response(
+        self,
+        question: str,
+        chunks: List[Dict[str, Any]],
+        max_blocks: int = 10,
+    ) -> AsyncIterator[str]:
+        """
+        Stream response tokens directly from LLM using DSPy's native streaming.
+
+        Args:
+            question: User's question
+            chunks: Retrieved context chunks
+            max_blocks: Maximum number of context blocks
+
+        Yields:
+            Token strings as they arrive from the LLM
+        """
+        logger.info(
+            f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
+        )
+
+        output_stream = None
+        try:
+            # Build context
+            context_blocks, citation_labels, has_real_context = build_context_and_citations(
+                chunks, use_top_k=max_blocks
+            )
+
+            if not has_real_context:
+                logger.warning("No real context available for streaming, yielding nothing.")
+                return
+
+            # Get the streamified predictor
+            stream_predictor = self._get_stream_predictor()
+
+            # Call the streamified predictor
+            logger.info("Calling streamified predictor with signature inputs...")
+            output_stream = stream_predictor(
+                question=question, context_blocks=context_blocks, citations=citation_labels
+            )
+
+            stream_started = False
+            try:
+                async for chunk in output_stream:
+                    # The stream yields StreamResponse objects for tokens
+                    # and a final Prediction object
+                    if isinstance(chunk, dspy.streaming.StreamResponse):
+                        if chunk.signature_field_name == "answer":
+                            stream_started = True
+                            yield chunk.chunk  # Yield the token string
+                    elif isinstance(chunk, dspy.Prediction):
+                        # The final prediction object is yielded last
+                        logger.info("Streaming complete, final Prediction object received.")
+                        full_answer = getattr(chunk, "answer", "[No answer field]")
+                        logger.debug(f"Full streamed answer: {full_answer}")
+            except GeneratorExit:
+                # Generator was closed early (e.g., by guardrails violation)
+                logger.info("Stream generator closed early - cleaning up")
+                # Properly close the stream
+                if output_stream is not None:
+                    try:
+                        await output_stream.aclose()
+                    except Exception as close_error:
+                        logger.debug(f"Error closing stream (expected): {close_error}")
+                    output_stream = None  # Prevent double-close in finally block
+                raise
+
+            if not stream_started:
+                logger.warning(
+                    "Streaming call finished but no 'answer' tokens were received."
+                )
+
+        except Exception as e:
+            logger.error(f"Error during native DSPy streaming: {str(e)}")
+            logger.exception("Full traceback:")
+            raise
+        finally:
+            # Ensure cleanup even if exception occurs
+            if output_stream is not None:
+                try:
+                    await output_stream.aclose()
+                except Exception as cleanup_error:
+                    logger.debug(f"Error during cleanup (aclose): {cleanup_error}")
+
     async def check_scope_quick(
         self, question: str, chunks: List[Dict[str, Any]], max_blocks: int = 10
     ) -> bool:
@@ -227,7 +328,7 @@ class ResponseGeneratorAgent(dspy.Module):
         result = self._predictor(
             question=question, context_blocks=context_blocks, citations=citation_labels
         )
-        logger.info(f"LLM output - answer: {getattr(result, 'answer', '')}")
+        logger.info(f"LLM output - answer: {getattr(result, 'answer', '')[:200]}...")
         logger.info(
             f"LLM output - out_of_scope: {getattr(result, 'questionOutOfLLMScope', None)}"
         )
@@ -319,14 +420,13 @@ async def stream_response_native(
     max_blocks: int = 10,
 ) -> AsyncIterator[str]:
     """
-    Stream response tokens directly from LLM using DSPy's native streaming
-    through the agent's predictor module.
-
-    This uses dspy.streamify to wrap the agent's (potentially optimized)
-    predictor and stream the 'answer' field.
+    Compatibility wrapper for the new stream_response method.
+    
+    DEPRECATED: Use agent.stream_response() instead.
+    This function is kept for backward compatibility.
 
     Args:
-        agent: ResponseGeneratorAgent instance (contains _predictor)
+        agent: ResponseGeneratorAgent instance
         question: User's question
         chunks: Retrieved context chunks
         max_blocks: Maximum number of context blocks
@@ -334,85 +434,5 @@ async def stream_response_native(
     Yields:
         Token strings as they arrive from the LLM
     """
-    logger.info(
-        f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
-    )
-
-    output_stream = None
-    try:
-        # Build context
-        context_blocks, citation_labels, has_real_context = build_context_and_citations(
-            chunks, use_top_k=max_blocks
-        )
-
-        if not has_real_context:
-            logger.warning("No real context available for streaming, yielding nothing.")
-            return
-
-        # Check if the agent's predictor is already streamified and cache it
-        if not hasattr(agent, "_stream_predictor") or agent._stream_predictor is None:
-            logger.info("Initializing streamify wrapper for ResponseGeneratorAgent")
-
-            # Define a listener for the 'answer' field of the ResponseGenerator signature
-            answer_listener = StreamListener(signature_field_name="answer")
-
-            # Wrap the agent's internal predictor
-            # agent._predictor is the dspy.Predict(ResponseGenerator) or optimized module
-            agent._stream_predictor = dspy.streamify(
-                agent._predictor, stream_listeners=[answer_listener]
-            )
-            logger.info("Streamify wrapper created and cached on agent.")
-
-        # Get the streamified predictor
-        stream_predictor = agent._stream_predictor
-        if stream_predictor is None:
-            logger.error("Failed to create or retrieve streamified predictor.")
-            raise RuntimeError("LLM streaming module not initialized.")
-
-        # Call the streamified predictor
-        logger.info("Calling streamified predictor with signature inputs...")
-        output_stream = stream_predictor(
-            question=question, context_blocks=context_blocks, citations=citation_labels
-        )
-
-        stream_started = False
-        try:
-            async for chunk in output_stream:
-                # The stream yields StreamResponse objects for tokens
-                # and a final Prediction object
-                if isinstance(chunk, dspy.streaming.StreamResponse):
-                    if chunk.signature_field_name == "answer":
-                        stream_started = True
-                        yield chunk.chunk  # Yield the token string
-                elif isinstance(chunk, dspy.Prediction):
-                    # The final prediction object is yielded last
-                    logger.info("Streaming complete, final Prediction object received.")
-                    full_answer = getattr(chunk, "answer", "[No answer field]")
-                    logger.debug(f"Full streamed answer: {full_answer}")
-        except GeneratorExit:
-            # Generator was closed early (e.g., by guardrails violation)
-            logger.info("Stream generator closed early - cleaning up")
-            # Properly close the stream
-            if output_stream is not None:
-                try:
-                    await output_stream.aclose()
-                except Exception as close_error:
-                    logger.debug(f"Error closing stream (expected): {close_error}")
-            raise
-
-        if not stream_started:
-            logger.warning(
-                "Streaming call finished but no 'answer' tokens were received."
-            )
-
-    except Exception as e:
-        logger.error(f"Error during native DSPy streaming: {str(e)}")
-        logger.exception("Full traceback:")
-        raise
-    finally:
-        # Ensure cleanup even if exception occurs
-        if output_stream is not None:
-            try:
-                await output_stream.aclose()
-            except Exception:
-                pass
+    async for token in agent.stream_response(question, chunks, max_blocks):
+        yield token

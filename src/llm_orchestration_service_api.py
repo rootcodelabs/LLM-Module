@@ -229,7 +229,7 @@ async def stream_orchestrated_response(
     3. Retrieve context chunks (blocking)
     4. Check if question is in scope (blocking)
     5. Stream through NeMo Guardrails (validation-first)
-       - Tokens buffered (chunk_size=5)
+       - Tokens buffered (chunk_size=200)
        - Each buffer validated before streaming
        - Only validated tokens reach client
 

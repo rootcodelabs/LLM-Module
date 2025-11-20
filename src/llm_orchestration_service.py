@@ -20,16 +20,17 @@ from models.request_models import (
 )
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
+from src.response_generator.response_generate import stream_response_native
 from src.llm_orchestrator_config.llm_cochestrator_constants import (
     OUT_OF_SCOPE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGE,
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    GUARDRAILS_BLOCKED_PHRASES
 )
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
-from src.response_generator.response_generate import stream_response_native
 
 
 class LangfuseConfig:
@@ -274,11 +275,10 @@ class LLMOrchestrationService:
             # STEP 4: QUICK OUT-OF-SCOPE CHECK (blocking)
             logger.info(f"[{request.chatId}] Step 4: Checking if question is in scope")
 
-            is_out_of_scope = await self._check_scope_async(
-                llm_manager=components["llm_manager"],
-                response_generator=components["response_generator"],
-                user_message=refined_output.original_question,
-                context_chunks=relevant_chunks,
+            is_out_of_scope = await components["response_generator"].check_scope_quick(
+                question=refined_output.original_question,
+                chunks=relevant_chunks,
+                max_blocks=10,
             )
 
             if is_out_of_scope:
@@ -293,7 +293,7 @@ class LLMOrchestrationService:
             # STEP 5: STREAM THROUGH NEMO GUARDRAILS (validation-first)
             logger.info(
                 f"[{request.chatId}] Step 5: Starting streaming through NeMo Guardrails "
-                f"(validation-first, chunk_size=5)"
+                f"(validation-first, chunk_size=200)"
             )
 
             # Record history length before streaming
@@ -301,9 +301,6 @@ class LLMOrchestrationService:
             history_length_before = (
                 len(lm.history) if lm and hasattr(lm, "history") else 0
             )
-
-            # Create the async generator that yields tokens from NATIVE LLM streaming
-            
 
             async def bot_response_generator() -> AsyncIterator[str]:
                 """Generator that yields tokens from NATIVE DSPy LLM streaming."""
@@ -331,10 +328,21 @@ class LLMOrchestrationService:
                         ):
                             chunk_count += 1
 
-                            # Check if this is an error message from guardrails
-                            if isinstance(
-                                validated_chunk, str
-                            ) and validated_chunk.startswith('{"error"'):
+                            # Check for guardrail violations using blocked phrases
+                            # Match the actual behavior of NeMo Guardrails adapter
+                            is_guardrail_error = False
+                            if isinstance(validated_chunk, str):
+                                # Use the same blocked phrases as the guardrails adapter
+                                blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
+                                chunk_lower = validated_chunk.strip().lower()
+                                # Check if the chunk is primarily a blocked phrase
+                                for phrase in blocked_phrases:
+                                    # More robust check: ensure the phrase is the main content
+                                    if phrase.lower() in chunk_lower and len(chunk_lower) <= len(phrase.lower()) + 20:
+                                        is_guardrail_error = True
+                                        break
+
+                            if is_guardrail_error:
                                 logger.warning(
                                     f"[{request.chatId}] Guardrails violation detected"
                                 )
@@ -378,8 +386,10 @@ class LLMOrchestrationService:
                         )
                         try:
                             await bot_generator.aclose()
-                        except Exception:
-                            pass
+                        except Exception as cleanup_exc:
+                            logger.warning(
+                                f"Exception during bot_generator cleanup: {cleanup_exc}"
+                            )
                         raise
 
                     logger.info(
@@ -500,40 +510,6 @@ class LLMOrchestrationService:
             "sentTo": [],
         }
         return f"data: {json_module.dumps(payload)}\n\n"
-
-    async def _check_scope_async(
-        self,
-        llm_manager: LLMManager,
-        response_generator: ResponseGeneratorAgent,
-        user_message: str,
-        context_chunks: List[Dict[str, Any]],
-    ) -> bool:
-        """
-        Quick async check if question is out of scope.
-
-        DEPRECATED: Use response_generator.check_scope_quick() instead.
-        This method is kept for backward compatibility.
-
-        Args:
-            llm_manager: LLM manager instance (unused, kept for compatibility)
-            response_generator: Response generator instance
-            user_message: User's question
-            context_chunks: RAG context chunks
-
-        Returns:
-            True if out of scope, False otherwise
-        """
-        try:
-            # Use the new quick scope check method
-            return await response_generator.check_scope_quick(
-                question=user_message,
-                chunks=context_chunks,
-                max_blocks=10,
-            )
-        except Exception as e:
-            logger.error(f"Scope check error: {e}")
-            # On error, assume in-scope to allow streaming to proceed
-            return False
 
     @observe(name="initialize_service_components", as_type="span")
     def _initialize_service_components(
@@ -681,7 +657,7 @@ class LLMOrchestrationService:
         costs_dict["prompt_refiner"] = refiner_usage
 
         # Step 3: Retrieve relevant chunks using contextual retrieval
-        relevant_chunks = self._safe_retrieve_contextual_chunks(
+        relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
             components["contextual_retriever"], refined_output, request
         )
         if relevant_chunks is None:  # Retrieval failed
@@ -790,6 +766,35 @@ class LLMOrchestrationService:
 
         logger.info("Input guardrails check passed")
         return None
+
+    def _safe_retrieve_contextual_chunks_sync(
+        self,
+        contextual_retriever: Optional[ContextualRetriever],
+        refined_output: PromptRefinerOutput,
+        request: OrchestrationRequest,
+    ) -> Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]]:
+        """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
+        import asyncio
+
+        try:
+            # Safely execute the async method in the sync context
+            try:
+                asyncio.get_running_loop()
+                # If we get here, there's a running event loop; cannot block synchronously
+                raise RuntimeError(
+                    "Cannot call _safe_retrieve_contextual_chunks_sync from an async context with a running event loop. "
+                    "Please use the async version _safe_retrieve_contextual_chunks instead."
+                )
+            except RuntimeError:
+                # No running loop, safe to use asyncio.run()
+                return asyncio.run(
+                    self._safe_retrieve_contextual_chunks(
+                        contextual_retriever, refined_output, request
+                    )
+                )
+        except Exception as e:
+            logger.error(f"Error in synchronous contextual chunks retrieval: {str(e)}")
+            return None
 
     async def _safe_retrieve_contextual_chunks(
         self,

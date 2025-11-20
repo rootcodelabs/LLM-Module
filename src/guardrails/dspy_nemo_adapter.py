@@ -256,7 +256,7 @@ class DSPyNeMoLLM(LLM):
             lm = self._get_dspy_lm()
         except Exception as e:
             logger.error(f"Error getting DSPy LM: {str(e)}")
-            return
+            raise RuntimeError(f"Failed to get DSPy LM: {str(e)}") from e
 
         # Setup queue and event loop
         queue: asyncio.Queue[Union[Any, Exception, None]] = asyncio.Queue()

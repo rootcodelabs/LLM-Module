@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
-
+from src.llm_orchestrator_config.llm_cochestrator_constants import GUARDRAILS_BLOCKED_PHRASES
 import dspy
 
 
@@ -214,14 +214,16 @@ class NeMoRailsAdapter:
 
     def _is_input_blocked(self, response: str, original: str) -> bool:
         """Check if input was blocked by guardrails."""
-        blocked_phrases = [
-            "I'm sorry, I can't respond to that",
-            "I cannot respond to that",
-            "cannot help with that",
-            "against policy",
-        ]
-        response_lower = response.lower()
-        return any(phrase in response_lower for phrase in blocked_phrases)
+        import re
+        blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
+        response_normalized = response.strip().lower()
+        # Match if the response is exactly or almost exactly a blocked phrase (allow trailing punctuation/whitespace)
+        for phrase in blocked_phrases:
+            # Regex: phrase followed by optional punctuation/whitespace, and nothing else
+            pattern = r'^' + re.escape(phrase) + r'[\s\.,!]*$'
+            if re.match(pattern, response_normalized):
+                return True
+        return False
 
     async def stream_with_guardrails(
         self,
@@ -232,7 +234,7 @@ class NeMoRailsAdapter:
         Stream bot response through NeMo Guardrails with validation-first approach.
 
         This properly implements NeMo's external generator pattern for streaming.
-        NeMo will buffer tokens (chunk_size=5) and validate before yielding.
+        NeMo will buffer tokens (chunk_size=200) and validate before yielding.
 
         Args:
             user_message: The user's input message (for context)
