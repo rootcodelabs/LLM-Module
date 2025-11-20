@@ -405,9 +405,6 @@ async def stream_response_native(
                 "Streaming call finished but no 'answer' tokens were received."
             )
 
-    except GeneratorExit:
-        # Re-raise GeneratorExit to properly propagate closure
-        raise
     except Exception as e:
         logger.error(f"Error during native DSPy streaming: {str(e)}")
         logger.exception("Full traceback:")

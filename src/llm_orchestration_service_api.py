@@ -19,7 +19,6 @@ from models.request_models import (
     ContextGenerationResponse,
     EmbeddingErrorResponse,
 )
-from fastapi.responses import StreamingResponse
 
 
 @asynccontextmanager
@@ -255,6 +254,7 @@ async def stream_orchestrated_response(
         - Streaming uses validation-first approach (stream_first=False)
         - All tokens are validated before being sent to client
     """
+    from fastapi.responses import StreamingResponse
 
     try:
         logger.info(

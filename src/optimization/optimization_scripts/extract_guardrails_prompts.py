@@ -375,8 +375,8 @@ def _ensure_required_config_structure(base_config: Dict[str, Any]) -> None:
 
     # Set required streaming parameters (override existing values to ensure consistency)
     output_streaming["enabled"] = True
-    output_streaming["chunk_size"] = 100
-    output_streaming["context_size"] = 200
+    output_streaming["chunk_size"] = 200
+    output_streaming["context_size"] = 300
     output_streaming["stream_first"] = False
 
     logger.info("✓ Ensured required rails and streaming configuration structure")

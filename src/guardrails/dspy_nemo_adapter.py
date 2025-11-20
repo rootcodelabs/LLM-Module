@@ -1,6 +1,6 @@
 """
-Improved Custom LLM adapter for NeMo Guardrails using DSPy.
-Follows NeMo's official custom LLM provider pattern using LangChain's BaseLanguageModel.
+Native DSPy + NeMo Guardrails LLM adapter with proper streaming support.
+Follows both NeMo's official custom LLM provider pattern and DSPy's native architecture.
 """
 
 from __future__ import annotations
@@ -13,27 +13,27 @@ from langchain_core.callbacks.manager import (
     CallbackManagerForLLMRun,
     AsyncCallbackManagerForLLMRun,
 )
-from langchain_core.outputs import LLMResult, Generation
 from langchain_core.language_models.llms import LLM
 from src.guardrails.guardrails_llm_configs import TEMPERATURE, MAX_TOKENS, MODEL_NAME
 
 
 class DSPyNeMoLLM(LLM):
     """
-    Production-ready custom LLM provider for NeMo Guardrails using DSPy with streaming support.
+    Production-ready custom LLM provider for NeMo Guardrails using DSPy.
 
-    This adapter follows NeMo's official pattern for custom LLM providers by:
-    1. Inheriting from LangChain's LLM base class
-    2. Implementing required methods: _call, _llm_type
-    3. Implementing async methods: _acall (REQUIRED by NeMo Guardrails validation)
-    4. Implementing streaming methods: _stream, _astream
-    5. Using DSPy's configured LM for actual generation
-    6. Proper error handling and logging
+    This implementation properly integrates:
+    - Native DSPy LM calls (via dspy.settings.lm)
+    - NeMo Guardrails LangChain BaseLanguageModel interface
+    - Token-level streaming via LiteLLM (DSPy's underlying engine)
 
-    Streaming Implementation:
-    - Yields string tokens (not Generation objects)
-    - Splits response into word-level chunks
-    - Compatible with NeMo Guardrails buffering and validation
+    Architecture:
+    - DSPy uses LiteLLM internally for all LM operations
+    - When stream=True is passed to DSPy LM, it delegates to LiteLLM's streaming
+    - This is the proper way to stream with DSPy until dspy.streamify is fully integrated
+
+    Note: dspy.streamify() is designed for DSPy *modules* (Predict, ChainOfThought, etc.)
+    not for raw LM calls. Since NeMo calls the LLM directly via LangChain interface,
+    this use the lower-level streaming that DSPy's LM provides through LiteLLM.
     """
 
     model_name: str = MODEL_NAME
@@ -42,21 +42,18 @@ class DSPyNeMoLLM(LLM):
     streaming: bool = True
 
     def __init__(self, **kwargs: Any) -> None:
-        """Initialize the DSPy NeMo LLM adapter with streaming support."""
         super().__init__(**kwargs)
         logger.info(
-            f"Initialized DSPyNeMoLLM adapter with streaming support "
-            f"(model={self.model_name}, temp={self.temperature}, max_tokens={self.max_tokens})"
+            f"Initialized DSPyNeMoLLM adapter "
+            f"(model={self.model_name}, temp={self.temperature})"
         )
 
     @property
     def _llm_type(self) -> str:
-        """Return identifier for LLM type (required by LangChain)."""
         return "dspy-custom"
 
     @property
     def _identifying_params(self) -> Dict[str, Any]:
-        """Return identifying parameters for the LLM."""
         return {
             "model_name": self.model_name,
             "temperature": self.temperature,
@@ -68,11 +65,8 @@ class DSPyNeMoLLM(LLM):
         """
         Get the active DSPy LM from settings.
 
-        Returns:
-            Active DSPy LM instance
-
-        Raises:
-            RuntimeError: If no DSPy LM is configured
+        This is the proper way to access DSPy's LM according to official docs.
+        The LM is configured via dspy.configure(lm=...) or dspy.settings.lm
         """
         lm = dspy.settings.lm
         if lm is None:
@@ -83,22 +77,48 @@ class DSPyNeMoLLM(LLM):
 
     def _extract_text_from_response(self, response: Union[str, List[Any], Any]) -> str:
         """
-        Extract text from various DSPy response formats.
+        Extract text from non-streaming DSPy response.
 
-        Args:
-            response: Response from DSPy LM
-
-        Returns:
-            Extracted text string
+        DSPy LM returns various response formats depending on the provider.
+        This handles the common cases.
         """
         if isinstance(response, str):
             return response.strip()
-
         if isinstance(response, list) and len(cast(List[Any], response)) > 0:
             return str(cast(List[Any], response)[0]).strip()
-
         if not isinstance(response, list):
             return str(response).strip()
+        return ""
+
+    def _extract_chunk_text(self, chunk: Any) -> str:
+        """
+        Extract text from a streaming chunk.
+
+        When DSPy's LM streams (via LiteLLM), it returns chunks in various formats
+        depending on the provider. This handles OpenAI-style objects and dicts.
+
+        Reference: DSPy delegates to LiteLLM for streaming, which uses provider-specific
+        streaming formats (OpenAI, Anthropic, etc.)
+        """
+        # Case 1: Raw string
+        if isinstance(chunk, str):
+            return chunk
+
+        # Case 2: Object with choices (OpenAI style)
+        if hasattr(chunk, "choices") and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if hasattr(delta, "content") and delta.content:
+                return delta.content
+
+        # Case 3: Dict style
+        if isinstance(chunk, dict) and "choices" in chunk:
+            choices = chunk["choices"]
+            if choices and len(choices) > 0:
+                delta = choices[0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    return content
+
         return ""
 
     def _call(
@@ -109,33 +129,26 @@ class DSPyNeMoLLM(LLM):
         **kwargs: Any,
     ) -> str:
         """
-        Synchronous call method (required by LangChain).
+        Synchronous non-streaming call.
 
-        Args:
-            prompt: The prompt string to generate from
-            stop: Optional stop sequences
-            run_manager: Optional callback manager
-            **kwargs: Additional generation parameters
-
-        Returns:
-            Generated text response
-
-        Raises:
-            RuntimeError: If DSPy LM is not configured
-            Exception: For other generation errors
+        This is the standard path for NeMo Guardrails when streaming is disabled.
+        Call DSPy's LM directly with the prompt.
         """
         try:
             lm = self._get_dspy_lm()
-            logger.debug(f"DSPyNeMoLLM._call: prompt length={len(prompt)}")
 
-            response = lm(prompt)
-            result = self._extract_text_from_response(response)
+            # Prepare kwargs
+            call_kwargs = {
+                "temperature": kwargs.get("temperature", self.temperature),
+                "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+            }
+            if stop:
+                call_kwargs["stop"] = stop
 
-            logger.debug(f"DSPyNeMoLLM._call: result length={len(result)}")
-            return result
+            # DSPy LM call - returns text directly
+            response = lm(prompt, **call_kwargs)
+            return self._extract_text_from_response(response)
 
-        except RuntimeError:
-            raise
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._call: {str(e)}")
             raise RuntimeError(f"LLM generation failed: {str(e)}") from e
@@ -148,36 +161,26 @@ class DSPyNeMoLLM(LLM):
         **kwargs: Any,
     ) -> str:
         """
-        Async call method (REQUIRED by NeMo Guardrails - not optional).
+        Async non-streaming call (Required by NeMo).
 
-        NeMo Guardrails validates that custom providers have _acall implemented.
-        This method is critical for the provider registration to succeed.
-
-        Args:
-            prompt: The prompt string to generate from
-            stop: Optional stop sequences
-            run_manager: Optional async callback manager
-            **kwargs: Additional generation parameters
-
-        Returns:
-            Generated text response
-
-        Raises:
-            RuntimeError: If DSPy LM is not configured
-            Exception: For other generation errors
+        Uses asyncio.to_thread to prevent blocking the event loop.
+        This is critical because DSPy's LM is synchronous and makes network calls.
         """
         try:
             lm = self._get_dspy_lm()
-            logger.debug(f"DSPyNeMoLLM._acall: prompt length={len(prompt)}")
 
-            response = await asyncio.to_thread(lm, prompt)
-            result = self._extract_text_from_response(response)
+            # Prepare kwargs
+            call_kwargs = {
+                "temperature": kwargs.get("temperature", self.temperature),
+                "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+            }
+            if stop:
+                call_kwargs["stop"] = stop
 
-            logger.debug(f"DSPyNeMoLLM._acall: result length={len(result)}")
-            return result
+            # Run in thread to avoid blocking
+            response = await asyncio.to_thread(lm, prompt, **call_kwargs)
+            return self._extract_text_from_response(response)
 
-        except RuntimeError:
-            raise
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._acall: {str(e)}")
             raise RuntimeError(f"Async LLM generation failed: {str(e)}") from e
@@ -190,47 +193,41 @@ class DSPyNeMoLLM(LLM):
         **kwargs: Any,
     ) -> Iterator[str]:
         """
-        Stream response synchronously (required for NeMo Guardrails streaming).
+        Synchronous streaming via DSPy's native streaming support.
 
-        CRITICAL: Must yield strings, not Generation objects.
-        NeMo Guardrails expects raw string tokens for buffering and validation.
+        How this works:
+        1. DSPy's LM accepts stream=True parameter
+        2. DSPy delegates to LiteLLM which handles provider-specific streaming
+        3. LiteLLM returns an iterator of chunks
+        4. extract text from each chunk and yield it
 
-        Args:
-            prompt: The prompt string to generate from
-            stop: Optional stop sequences
-            run_manager: Optional callback manager
-            **kwargs: Additional generation parameters
+        This is the proper low-level streaming approach when not using dspy.streamify(),
+        which is designed for higher-level DSPy modules.
 
-        Yields:
-            String tokens (word-level chunks)
-
-        Raises:
-            RuntimeError: If streaming fails
         """
         try:
             lm = self._get_dspy_lm()
-            logger.debug(f"DSPyNeMoLLM._stream: prompt length={len(prompt)}")
 
-            response = lm(prompt)
-            result = self._extract_text_from_response(response)
+            # Prepare kwargs with streaming enabled
+            call_kwargs = {
+                "stream": True,  # This triggers LiteLLM streaming
+                "temperature": kwargs.get("temperature", self.temperature),
+                "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+            }
+            if stop:
+                call_kwargs["stop"] = stop
 
-            if not result:
-                logger.warning("Empty response from LLM in streaming mode")
-                return
+            # Get streaming generator from DSPy LM
+            # DSPy's LM will call LiteLLM with stream=True
+            stream_generator = lm(prompt, **call_kwargs)
 
-            # Split into word-level chunks for streaming
-            words = result.split()
-            logger.debug(f"DSPyNeMoLLM._stream: streaming {len(words)} word tokens")
-
-            for i, word in enumerate(words):
-                # Add space after each word except the last one
-                token = word if i == len(words) - 1 else word + " "
-
-                # Notify callback manager if present
-                if run_manager:
-                    run_manager.on_llm_new_token(token)
-
-                yield token
+            # Yield tokens as they arrive
+            for chunk in stream_generator:
+                token = self._extract_chunk_text(chunk)
+                if token:
+                    if run_manager:
+                        run_manager.on_llm_new_token(token)
+                    yield token
 
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._stream: {str(e)}")
@@ -244,167 +241,108 @@ class DSPyNeMoLLM(LLM):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """
-        Stream response asynchronously (required for NeMo Guardrails async streaming).
+        Async streaming using Threaded Producer / Async Consumer pattern.
 
-        CRITICAL: Must yield strings, not Generation objects.
-        NeMo Guardrails expects raw string tokens for buffering and validation.
+        Why this pattern:
+        - DSPy's LM is synchronous (calls LiteLLM synchronously)
+        - Streaming involves blocking network I/O in the iterator
+        - MUST run the synchronous generator in a thread
+        - Use a queue to safely pass chunks to the async consumer
 
-        Args:
-            prompt: The prompt string to generate from
-            stop: Optional stop sequences
-            run_manager: Optional async callback manager
-            **kwargs: Additional generation parameters
-
-        Yields:
-            String tokens (word-level chunks)
-
-        Raises:
-            RuntimeError: If async streaming fails
+        This pattern prevents blocking the event loop while maintaining
+        proper async semantics for NeMo Guardrails.
         """
         try:
             lm = self._get_dspy_lm()
-            logger.debug(f"DSPyNeMoLLM._astream: prompt length={len(prompt)}")
+        except Exception as e:
+            logger.error(f"Error getting DSPy LM: {str(e)}")
+            return
 
-            # Generate full response in background thread to avoid blocking
-            response = await asyncio.to_thread(lm, prompt)
-            result = self._extract_text_from_response(response)
+        # Setup queue and event loop
+        queue: asyncio.Queue[Union[Any, Exception, None]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
-            if not result:
-                logger.warning("Empty response from LLM in async streaming mode")
-                return
+        # Sentinel to mark end of stream
+        SENTINEL = object()
 
-            # Split into word-level chunks for streaming
-            words = result.split()
-            logger.debug(f"DSPyNeMoLLM._astream: streaming {len(words)} word tokens")
+        def producer():
+            """
+            Synchronous producer running in a thread.
+            Calls DSPy's LM with stream=True and pushes chunks to queue.
+            """
+            try:
+                # Prepare kwargs with streaming
+                call_kwargs = {
+                    "stream": True,
+                    "temperature": kwargs.get("temperature", self.temperature),
+                    "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+                }
+                if stop:
+                    call_kwargs["stop"] = stop
 
-            for i, word in enumerate(words):
-                # Add space after each word except the last one
-                token = word if i == len(words) - 1 else word + " "
+                # Get streaming generator
+                stream_generator = lm(prompt, **call_kwargs)
 
-                # Notify callback manager if present
-                if run_manager:
-                    await run_manager.on_llm_new_token(token)
+                # Push chunks to queue
+                for chunk in stream_generator:
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
 
-                yield token
+                # Signal completion
+                loop.call_soon_threadsafe(queue.put_nowait, SENTINEL)
 
-                # Allow other async tasks to run
-                await asyncio.sleep(0)
+            except Exception as e:
+                # Pass exception to async consumer
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+
+        # Start producer in thread pool
+        loop.run_in_executor(None, producer)
+
+        # Async consumer - yield tokens as they arrive
+        try:
+            while True:
+                # Wait for next chunk (non-blocking)
+                chunk = await queue.get()
+
+                # Check for completion
+                if chunk is SENTINEL:
+                    break
+
+                # Check for errors from producer
+                if isinstance(chunk, Exception):
+                    raise chunk
+
+                # Extract and yield token
+                token = self._extract_chunk_text(chunk)
+                if token:
+                    if run_manager:
+                        await run_manager.on_llm_new_token(token)
+                    yield token
 
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._astream: {str(e)}")
             raise RuntimeError(f"Async streaming failed: {str(e)}") from e
 
-    def _generate(
-        self,
-        prompts: List[str],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> LLMResult:
-        """
-        Generate responses for multiple prompts.
-
-        This method is used by NeMo for batch processing.
-
-        Args:
-            prompts: List of prompt strings
-            stop: Optional stop sequences
-            run_manager: Optional callback manager
-            **kwargs: Additional generation parameters
-
-        Returns:
-            LLMResult with generations for each prompt
-        """
-        logger.debug(f"DSPyNeMoLLM._generate called with {len(prompts)} prompts")
-
-        generations: List[List[Generation]] = []
-
-        for i, prompt in enumerate(prompts):
-            try:
-                text = self._call(prompt, stop=stop, run_manager=run_manager, **kwargs)
-                generations.append([Generation(text=text)])
-                logger.debug(f"Generated response {i + 1}/{len(prompts)}")
-            except Exception as e:
-                logger.error(f"Error generating response for prompt {i + 1}: {str(e)}")
-                generations.append([Generation(text="")])
-
-        return LLMResult(generations=generations, llm_output={})
-
-    async def _agenerate(
-        self,
-        prompts: List[str],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> LLMResult:
-        """
-        Async generate responses for multiple prompts.
-
-        Args:
-            prompts: List of prompt strings
-            stop: Optional stop sequences
-            run_manager: Optional async callback manager
-            **kwargs: Additional generation parameters
-
-        Returns:
-            LLMResult with generations for each prompt
-        """
-        logger.debug(f"DSPyNeMoLLM._agenerate called with {len(prompts)} prompts")
-
-        generations: List[List[Generation]] = []
-
-        for i, prompt in enumerate(prompts):
-            try:
-                text = await self._acall(
-                    prompt, stop=stop, run_manager=run_manager, **kwargs
-                )
-                generations.append([Generation(text=text)])
-                logger.debug(f"Generated async response {i + 1}/{len(prompts)}")
-            except Exception as e:
-                logger.error(
-                    f"Error generating async response for prompt {i + 1}: {str(e)}"
-                )
-                generations.append([Generation(text="")])
-
-        return LLMResult(generations=generations, llm_output={})
-
 
 class DSPyLLMProviderFactory:
     """
-    Factory class for creating DSPyNeMoLLM instances.
+    Factory for NeMo Guardrails registration.
 
-    This class satisfies NeMo Guardrails' provider validation requirements
-    by having the necessary methods on the factory itself, while still
-    returning proper LLM instances when called.
+    NeMo requires a callable factory that returns an LLM instance.
     """
 
     def __call__(self, config: Optional[Dict[str, Any]] = None) -> DSPyNeMoLLM:
-        """
-        Create and return a DSPyNeMoLLM instance.
-
-        Args:
-            config: Optional configuration dictionary
-
-        Returns:
-            Configured DSPyNeMoLLM instance
-        """
+        """Create and return a DSPyNeMoLLM instance."""
         if config is None:
             config = {}
         return DSPyNeMoLLM(**config)
 
-    def _call(self, *args, **kwargs) -> str:
-        """Placeholder - use the instance returned by __call__."""
-        raise NotImplementedError(
-            "This is a factory. Call the provider to get an LLM instance first."
-        )
+    # Placeholder methods required by some versions of NeMo validation
+    def _call(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError("Factory class - use DSPyNeMoLLM instance")
 
-    async def _acall(self, *args, **kwargs) -> str:
-        """Placeholder - use the instance returned by __call__."""
-        raise NotImplementedError(
-            "This is a factory. Call the provider to get an LLM instance first."
-        )
+    async def _acall(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError("Factory class - use DSPyNeMoLLM instance")
 
     @property
     def _llm_type(self) -> str:
-        """Return type identifier."""
         return "dspy-custom"
