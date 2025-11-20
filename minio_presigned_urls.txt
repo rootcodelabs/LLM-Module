@@ -1,0 +1,7 @@
+http://minio:9000/ckb/sm_someuuid/sm_someuuid.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20251120%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251120T075141Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=b59736634eaae5afaa3d0a714edcb390607c09f2baceb6daa23aada996dec12a
+
+Individual URLs:
+==================================================
+URL 1:
+http://minio:9000/ckb/sm_someuuid/sm_someuuid.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20251120%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251120T075141Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=b59736634eaae5afaa3d0a714edcb390607c09f2baceb6daa23aada996dec12a
+
