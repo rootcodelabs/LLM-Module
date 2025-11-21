@@ -33,7 +33,7 @@ class OrchestrationRequest(BaseModel):
         ..., description="Previous conversation history"
     )
     url: str = Field(..., description="Source URL context")
-    environment: Literal["production", "test", "development"] = Field(
+    environment: Literal["production", "testing", "development"] = Field(
         ..., description="Environment context"
     )
     connection_id: Optional[str] = Field(
@@ -66,7 +66,7 @@ class EmbeddingRequest(BaseModel):
     """
 
     texts: List[str] = Field(..., description="List of texts to embed", max_length=1000)
-    environment: Literal["production", "development", "test"] = Field(
+    environment: Literal["production", "development", "testing"] = Field(
         ..., description="Environment for model resolution"
     )
     batch_size: Optional[int] = Field(
@@ -97,7 +97,7 @@ class ContextGenerationRequest(BaseModel):
         ..., description="Document content for caching", max_length=100000
     )
     chunk_prompt: str = Field(..., description="Chunk-specific prompt", max_length=5000)
-    environment: Literal["production", "development", "test"] = Field(
+    environment: Literal["production", "development", "testing"] = Field(
         ..., description="Environment for model resolution"
     )
     use_cache: bool = Field(default=True, description="Enable prompt caching")
@@ -138,7 +138,7 @@ class TestOrchestrationRequest(BaseModel):
     """Model for simplified test orchestration request."""
 
     message: str = Field(..., description="User's message/query")
-    environment: Literal["production", "test", "development"] = Field(
+    environment: Literal["production", "testing", "development"] = Field(
         ..., description="Environment context"
     )
     connectionId: Optional[int] = Field(

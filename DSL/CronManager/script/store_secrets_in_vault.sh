@@ -68,7 +68,7 @@ build_vault_path() {
         model=$(get_model_name)
     fi
     
-    if [ "$deploymentEnvironment" = "test" ]; then
+    if [ "$deploymentEnvironment" = "testing" ]; then
         echo "secret/$secret_type/connections/$platform/$deploymentEnvironment/$connectionId"
     else
         echo "secret/$secret_type/connections/$platform/$deploymentEnvironment/$model"

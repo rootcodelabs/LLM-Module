@@ -27,6 +27,7 @@ from src.llm_orchestrator_config.llm_cochestrator_constants import (
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
     GUARDRAILS_BLOCKED_PHRASES,
+    TEST_DEPLOYMENT_ENVIRONMENT,
 )
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
@@ -770,7 +771,7 @@ class LLMOrchestrationService:
 
         if not input_check_result.allowed:
             logger.warning(f"Input blocked by guardrails: {input_check_result.reason}")
-            if request.environment == "test":
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning input guardrail violation message."
                 )
@@ -941,7 +942,7 @@ class LLMOrchestrationService:
         Initialize NeMo Guardrails adapter.
 
         Args:
-            environment: Environment context (production/test/development)
+            environment: Environment context (production/testing/development)
             connection_id: Optional connection identifier
 
         Returns:
@@ -1257,7 +1258,7 @@ class LLMOrchestrationService:
         Initialize LLM Manager with proper configuration.
 
         Args:
-            environment: Environment context (production/test/development)
+            environment: Environment context (production/testing/development)
             connection_id: Optional connection identifier
 
         Returns:
@@ -1480,7 +1481,7 @@ class LLMOrchestrationService:
             logger.warning(
                 "Response generator unavailable – returning technical issue message."
             )
-            if request.environment == "test":
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning technical issue message."
                 )
@@ -1547,7 +1548,7 @@ class LLMOrchestrationService:
                 )
             if question_out_of_scope:
                 logger.info("Question determined out-of-scope – sending fixed message.")
-                if request.environment == "test":
+                if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                     logger.info(
                         "Test environment detected – returning out-of-scope message."
                     )
@@ -1568,7 +1569,7 @@ class LLMOrchestrationService:
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
-            if request.environment == "test":
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info("Test environment detected – returning generated answer.")
                 return TestOrchestrationResponse(
                     llmServiceActive=True,
@@ -1598,7 +1599,7 @@ class LLMOrchestrationService:
                     }
                 )
             # Standardized technical issue; no second LLM call, no citations
-            if request.environment == "test":
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning technical issue message."
                 )
@@ -1635,7 +1636,7 @@ class LLMOrchestrationService:
 
         Args:
             texts: List of texts to embed
-            environment: Environment (production, development, test)
+            environment: Environment (production, development, testing)
             connection_id: Optional connection ID for dev/test environments
             batch_size: Batch size for processing
 
@@ -1691,7 +1692,7 @@ class LLMOrchestrationService:
         """Get available embedding models for vector indexer.
 
         Args:
-            environment: Environment (production, development, test)
+            environment: Environment (production, development, testing)
 
         Returns:
             Dictionary with available models and default model info

@@ -24,3 +24,4 @@ GUARDRAILS_BLOCKED_PHRASES = [
 
 # Streaming configuration
 STREAMING_ALLOWED_ENVS = {"production"}
+TEST_DEPLOYMENT_ENVIRONMENT = "testing"
