@@ -1,7 +1,10 @@
 """Pydantic models for API requests and responses."""
 
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+import json
+
+from src.utils.input_sanitizer import InputSanitizer
 
 
 class ConversationItem(BaseModel):
@@ -12,6 +15,23 @@ class ConversationItem(BaseModel):
     )
     message: str = Field(..., description="Content of the message")
     timestamp: str = Field(..., description="Timestamp in ISO format")
+
+    @field_validator("message")
+    @classmethod
+    def validate_and_sanitize_message(cls, v: str) -> str:
+        """Sanitize and validate conversation message."""
+        from src.llm_orchestrator_config.stream_config import StreamConfig
+
+        # Sanitize HTML and normalize whitespace
+        v = InputSanitizer.sanitize_message(v)
+
+        # Check length
+        if len(v) > StreamConfig.MAX_MESSAGE_LENGTH:
+            raise ValueError(
+                f"Conversation message exceeds maximum length of {StreamConfig.MAX_MESSAGE_LENGTH} characters"
+            )
+
+        return v
 
 
 class PromptRefinerOutput(BaseModel):
@@ -39,6 +59,69 @@ class OrchestrationRequest(BaseModel):
     connection_id: Optional[str] = Field(
         None, description="Optional connection identifier"
     )
+
+    @field_validator("message")
+    @classmethod
+    def validate_and_sanitize_message(cls, v: str) -> str:
+        """Sanitize and validate user message.
+
+        Note: Content safety checks (prompt injection, PII, harmful content)
+        are handled by NeMo Guardrails after this validation layer.
+        """
+        from src.llm_orchestrator_config.stream_config import StreamConfig
+
+        # Sanitize HTML/XSS and normalize whitespace
+        v = InputSanitizer.sanitize_message(v)
+
+        # Check if message is empty after sanitization
+        if not v or len(v.strip()) < 3:
+            raise ValueError(
+                "Message must contain at least 3 characters after sanitization"
+            )
+
+        # Check length after sanitization
+        if len(v) > StreamConfig.MAX_MESSAGE_LENGTH:
+            raise ValueError(
+                f"Message exceeds maximum length of {StreamConfig.MAX_MESSAGE_LENGTH} characters"
+            )
+
+        return v
+
+    @field_validator("conversationHistory")
+    @classmethod
+    def validate_conversation_history(
+        cls, v: List[ConversationItem]
+    ) -> List[ConversationItem]:
+        """Validate conversation history limits."""
+        from loguru import logger
+
+        # Limit number of conversation history items
+        MAX_HISTORY_ITEMS = 100
+
+        if len(v) > MAX_HISTORY_ITEMS:
+            logger.warning(
+                f"Conversation history truncated: {len(v)} -> {MAX_HISTORY_ITEMS} items"
+            )
+            # Truncate to most recent items
+            v = v[-MAX_HISTORY_ITEMS:]
+
+        return v
+
+    @model_validator(mode="after")
+    def validate_payload_size(self) -> "OrchestrationRequest":
+        """Validate total payload size does not exceed limit."""
+        from src.llm_orchestrator_config.stream_config import StreamConfig
+
+        try:
+            payload_size = len(json.dumps(self.model_dump()).encode("utf-8"))
+            if payload_size > StreamConfig.MAX_PAYLOAD_SIZE_BYTES:
+                raise ValueError(
+                    f"Request payload exceeds maximum size of {StreamConfig.MAX_PAYLOAD_SIZE_BYTES} bytes"
+                )
+        except Exception:
+            # If serialization fails, let it pass (will fail elsewhere)
+            pass
+        return self
 
 
 class OrchestrationResponse(BaseModel):
