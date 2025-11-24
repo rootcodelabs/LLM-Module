@@ -111,7 +111,6 @@ class StreamManager:
     """
 
     _instance: Optional["StreamManager"] = None
-    _lock: asyncio.Lock = asyncio.Lock()
 
     def __new__(cls) -> "StreamManager":
         """Singleton pattern - ensure only one manager instance."""
