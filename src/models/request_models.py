@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 import json
 
 from src.utils.input_sanitizer import InputSanitizer
+from src.llm_orchestrator_config.stream_config import StreamConfig
+from loguru import logger
 
 
 class ConversationItem(BaseModel):
@@ -20,7 +22,6 @@ class ConversationItem(BaseModel):
     @classmethod
     def validate_and_sanitize_message(cls, v: str) -> str:
         """Sanitize and validate conversation message."""
-        from src.llm_orchestrator_config.stream_config import StreamConfig
 
         # Sanitize HTML and normalize whitespace
         v = InputSanitizer.sanitize_message(v)
@@ -68,8 +69,6 @@ class OrchestrationRequest(BaseModel):
         Note: Content safety checks (prompt injection, PII, harmful content)
         are handled by NeMo Guardrails after this validation layer.
         """
-        from src.llm_orchestrator_config.stream_config import StreamConfig
-
         # Sanitize HTML/XSS and normalize whitespace
         v = InputSanitizer.sanitize_message(v)
 
@@ -110,7 +109,6 @@ class OrchestrationRequest(BaseModel):
     @model_validator(mode="after")
     def validate_payload_size(self) -> "OrchestrationRequest":
         """Validate total payload size does not exceed limit."""
-        from src.llm_orchestrator_config.stream_config import StreamConfig
 
         try:
             payload_size = len(json.dumps(self.model_dump()).encode("utf-8"))
@@ -118,9 +116,16 @@ class OrchestrationRequest(BaseModel):
                 raise ValueError(
                     f"Request payload exceeds maximum size of {StreamConfig.MAX_PAYLOAD_SIZE_BYTES} bytes"
                 )
-        except Exception:
-            # If serialization fails, let it pass (will fail elsewhere)
-            pass
+        except (TypeError, ValueError, OverflowError) as e:
+            # Catch specific serialization errors and log them
+            # ValueError: raised when size limit exceeded (re-raise this)
+            # TypeError: circular references or non-serializable objects
+            # OverflowError: data too large to serialize
+            if "exceeds maximum size" in str(e):
+                raise  # Re-raise size limit violations
+            logger.warning(
+                f"Payload size validation skipped due to serialization error: {type(e).__name__}: {e}"
+            )
         return self
 
 
