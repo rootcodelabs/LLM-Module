@@ -111,7 +111,7 @@ Server logs: Full technical details with unique error_id for correlation
 - `src/llm_orchestrator_config/exceptions.py` - Exception hierarchy
 - `src/utils/error_utils.py` - Error ID generation and logging
 - `src/llm_orchestration_service_api.py` - Custom exception handlers
-- `src/llm_orchestrator_config/llm_cochestrator_constants.py` - User messages
+- `src/llm_orchestrator_config/llm_ochestrator_constants.py` - User messages
 
 **Key Components:**
 
@@ -236,7 +236,7 @@ Impact: 1000 concurrent requests = OOM crash
 - `src/utils/stream_manager.py` - Centralized tracking (~340 lines)
 - `src/llm_orchestrator_config/stream_config.py` - Concurrency limits
 - `src/llm_orchestration_service.py` - Refactored to use manager
-- `src/llm_orchestrator_config/llm_cochestrator_constants.py` - Capacity messages
+- `src/llm_orchestrator_config/llm_ochestrator_constants.py` - Capacity messages
 
 **Key Components:**
 
@@ -584,7 +584,7 @@ Impact: Without limits, 50 concurrent streams = degraded performance for all
 - `src/utils/rate_limiter.py` - In-memory rate limiter (~340 lines)
 - `src/llm_orchestration_service_api.py` - Integrated into streaming endpoint
 - `src/llm_orchestrator_config/stream_config.py` - Rate limit configuration
-- `src/llm_orchestrator_config/llm_cochestrator_constants.py` - User messages
+- `src/llm_orchestrator_config/llm_ochestrator_constants.py` - User messages
 - `test_rate_limiting.ps1` - Comprehensive test script
 
 **Dual Algorithm Approach:**
