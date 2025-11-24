@@ -21,7 +21,7 @@ from models.request_models import (
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.response_generator.response_generate import stream_response_native
-from src.llm_orchestrator_config.llm_cochestrator_constants import (
+from src.llm_orchestrator_config.llm_ochestrator_constants import (
     OUT_OF_SCOPE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGE,
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,

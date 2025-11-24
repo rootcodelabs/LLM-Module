@@ -11,7 +11,7 @@ from loguru import logger
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
-from src.llm_orchestrator_config.llm_cochestrator_constants import (
+from src.llm_orchestrator_config.llm_ochestrator_constants import (
     STREAMING_ALLOWED_ENVS,
     STREAM_TIMEOUT_MESSAGE,
     RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE,
@@ -146,6 +146,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 body_json = json_module.loads(body)
                 chat_id = body_json.get("chatId", "unknown")
         except Exception:
+            # Silently fall back to "unknown" if body parsing fails
+            # This is a validation error handler, so body is already malformed
             pass
 
         # Return SSE format for streaming endpoint

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
-from src.llm_orchestrator_config.llm_cochestrator_constants import (
+from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
 )
 from src.utils.cost_utils import get_lm_usage_since
