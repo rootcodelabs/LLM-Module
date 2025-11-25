@@ -314,69 +314,6 @@ User message: "{user_input}"
 
 Is this user message safe according to the policy? Answer with 'safe' or 'unsafe'."""
 
-    def _check_events_for_blocking(self, events: list) -> bool:
-        """
-        Check if events contain a blocking signal (StopEvent or bot refusal).
-
-        Args:
-            events: List of events from generate_events_async
-
-        Returns:
-            bool: True if input was blocked, False if allowed
-        """
-        for event in events:
-            event_type = event.get("type", "")
-
-            # Check for explicit StopEvent (input rails blocked the message)
-            if event_type == "StopEvent":
-                return True
-
-            # Check for bot utterance with blocking phrases (fallback detection)
-            if event_type == "StartUtteranceBotAction":
-                script = event.get("script", "")
-                if script and self._is_blocking_phrase(script):
-                    return True
-
-        return False
-
-    def _extract_block_message_from_events(self, events: list) -> str:
-        """
-        Extract the blocking message from events.
-
-        Args:
-            events: List of events from generate_events_async
-
-        Returns:
-            str: The blocking message or default message
-        """
-        for event in events:
-            if event.get("type") == "StartUtteranceBotAction":
-                script = event.get("script", "")
-                if script:
-                    return script
-
-        return "I'm not able to respond to that request"
-
-    def _is_blocking_phrase(self, text: str) -> bool:
-        """
-        Check if text contains a blocking phrase.
-
-        Args:
-            text: Text to check
-
-        Returns:
-            bool: True if text contains blocking phrase
-        """
-        blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
-        text_normalized = text.strip().lower()
-
-        for phrase in blocked_phrases:
-            pattern = r"^" + re.escape(phrase) + r"[\s\.,!]*$"
-            if re.match(pattern, text_normalized):
-                return True
-
-        return False
-
     def _is_input_blocked(self, response: str, original: str) -> bool:
         """Check if input was blocked by guardrails."""
 
