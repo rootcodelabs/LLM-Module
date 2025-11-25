@@ -5,8 +5,11 @@ from pydantic import BaseModel, Field
 
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
-from src.llm_orchestrator_config.llm_cochestrator_constants import GUARDRAILS_BLOCKED_PHRASES
+from src.llm_orchestrator_config.llm_cochestrator_constants import (
+    GUARDRAILS_BLOCKED_PHRASES,
+)
 import dspy
+import re
 
 
 class GuardrailCheckResult(BaseModel):
@@ -214,13 +217,12 @@ class NeMoRailsAdapter:
 
     def _is_input_blocked(self, response: str, original: str) -> bool:
         """Check if input was blocked by guardrails."""
-        import re
         blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
         response_normalized = response.strip().lower()
         # Match if the response is exactly or almost exactly a blocked phrase (allow trailing punctuation/whitespace)
         for phrase in blocked_phrases:
             # Regex: phrase followed by optional punctuation/whitespace, and nothing else
-            pattern = r'^' + re.escape(phrase) + r'[\s\.,!]*$'
+            pattern = r"^" + re.escape(phrase) + r"[\s\.,!]*$"
             if re.match(pattern, response_normalized):
                 return True
         return False

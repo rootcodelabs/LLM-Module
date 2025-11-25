@@ -4,10 +4,14 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.responses import StreamingResponse
 from loguru import logger
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
+from src.llm_orchestrator_config.llm_cochestrator_constants import (
+    STREAMING_ALLOWED_ENVS,
+)
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
@@ -249,12 +253,11 @@ async def stream_orchestrated_response(
         - Technical error: Fixed message from constants
 
     Notes:
-        - Only available for production environment
-        - Test environment requests will return 400 error
+        - Available for configured environments (see STREAMING_ALLOWED_ENVS)
+        - Non-streaming environment requests will return 400 error
         - Streaming uses validation-first approach (stream_first=False)
         - All tokens are validated before being sent to client
     """
-    from fastapi.responses import StreamingResponse
 
     try:
         logger.info(
@@ -264,17 +267,18 @@ async def stream_orchestrated_response(
             f"message: {request.message[:100]}..."
         )
 
-        # Streaming is only for production environment
-        if request.environment != "production":
+        # Streaming is only for allowed environments
+        if request.environment not in STREAMING_ALLOWED_ENVS:
             logger.warning(
                 f"Streaming not supported for environment: {request.environment}. "
+                f"Allowed environments: {', '.join(STREAMING_ALLOWED_ENVS)}. "
                 "Use /orchestrate endpoint instead."
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Streaming is only available for production environment. "
+                detail=f"Streaming is only available for environments: {', '.join(STREAMING_ALLOWED_ENVS)}. "
                 f"Current environment: {request.environment}. "
-                f"Please use /orchestrate endpoint for non-production environments.",
+                f"Please use /orchestrate endpoint for non-streaming environments.",
             )
 
         # Get the orchestration service from app state
