@@ -65,8 +65,8 @@ class DynamicRankFusion:
 
             logger.info(f"Fusion completed: {len(final_results)} final results")
 
-            # Debug logging for final fused results
-            logger.info("=== RANK FUSION FINAL RESULTS ===")
+            # Detailed results at DEBUG level (loguru filters based on log level config)
+            logger.debug("=== RANK FUSION FINAL RESULTS ===")
             for i, chunk in enumerate(final_results):
                 content_preview_len = self._config.rank_fusion.content_preview_length
                 content_preview = (
@@ -78,13 +78,13 @@ class DynamicRankFusion:
                 bm25_score = chunk.get("bm25_score", 0)
                 fused_score = chunk.get("fused_score", 0)
                 search_type = chunk.get("search_type", QueryTypeConstants.UNKNOWN)
-                logger.info(
+                logger.debug(
                     f"  Final Rank {i + 1}: fused_score={fused_score:.4f}, semantic={sem_score:.4f}, bm25={bm25_score:.4f}, type={search_type}"
                 )
-                logger.info(
+                logger.debug(
                     f"                  id={chunk.get('chunk_id', QueryTypeConstants.UNKNOWN)}, content: '{content_preview}'"
                 )
-            logger.info("=== END RANK FUSION RESULTS ===")
+            logger.debug("=== END RANK FUSION RESULTS ===")
 
             return final_results
 
