@@ -6,7 +6,7 @@ const {
   buildNotificationSearchInterval,
   buildQueueCounter,
 } = require("./addOns");
-const { enqueueChatId, dequeueChatId, sendBulkNotification, createAzureOpenAIStreamRequest } = require("./openSearch");
+const { enqueueChatId, dequeueChatId, sendBulkNotification, createAzureOpenAIStreamRequest, createLLMOrchestrationStreamRequest } = require("./openSearch");
 const { addToTerminationQueue, removeFromTerminationQueue } = require("./terminationQueue");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
@@ -36,6 +36,25 @@ app.get("/sse/notifications/:channelId", (req, res) => {
     req,
     res,
     buildCallbackFunction: buildNotificationSearchInterval({ channelId }),
+    channelId,
+  });
+});
+
+app.get("/sse/stream/:channelId", (req, res) => {
+  const { channelId } = req.params;
+  buildSSEResponse({
+    req,
+    res,
+    buildCallbackFunction: ({ connectionId, sender }) => {
+      // For streaming SSE, we don't set up an interval
+      // Instead, we wait for POST requests to trigger streaming
+      console.log(`SSE streaming connection established for channel ${channelId}, connection ${connectionId}`);
+      
+      // Return cleanup function (no-op for streaming connections)
+      return () => {
+        console.log(`SSE streaming connection closed for channel ${channelId}, connection ${connectionId}`);
+      };
+    },
     channelId,
   });
 });
@@ -187,6 +206,36 @@ app.post("/channels/:channelId/stream", async (req, res) => {
       res.status(404).json({ error: error.message });
     } else {
       res.status(500).json({ error: "Failed to start streaming" });
+    }
+  }
+});
+
+app.post("/channels/:channelId/orchestrate/stream", async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { message, options = {} } = req.body;
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message string is required" });
+    }
+
+    const result = await createLLMOrchestrationStreamRequest({
+      channelId,
+      message,
+      options,
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    if (error.message.includes("No active connections found for this channel - request queued")) {
+      res.status(202).json({
+        message: "Request queued - will be processed when connection becomes available",
+        status: "queued",
+      });
+    } else if (error.message === "No active connections found for this channel") {
+      res.status(404).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: "Failed to start LLM orchestration streaming" });
     }
   }
 });

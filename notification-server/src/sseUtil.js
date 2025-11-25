@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const streamQueue = require("./streamQueue");
-const { createAzureOpenAIStreamRequest } = require("./openSearch");
+const { createLLMOrchestrationStreamRequest } = require("./openSearch");
 const { activeConnections } = require("./connectionManager");
 
 function buildSSEResponse({ res, req, buildCallbackFunction, channelId }) {
@@ -80,9 +80,10 @@ function processPendingStreamsForChannel(channelId) {
     pendingRequests.forEach(async (requestData) => {
       if (streamQueue.shouldRetry(requestData)) {
         try {
-          await createAzureOpenAIStreamRequest({
+          
+          await createLLMOrchestrationStreamRequest({
             channelId,
-            messages: requestData.messages,
+            message: requestData.message,
             options: requestData.options,
           });
 
