@@ -1,7 +1,0 @@
-http://minio:9000/ckb/ID.ee/ID.ee.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20251124%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251124T120706Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=55a6d60a63dff0984d36a5be431c82ec318db67f5955919be73d98e0a91a30e0
-
-Individual URLs:
-==================================================
-URL 1:
-http://minio:9000/ckb/ID.ee/ID.ee.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20251124%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251124T120706Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=55a6d60a63dff0984d36a5be431c82ec318db67f5955919be73d98e0a91a30e0
-

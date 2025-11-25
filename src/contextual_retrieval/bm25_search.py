@@ -141,19 +141,19 @@ class SmartBM25Search:
 
             logger.info(f"BM25 search found {len(results)} chunks")
 
-            # Debug logging for BM25 results
-            logger.info("=== BM25 SEARCH RESULTS BREAKDOWN ===")
+            # Detailed results at DEBUG level (loguru filters based on log level config)
+            logger.debug("=== BM25 SEARCH RESULTS BREAKDOWN ===")
             for i, chunk in enumerate(results[:10]):  # Show top 10 results
                 content_preview = (
                     (chunk.get("original_content", "")[:150] + "...")
                     if len(chunk.get("original_content", "")) > 150
                     else chunk.get("original_content", "")
                 )
-                logger.info(
+                logger.debug(
                     f"  Rank {i + 1}: BM25_score={chunk['score']:.4f}, id={chunk.get('chunk_id', 'unknown')}"
                 )
-                logger.info(f"           content: '{content_preview}'")
-            logger.info("=== END BM25 SEARCH RESULTS ===")
+                logger.debug(f"           content: '{content_preview}'")
+            logger.debug("=== END BM25 SEARCH RESULTS ===")
 
             return results
 

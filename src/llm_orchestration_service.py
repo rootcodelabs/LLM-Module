@@ -54,9 +54,9 @@ class LangfuseConfig:
     def _initialize_langfuse(self) -> None:
         """Initialize Langfuse client with Vault secrets."""
         try:
-            from llm_orchestrator_config.vault.vault_client import VaultAgentClient
+            from llm_orchestrator_config.vault.vault_client import get_vault_client
 
-            vault = VaultAgentClient()
+            vault = get_vault_client()
             if vault.is_vault_available():
                 langfuse_secrets = vault.get_secret("langfuse/config")
                 if langfuse_secrets:
@@ -1365,15 +1365,15 @@ class LLMOrchestrationService:
                 loader = get_module_loader()
                 guardrails_loader = get_guardrails_loader()
 
-                # Log refiner version
-                _, refiner_meta = loader.load_refiner_module()
+                # Log refiner version (uses cache, no disk I/O)
+                refiner_meta = loader.get_module_metadata("refiner")
                 logger.info(
                     f"  Refiner: {refiner_meta.get('version', 'unknown')} "
                     f"({'optimized' if refiner_meta.get('optimized') else 'base'})"
                 )
 
-                # Log generator version
-                _, generator_meta = loader.load_generator_module()
+                # Log generator version (uses cache, no disk I/O)
+                generator_meta = loader.get_module_metadata("generator")
                 logger.info(
                     f"  Generator: {generator_meta.get('version', 'unknown')} "
                     f"({'optimized' if generator_meta.get('optimized') else 'base'})"
@@ -1890,9 +1890,9 @@ class LLMOrchestrationService:
         """Lazy initialization of EmbeddingManager for vector indexer."""
         if not hasattr(self, "_embedding_manager"):
             from src.llm_orchestrator_config.embedding_manager import EmbeddingManager
-            from src.llm_orchestrator_config.vault.vault_client import VaultAgentClient
+            from src.llm_orchestrator_config.vault.vault_client import get_vault_client
 
-            vault_client = VaultAgentClient()
+            vault_client = get_vault_client()
             config_loader = self._get_config_loader()
 
             self._embedding_manager = EmbeddingManager(vault_client, config_loader)
