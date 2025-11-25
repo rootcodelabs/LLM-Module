@@ -7,7 +7,7 @@ import asyncio
 import dspy.streaming
 from dspy.streaming import StreamListener
 
-from src.llm_orchestrator_config.llm_cochestrator_constants import OUT_OF_SCOPE_MESSAGE
+from src.llm_orchestrator_config.llm_ochestrator_constants import OUT_OF_SCOPE_MESSAGE
 from src.utils.cost_utils import get_lm_usage_since
 from src.optimization.optimized_module_loader import get_module_loader
 
