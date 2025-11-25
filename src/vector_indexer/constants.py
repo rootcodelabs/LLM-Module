@@ -13,7 +13,7 @@ class DocumentConstants:
 
     # Default file names
     DEFAULT_TARGET_FILE = "cleaned.txt"
-    DEFAULT_METADATA_FILE = "source.meta.json"
+    DEFAULT_METADATA_FILE = "cleaned.meta.json"
 
     # Directory scanning
     MAX_SCAN_DEPTH = 5

@@ -194,7 +194,7 @@ class DocumentLoader:
 
             if not Path(doc_info.source_meta_path).exists():
                 logger.error(
-                    f"Missing source.meta.json for document {doc_info.document_hash[:12]}..."
+                    f"Missing cleaned.meta.json for document {doc_info.document_hash[:12]}..."
                 )
                 return False
 
