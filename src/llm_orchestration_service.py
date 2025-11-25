@@ -3,6 +3,7 @@
 from typing import Optional, List, Dict, Union, Any, AsyncIterator
 import json
 import os
+import time
 from loguru import logger
 from langfuse import Langfuse, observe
 import dspy
@@ -34,6 +35,7 @@ from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.stream_manager import stream_manager
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
+from src.utils.time_tracker import log_step_timings
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.llm_orchestrator_config.exceptions import (
@@ -110,6 +112,7 @@ class LLMOrchestrationService:
             Exception: For any processing errors
         """
         costs_dict: Dict[str, Dict[str, Any]] = {}
+        timing_dict: Dict[str, float] = {}
 
         try:
             logger.info(
@@ -122,11 +125,12 @@ class LLMOrchestrationService:
 
             # Execute the orchestration pipeline
             response = self._execute_orchestration_pipeline(
-                request, components, costs_dict
+                request, components, costs_dict, timing_dict
             )
 
             # Log final costs and return response
             self._log_costs(costs_dict)
+            log_step_timings(timing_dict, request.chatId)
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 total_costs = calculate_total_costs(costs_dict)
@@ -177,6 +181,7 @@ class LLMOrchestrationService:
                 )
                 langfuse.flush()
             self._log_costs(costs_dict)
+            log_step_timings(timing_dict, request.chatId)
             return self._create_error_response(request)
 
     @observe(name="streaming_generation", as_type="generation", capture_output=False)
@@ -218,6 +223,7 @@ class LLMOrchestrationService:
 
         # Track costs after streaming completes
         costs_dict: Dict[str, Dict[str, Any]] = {}
+        timing_dict: Dict[str, float] = {}
         streaming_start_time = datetime.now()
 
         # Use StreamManager for centralized tracking and guaranteed cleanup
@@ -239,11 +245,13 @@ class LLMOrchestrationService:
                 )
 
                 if components["guardrails_adapter"]:
+                    start_time = time.time()
                     input_check_result = await self._check_input_guardrails_async(
                         guardrails_adapter=components["guardrails_adapter"],
                         user_message=request.message,
                         costs_dict=costs_dict,
                     )
+                    timing_dict["input_guardrails_check"] = time.time() - start_time
 
                     if not input_check_result.allowed:
                         logger.warning(
@@ -267,11 +275,13 @@ class LLMOrchestrationService:
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Step 2: Refining user prompt"
                 )
 
+                start_time = time.time()
                 refined_output, refiner_usage = self._refine_user_prompt(
                     llm_manager=components["llm_manager"],
                     original_message=request.message,
                     conversation_history=request.conversationHistory,
                 )
+                timing_dict["prompt_refiner"] = time.time() - start_time
                 costs_dict["prompt_refiner"] = refiner_usage
 
                 logger.info(
@@ -284,9 +294,11 @@ class LLMOrchestrationService:
                 )
 
                 try:
+                    start_time = time.time()
                     relevant_chunks = await self._safe_retrieve_contextual_chunks(
                         components["contextual_retriever"], refined_output, request
                     )
+                    timing_dict["contextual_retrieval"] = time.time() - start_time
                 except (
                     ContextualRetrieverInitializationError,
                     ContextualRetrievalFailureError,
@@ -300,6 +312,7 @@ class LLMOrchestrationService:
                     yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
                     yield self._format_sse(request.chatId, "END")
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
                     stream_ctx.mark_completed()
                     return
 
@@ -310,6 +323,7 @@ class LLMOrchestrationService:
                     yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
                     yield self._format_sse(request.chatId, "END")
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
                     stream_ctx.mark_completed()
                     return
 
@@ -322,6 +336,7 @@ class LLMOrchestrationService:
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Step 4: Checking if question is in scope"
                 )
 
+                start_time = time.time()
                 is_out_of_scope = await components[
                     "response_generator"
                 ].check_scope_quick(
@@ -329,6 +344,7 @@ class LLMOrchestrationService:
                     chunks=relevant_chunks,
                     max_blocks=10,
                 )
+                timing_dict["scope_check"] = time.time() - start_time
 
                 if is_out_of_scope:
                     logger.info(
@@ -337,6 +353,7 @@ class LLMOrchestrationService:
                     yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
                     yield self._format_sse(request.chatId, "END")
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
                     stream_ctx.mark_completed()
                     return
 
@@ -349,6 +366,8 @@ class LLMOrchestrationService:
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Step 5: Starting streaming through NeMo Guardrails "
                     f"(validation-first, chunk_size=200)"
                 )
+
+                streaming_step_start = time.time()
 
                 # Record history length before streaming
                 lm = dspy.settings.lm
@@ -412,6 +431,7 @@ class LLMOrchestrationService:
                                     )
                                     costs_dict["streaming_generation"] = usage_info
                                     self._log_costs(costs_dict)
+                                    log_step_timings(timing_dict, request.chatId)
                                     stream_ctx.mark_completed()
                                     return  # Stop immediately - cleanup happens in finally
 
@@ -455,6 +475,7 @@ class LLMOrchestrationService:
                                     )
                                     costs_dict["streaming_generation"] = usage_info
                                     self._log_costs(costs_dict)
+                                    log_step_timings(timing_dict, request.chatId)
                                     stream_ctx.mark_completed()
                                     return  # Cleanup happens in finally
 
@@ -516,6 +537,13 @@ class LLMOrchestrationService:
                     usage_info = get_lm_usage_since(history_length_before)
                     costs_dict["streaming_generation"] = usage_info
 
+                    # Record streaming generation time
+                    timing_dict["streaming_generation"] = (
+                        time.time() - streaming_step_start
+                    )
+                    # Mark output guardrails as inline (not blocking)
+                    timing_dict["output_guardrails"] = 0.0  # Inline during streaming
+
                     # Calculate streaming duration
                     streaming_duration = (
                         datetime.now() - streaming_start_time
@@ -526,6 +554,7 @@ class LLMOrchestrationService:
 
                     # Log costs and trace
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
 
                     if self.langfuse_config.langfuse_client:
                         langfuse = self.langfuse_config.langfuse_client
@@ -567,6 +596,7 @@ class LLMOrchestrationService:
                     usage_info = get_lm_usage_since(history_length_before)
                     costs_dict["streaming_generation"] = usage_info
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
                     raise
                 except Exception as stream_error:
                     error_id = generate_error_id()
@@ -584,6 +614,7 @@ class LLMOrchestrationService:
                     usage_info = get_lm_usage_since(history_length_before)
                     costs_dict["streaming_generation"] = usage_info
                     self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
 
             except Exception as e:
                 error_id = generate_error_id()
@@ -596,6 +627,7 @@ class LLMOrchestrationService:
                 yield self._format_sse(request.chatId, "END")
 
                 self._log_costs(costs_dict)
+                log_step_timings(timing_dict, request.chatId)
 
                 if self.langfuse_config.langfuse_client:
                     langfuse = self.langfuse_config.langfuse_client
@@ -757,29 +789,36 @@ class LLMOrchestrationService:
         request: OrchestrationRequest,
         components: Dict[str, Any],
         costs_dict: Dict[str, Dict[str, Any]],
+        timing_dict: Dict[str, float],
     ) -> OrchestrationResponse:
         """Execute the main orchestration pipeline with all components."""
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
+            start_time = time.time()
             input_blocked_response = self.handle_input_guardrails(
                 components["guardrails_adapter"], request, costs_dict
             )
+            timing_dict["input_guardrails_check"] = time.time() - start_time
             if input_blocked_response:
                 return input_blocked_response
 
         # Step 2: Refine user prompt
+        start_time = time.time()
         refined_output, refiner_usage = self._refine_user_prompt(
             llm_manager=components["llm_manager"],
             original_message=request.message,
             conversation_history=request.conversationHistory,
         )
+        timing_dict["prompt_refiner"] = time.time() - start_time
         costs_dict["prompt_refiner"] = refiner_usage
 
         # Step 3: Retrieve relevant chunks using contextual retrieval
         try:
+            start_time = time.time()
             relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
                 components["contextual_retriever"], refined_output, request
             )
+            timing_dict["contextual_retrieval"] = time.time() - start_time
         except (
             ContextualRetrieverInitializationError,
             ContextualRetrievalFailureError,
@@ -793,6 +832,7 @@ class LLMOrchestrationService:
             return self._create_out_of_scope_response(request)
 
         # Step 4: Generate response
+        start_time = time.time()
         generated_response = self._generate_rag_response(
             llm_manager=components["llm_manager"],
             request=request,
@@ -801,11 +841,15 @@ class LLMOrchestrationService:
             response_generator=components["response_generator"],
             costs_dict=costs_dict,
         )
+        timing_dict["response_generation"] = time.time() - start_time
 
         # Step 5: Output Guardrails Check
-        return self.handle_output_guardrails(
+        start_time = time.time()
+        output_guardrails_response = self.handle_output_guardrails(
             components["guardrails_adapter"], generated_response, request, costs_dict
         )
+        timing_dict["output_guardrails_check"] = time.time() - start_time
+        return output_guardrails_response
 
     @observe(name="safe_initialize_guardrails", as_type="span")
     def _safe_initialize_guardrails(

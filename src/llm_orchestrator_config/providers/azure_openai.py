@@ -46,7 +46,7 @@ class AzureOpenAIProvider(BaseLLMProvider):
                 max_tokens=self.config.get(
                     "max_tokens", 4000
                 ),  # Use DSPY default of 4000
-                cache=True,  # Keep caching enabled (DSPY default)
+                cache=False,  # Disable caching to fix streaming issue with repeated requests
                 callbacks=None,
                 num_retries=self.config.get(
                     "num_retries", 3
