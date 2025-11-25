@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 import json
 from datetime import datetime
+import threading
 import dspy
 from loguru import logger
 
@@ -20,6 +21,7 @@ class OptimizedModuleLoader:
     - Automatic detection of latest optimized version
     - Graceful fallback to base modules
     - Version tracking and logging
+    - Module-level caching for performance (singleton pattern)
     """
 
     def __init__(self, optimized_modules_dir: Optional[Path] = None):
@@ -36,6 +38,11 @@ class OptimizedModuleLoader:
             optimized_modules_dir = current_file.parent / "optimized_modules"
 
         self.optimized_modules_dir = Path(optimized_modules_dir)
+
+        # Module cache for performance
+        self._module_cache: Dict[str, Tuple[Optional[dspy.Module], Dict[str, Any]]] = {}
+        self._cache_lock = threading.Lock()
+
         logger.info(
             f"OptimizedModuleLoader initialized with dir: {self.optimized_modules_dir}"
         )
@@ -81,11 +88,80 @@ class OptimizedModuleLoader:
             signature_class=self._get_generator_signature(),
         )
 
+    def get_module_metadata(self, component_name: str) -> Dict[str, Any]:
+        """
+        Get metadata for a module without loading it (uses cache if available).
+
+        This is more efficient than load_*_module() when you only need metadata.
+
+        Args:
+            component_name: Name of the component (guardrails/refiner/generator)
+
+        Returns:
+            Metadata dict with version info
+        """
+        # If module is cached, return its metadata
+        if component_name in self._module_cache:
+            _, metadata = self._module_cache[component_name]
+            return metadata
+
+        # If not cached, we need to load it to get metadata
+        # This ensures consistency with actual loaded module
+        if component_name == "refiner":
+            _, metadata = self.load_refiner_module()
+        elif component_name == "generator":
+            _, metadata = self.load_generator_module()
+        elif component_name == "guardrails":
+            _, metadata = self.load_guardrails_module()
+        else:
+            return self._create_empty_metadata(component_name)
+
+        return metadata
+
     def _load_latest_module(
         self, component_name: str, module_class: type, signature_class: type
     ) -> Tuple[Optional[dspy.Module], Dict[str, Any]]:
         """
-        Load the latest optimized module for a component.
+        Load the latest optimized module for a component with caching.
+
+        Args:
+            component_name: Name of the component (guardrails/refiner/generator)
+            module_class: DSPy module class to instantiate
+            signature_class: DSPy signature class for the module
+
+        Returns:
+            Tuple of (module, metadata)
+        """
+        # Check cache first (fast path)
+        if component_name in self._module_cache:
+            logger.debug(f"Using cached {component_name} module")
+            return self._module_cache[component_name]
+
+        # Cache miss - load from disk (slow path, only once)
+        with self._cache_lock:
+            # Double-check pattern - another thread may have loaded it
+            if component_name in self._module_cache:
+                logger.debug(f"Using cached {component_name} module (double-check)")
+                return self._module_cache[component_name]
+
+            # Actually load the module
+            module, metadata = self._load_module_from_disk(
+                component_name, module_class, signature_class
+            )
+
+            # Cache the result for future requests
+            self._module_cache[component_name] = (module, metadata)
+
+            if module is not None:
+                logger.info(f"Cached {component_name} module for reuse")
+
+            return module, metadata
+
+    def _load_module_from_disk(
+        self, component_name: str, module_class: type, signature_class: type
+    ) -> Tuple[Optional[dspy.Module], Dict[str, Any]]:
+        """
+        Load module from disk (internal method, called by _load_latest_module).
 
         Args:
             component_name: Name of the component (guardrails/refiner/generator)
