@@ -129,7 +129,7 @@ const TestLLM: FC = () => {
 
           {/* Inference Result */}
 
-          {inferenceResult && (
+          {inferenceResult && !inferenceMutation.isLoading &&(
             <div className="inference-results-container">
               <div className="result-item">
                 <strong>Response:</strong>
