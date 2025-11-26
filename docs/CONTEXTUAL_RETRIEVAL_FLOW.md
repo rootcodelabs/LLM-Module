@@ -383,6 +383,184 @@ Final Answer: Comprehensive, well-supported response
 
 ---
 
+## Quality Testing Framework
+
+### Testing Response Generation & Chunk Retrieval Quality
+
+When evaluating the quality of the contextual retrieval system and response generation, consider the following aspects:
+
+#### 1. Retrieval Quality Metrics
+
+##### 1.1 Relevance Assessment
+- **Chunk Precision**: What percentage of retrieved chunks are actually relevant to the query?
+  - **Method**: Manual review of top-12 chunks, mark as relevant/irrelevant
+  - **Target**: >85% of chunks should be directly relevant
+  - **Red flag**: <70% relevance indicates threshold or fusion issues
+
+- **Chunk Recall**: Are the most important chunks being retrieved?
+  - **Method**: Create ground truth dataset with known relevant chunks for test queries
+  - **Target**: >90% of known relevant chunks should appear in top-12
+  - **Red flag**: Missing key information suggests threshold too high or BM25 index incomplete
+
+##### 1.2 Semantic Coverage
+- **Query Aspect Coverage**: Do retrieved chunks cover all aspects of the query?
+  - **Example**: Query about "digital signature advantages" should retrieve chunks about: security, legal validity, convenience, implementation
+  - **Method**: Map query aspects to chunks, verify each aspect covered
+  - **Target**: All major query aspects represented in top-10
+  - **Red flag**: Narrow coverage suggests multi-query expansion not working or threshold too high
+
+- **Information Diversity**: Are chunks from diverse sources/documents?
+  - **Method**: Count unique source documents in top-12
+  - **Target**: >60% unique sources (avoid over-representation of single document)
+  - **Red flag**: <40% diversity suggests ranking bias or limited corpus
+
+##### 1.3 Ranking Quality
+- **Top-Rank Accuracy**: Are the most relevant chunks ranked highest?
+  - **Method**: Compare LLM judgment of "best chunk" vs actual rank 1
+  - **Target**: Best chunk should be in top-3 positions
+  - **Red flag**: Best chunks consistently ranked 5-12 suggests fusion weights need tuning
+
+- **Score Distribution**: Is there clear differentiation between high and low quality chunks?
+  - **Method**: Plot fused score distribution across top-12
+  - **Target**: Clear gaps between top-5 and bottom-7 (score spread >0.015)
+  - **Red flag**: Flat distribution suggests k-parameter too high
+
+#### 2. Response Generation Quality Metrics
+
+##### 2.1 Grounding & Factuality
+- **Hallucination Rate**: Does the response contain information not in retrieved chunks?
+  - **Method**: Sentence-level attribution check - each claim mapped to source chunk
+  - **Target**: >95% of claims directly supported by retrieved chunks
+  - **Red flag**: >10% hallucination indicates generator not properly grounded or insufficient context
+
+- **Citation Accuracy**: Are citations/references correct?
+  - **Method**: Verify each cited chunk_id actually contains the referenced information
+  - **Target**: 100% citation accuracy
+  - **Red flag**: Misattributed citations indicate context confusion
+
+##### 2.2 Completeness & Coverage
+- **Query Satisfaction**: Does the response fully answer the user's question?
+  - **Method**: Human evaluation or LLM-as-judge rating (1-5 scale)
+  - **Target**: Average rating >4.0
+  - **Red flag**: <3.5 suggests insufficient retrieval or poor synthesis
+
+- **Context Utilization**: What percentage of retrieved chunks are actually used in the response?
+  - **Method**: Track which of the 10 chunks contribute to final answer
+  - **Target**: 70-90% utilization (not all chunks need to be used)
+  - **Red flag**: <50% suggests irrelevant retrieval; >95% may indicate redundancy
+
+##### 2.3 Response Quality
+- **Coherence**: Is the response logically structured and easy to follow?
+  - **Method**: Human evaluation (1-5 scale)
+  - **Target**: Average >4.0
+  - **Red flag**: Fragmented responses suggest poor chunk ordering or synthesis
+
+- **Accuracy**: Is the information factually correct?
+  - **Method**: Expert review against ground truth
+  - **Target**: >98% factual accuracy
+  - **Red flag**: Factual errors indicate chunk quality issues or hallucination
+
+- **Conciseness**: Is the response appropriately detailed without unnecessary repetition?
+  - **Method**: Check for redundant information across chunks
+  - **Target**: Minimal repetition, each chunk adds new information
+  - **Red flag**: Excessive repetition suggests deduplication issues or redundant chunks
+
+#### 3. System-Level Quality Indicators
+
+##### 3.1 Fusion Effectiveness
+- **Both-Sources Validation**: What percentage of final chunks appear in both semantic and BM25 results?
+  - **Current**: 100% (perfect validation)
+  - **Target**: >80% fusion coverage
+  - **Red flag**: <50% suggests search methods finding different content (possible configuration issue)
+
+- **Search Method Balance**: Are both semantic and BM25 contributing equally?
+  - **Method**: Count chunks primarily from semantic vs BM25 vs both
+  - **Target**: Balanced distribution (not 90% from one method)
+  - **Red flag**: Heavy bias toward one method suggests the other is underperforming
+
+##### 3.2 Edge Case Handling
+- **Ambiguous Queries**: How does system handle vague or multi-faceted questions?
+  - **Test**: Use intentionally ambiguous queries
+  - **Target**: Multi-query expansion should disambiguate and cover multiple interpretations
+  - **Red flag**: Single narrow interpretation retrieved
+
+- **Out-of-Scope Queries**: How does system handle questions not in knowledge base?
+  - **Test**: Queries about topics not in corpus
+  - **Target**: Low retrieval scores, scope check catches before generation
+  - **Red flag**: Confident answers to out-of-scope questions (hallucination)
+
+- **Low-Resource Queries**: Performance when few relevant chunks exist?
+  - **Test**: Queries with only 1-3 relevant chunks in corpus
+  - **Target**: System retrieves the few relevant chunks + gracefully indicates limited information
+  - **Red flag**: Padding with irrelevant chunks or hallucinating information
+
+##### 3.3 Threshold Validation
+- **Semantic Threshold (0.4) Effectiveness**:
+  - **Above threshold (0.4-1.0)**: Should be relevant context
+  - **Below threshold (<0.4)**: Should be noise/irrelevant
+  - **Method**: Sample chunks at 0.35-0.39 and 0.40-0.45, compare relevance
+  - **Expected**: Clear quality drop below 0.4
+
+- **RRF k-Parameter (35) Validation**:
+  - **Method**: Compare score distributions with k=30, k=35, k=40
+  - **Expected**: k=35 provides best differentiation without over-biasing top ranks
+
+#### 4. Evaluation Methodologies
+
+##### 4.1 Manual Evaluation
+- **Sample Size**: Minimum 50-100 diverse queries
+- **Evaluators**: 2-3 domain experts for inter-rater reliability
+- **Aspects to Rate**:
+  - Chunk relevance (5-point scale per chunk)
+  - Response completeness (5-point scale)
+  - Response accuracy (binary: correct/incorrect per claim)
+  - Response helpfulness (5-point scale)
+
+##### 4.2 Automated Evaluation
+- **Embedding-Based Similarity**: Compare response embedding to query embedding (semantic alignment)
+- **ROUGE/BLEU Scores**: If reference answers available
+- **LLM-as-Judge**: Use strong LLM (GPT-4) to rate response quality
+- **BERTScore**: Semantic similarity between response and reference
+
+##### 4.3 A/B Testing
+- **Configuration Changes**: Test threshold/k-parameter variations
+- **Baseline Comparison**: Compare against previous system version
+- **Metrics**: User satisfaction, task completion rate, time-to-answer
+
+#### 5. Common Quality Issues & Diagnosis
+
+| Issue | Symptom | Likely Cause | Solution |
+|-------|---------|--------------|----------|
+| **Low relevance** | <70% chunks relevant | Threshold too low or poor embeddings | Increase threshold or retrain embeddings |
+| **Missing key info** | Important chunks not retrieved | Threshold too high or BM25 incomplete | Lower threshold, verify BM25 index |
+| **Poor ranking** | Best chunks ranked low | RRF k too high or poor fusion | Lower k-parameter (increase top-rank bias) |
+| **Hallucinations** | Claims not in chunks | Generator not grounded or context too weak | Improve prompting, increase chunk relevance |
+| **Repetitive responses** | Same info multiple times | Duplicate chunks or poor deduplication | Improve chunk deduplication |
+| **Narrow coverage** | Only one aspect covered | Multi-query expansion failing or corpus gaps | Review query refinement, expand corpus |
+| **Flat scores** | All chunks similar scores | k-parameter too high | Lower k to increase differentiation |
+| **Low fusion coverage** | <50% both-sources | Semantic and BM25 finding different content | Review search configurations, may indicate issues |
+
+#### 6. Testing Best Practices
+
+##### 6.1 Test Query Design
+- **Diverse complexity**: Simple factual, complex multi-part, ambiguous
+- **Coverage**: Ensure queries span all major topics in corpus
+- **Real user queries**: Include actual production queries
+- **Edge cases**: Out-of-scope, ambiguous, contradictory information
+
+##### 6.2 Ground Truth Creation
+- **Expert annotation**: Domain experts create reference answers
+- **Chunk-level labels**: Mark which chunks should be retrieved for each query
+- **Quality tiers**: Label chunks as essential/useful/marginal/irrelevant
+
+##### 6.3 Continuous Monitoring
+- **Production logging**: Track retrieval metrics for every request
+- **Alerting**: Automated alerts when metrics fall below thresholds
+- **Periodic review**: Manual review of sample queries weekly/monthly
+- **User feedback**: Collect explicit feedback on response quality
+
+---
+
 ## Monitoring & Validation
 
 ### Key Metrics to Track
