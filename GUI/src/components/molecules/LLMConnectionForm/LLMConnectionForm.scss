@@ -90,15 +90,54 @@
   .flex-grid {
     display: flex;
     gap: 12px;
+    flex-wrap: wrap;
+
+    button {
+      flex: 0 1 auto;
+      min-width: 80px;
+      max-width: 100%;
+    }
   }
 
   // Responsive design
-  @media (max-width: 768px) {
-    padding: 16px;
-    
+  // Very small screens - wrap buttons (inline buttons with wrapping)
+  @media (max-width: 480px) {
+    padding: 8px;
+
     .form-section {
-      padding: 16px;
-      margin-bottom: 24px;
+      padding: 12px;
+      margin-bottom: 20px;
+    }
+
+    .form-footer {
+      margin-top: 20px;
+      padding-top: 12px;
+    }
+
+    .flex-grid {
+
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+
+      button {
+        flex: 0 1 auto;
+
+        min-width: 60px;
+        max-width: calc(50% - 4px);
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+    }
+  }
+
+  // Small screens - mobile
+  @media (min-width: 481px) and (max-width: 768px) {
+    padding: 12px;
+
+    .form-section {
+      padding: 14px;
+      margin-bottom: 22px;
     }
 
     .radio-options {
@@ -109,9 +148,34 @@
       padding: 6px 10px;
     }
 
+    .form-footer {
+      margin-top: 24px;
+      padding-top: 16px;
+    }
+
     .flex-grid {
-      flex-direction: column;
+      flex-direction: column-reverse;
+      gap: 12px;
+
+      button {
+        width: 100%;
+        min-width: unset;
+      }
+    }
+  }
+
+  // Medium screens - tablet
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .flex-grid {
       gap: 8px;
+
+      button {
+        flex: 1 1 auto;
+        min-width: 70px;
+        max-width: 200px;
+        font-size: 14px;
+        padding: 8px 12px;
+      }
     }
   }
 }
