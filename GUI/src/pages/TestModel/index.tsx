@@ -20,7 +20,7 @@ const TestLLM: FC = () => {
   });
 
   // Sort context by rank
-  const sortedContext = inferenceResult?.chunks?.sort((a, b) => a.rank - b.rank) ?? [];
+  const sortedContext = inferenceResult?.chunks?.toSorted((a, b) => a.rank - b.rank) ?? [];
 
   // Fetch LLM connections for dropdown - using the working legacy endpoint for now
   const { data: connections, isLoading: isLoadingConnections } = useQuery({
@@ -102,7 +102,7 @@ const TestLLM: FC = () => {
                 onSelectionChange={(selection) => {
                   handleChange('connectionId', selection?.value as string);
                 }}
-                value={testLLM?.connectionId === null ? t('testModels.connectionNotExist') || 'Connection does not exist' : undefined} 
+                value={testLLM?.connectionId === null ? t('testModels.connectionNotExist') || 'Connection does not exist' : undefined}
                 defaultValue={testLLM?.connectionId ?? undefined}
               />
             </div>
@@ -129,7 +129,7 @@ const TestLLM: FC = () => {
 
           {/* Inference Result */}
 
-          {inferenceResult && !inferenceMutation.isLoading &&(
+          {inferenceResult && !inferenceMutation.isLoading && (
             <div className="inference-results-container">
               <div className="result-item">
                 <strong>Response:</strong>
@@ -137,24 +137,29 @@ const TestLLM: FC = () => {
                   {inferenceResult.content}
                 </div>
               </div>
-              
+
               {/* Context Section */}
-              <div className="context-section">
-                <Collapsible title={`Context (${sortedContext?.length} chunks)`} defaultOpen={false}>
-                  <div className="context-list">
-                    {sortedContext?.map((contextItem, index) => (
-                      <div key={index} className="context-item">
-                        <div className="context-rank">
-                          <strong>Rank {contextItem.rank}</strong>
-                        </div>
-                        <div className="context-content">
-                          {contextItem.chunkRetrieved}
-                        </div>
+              {
+                sortedContext && sortedContext?.length > 0 && (
+                  <div className="context-section">
+                    <Collapsible title={`Context (${sortedContext?.length} chunks)`} defaultOpen={false}>
+                      <div className="context-list">
+                        {sortedContext?.map((contextItem, index) => (
+                          <div key={index} className="context-item">
+                            <div className="context-rank">
+                              <strong>Rank {contextItem.rank}</strong>
+                            </div>
+                            <div className="context-content">
+                              {contextItem.chunkRetrieved}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </Collapsible>
                   </div>
-                </Collapsible>
-              </div>
+                )
+              }
+
             </div>
           )}
 
