@@ -41,6 +41,44 @@
     line-height: 1.5;
     color: #555;
   }
+
+  .context-section {
+    margin-top: 20px;
+
+    .context-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .context-item {
+      padding: 12px;
+      background-color: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+      .context-rank {
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #f0f0f0;
+
+        strong {
+          color: #2563eb;
+          font-size: 0.875rem;
+          font-weight: 600;
+        }
+      }
+
+      .context-content {
+        color: #374151;
+        line-height: 1.5;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+      }
+    }
+  }
 }
 
 .testModalList {

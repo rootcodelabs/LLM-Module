@@ -18,6 +18,7 @@ from models.request_models import (
     PromptRefinerOutput,
     ContextGenerationRequest,
     TestOrchestrationResponse,
+    ChunkInfo,
 )
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
@@ -922,6 +923,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=True,
                     content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    chunks=None,
                 )
             else:
                 return OrchestrationResponse(
@@ -1606,6 +1608,31 @@ class LLMOrchestrationService:
             logger.error(f"Failed to initialize response generator: {str(e)}")
             raise
 
+    @staticmethod
+    def _format_chunks_for_test_response(
+        relevant_chunks: Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]],
+    ) -> Optional[List[ChunkInfo]]:
+        """
+        Format retrieved chunks for test response.
+
+        Args:
+            relevant_chunks: List of retrieved chunks with metadata
+
+        Returns:
+            List of ChunkInfo objects with rank and content, or None if no chunks
+        """
+        if not relevant_chunks:
+            return None
+
+        formatted_chunks = []
+        for rank, chunk in enumerate(relevant_chunks, start=1):
+            # Extract text content - prefer "text" key, fallback to "content"
+            chunk_text = chunk.get("text", chunk.get("content", ""))
+            if isinstance(chunk_text, str) and chunk_text.strip():
+                formatted_chunks.append(ChunkInfo(rank=rank, chunkRetrieved=chunk_text))
+
+        return formatted_chunks if formatted_chunks else None
+
     @observe(name="generate_rag_response", as_type="generation")
     def _generate_rag_response(
         self,
@@ -1639,6 +1666,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(
@@ -1706,6 +1734,7 @@ class LLMOrchestrationService:
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
                         content=OUT_OF_SCOPE_MESSAGE,
+                        chunks=self._format_chunks_for_test_response(relevant_chunks),
                     )
                 else:
                     return OrchestrationResponse(
@@ -1725,6 +1754,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=answer,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(
@@ -1765,6 +1795,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(

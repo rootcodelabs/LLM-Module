@@ -332,7 +332,9 @@ def test_orchestrate_llm_request(
             conversationHistory=[],
             url="test-context",
             environment=request.environment,
-            connection_id=str(request.connectionId),
+            connection_id=str(request.connectionId)
+            if request.connectionId is not None
+            else None,
         )
 
         logger.info(f"This is full request constructed for testing: {full_request}")
@@ -340,12 +342,20 @@ def test_orchestrate_llm_request(
         # Process the request using the same logic
         response = orchestration_service.process_orchestration_request(full_request)
 
-        # Convert to TestOrchestrationResponse (exclude chatId)
+        # If response is already TestOrchestrationResponse (when environment is testing), return it directly
+        if isinstance(response, TestOrchestrationResponse):
+            logger.info(
+                f"Successfully processed test request for environment: {request.environment}"
+            )
+            return response
+
+        # Convert to TestOrchestrationResponse (exclude chatId) for other cases
         test_response = TestOrchestrationResponse(
             llmServiceActive=response.llmServiceActive,
             questionOutOfLLMScope=response.questionOutOfLLMScope,
             inputGuardFailed=response.inputGuardFailed,
             content=response.content,
+            chunks=None,  # OrchestrationResponse doesn't have chunks
         )
 
         logger.info(
