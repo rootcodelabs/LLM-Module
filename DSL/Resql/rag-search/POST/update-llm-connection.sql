@@ -49,9 +49,3 @@ RETURNING
     embedding_deployment_name,
     embedding_target_uri,
     embedding_azure_api_key;
-
--- If environment is 'production', set all other connections to 'testing'
-UPDATE llm_connections
-SET environment = 'testing'
-WHERE id != :connection_id
-  AND :environment = 'production';
