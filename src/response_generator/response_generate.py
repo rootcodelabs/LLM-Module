@@ -220,7 +220,7 @@ class ResponseGeneratorAgent(dspy.Module):
         """
         if max_blocks is None:
             max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
-            
+
         logger.info(
             f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
         )
@@ -295,7 +295,10 @@ class ResponseGeneratorAgent(dspy.Module):
                     logger.debug(f"Error during cleanup (aclose): {cleanup_error}")
 
     async def check_scope_quick(
-        self, question: str, chunks: List[Dict[str, Any]], max_blocks: Optional[int] = None
+        self,
+        question: str,
+        chunks: List[Dict[str, Any]],
+        max_blocks: Optional[int] = None,
     ) -> bool:
         """
         Quick async check if question is out of scope.
@@ -364,12 +367,15 @@ class ResponseGeneratorAgent(dspy.Module):
             return False
 
     def forward(
-        self, question: str, chunks: List[Dict[str, Any]], max_blocks: Optional[int] = None
+        self,
+        question: str,
+        chunks: List[Dict[str, Any]],
+        max_blocks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Non-streaming forward pass for backward compatibility."""
         if max_blocks is None:
             max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
-            
+
         logger.info(f"Generating response for question: '{question}'")
 
         lm = dspy.settings.lm

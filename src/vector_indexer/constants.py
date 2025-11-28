@@ -105,7 +105,6 @@ class ResponseGenerationConstants:
     # for generating the final response
     DEFAULT_MAX_BLOCKS = 5  # Maximum context blocks to use in response generation
     MIN_BLOCKS_REQUIRED = 3  # Minimum blocks required for valid response
-    
 
 
 class LoggingConstants:
