@@ -97,6 +97,17 @@ class ProcessingConstants:
     MAX_REPETITION_RATIO = 0.5  # Maximum allowed repetition in content
 
 
+class ResponseGenerationConstants:
+    """Constants for response generation and context retrieval."""
+
+    # Top-K blocks for response generation
+    # This controls how many of the retrieved chunks are used
+    # for generating the final response
+    DEFAULT_MAX_BLOCKS = 5  # Maximum context blocks to use in response generation
+    MIN_BLOCKS_REQUIRED = 3  # Minimum blocks required for valid response
+    
+
+
 class LoggingConstants:
     """Constants for logging configuration."""
 
