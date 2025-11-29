@@ -180,6 +180,26 @@ CI will validate that the lockfile and environment are consistent. If you forgot
 
 ---
 
+## Pyright Type Checking
+
+Python is a dynamically typed language. This flexibility makes Python productive and expressive, but it also increases the risk of subtle bugs caused by incorrect function calls, unexpected None values, or inconsistent data structures.To balance flexibility with long-term maintainability we use [Pyright](https://microsoft.github.io/pyright) for CI level type-checking. 
+
+We run Pyright in `standard` mode. This mode provides strong type correctness guarantees without requiring the full strictness and annotation overhead of `strict` mode.
+
+You can check the exact type checking constraints enforced in `standard` mode here in the `Diagnostic Defaults` section of the [Pyright documentation](https://microsoft.github.io/pyright/#/configuration?id=diagnostic-settings-defaults).
+
+`standard` mode in Pyright is chosen because it enforces the following principles: 
+
+- **Catch real bugs early** - It prevents incorrect function calls, invalid attribute access, misuse of Optional values, inconsistent overloads, and a wide range of type errors that would otherwise only appear at runtime.
+
+- **Maintain clarity without excessive annotation burden** - Developers are not expected to annotate every variable or build fully typed signatures for every function. Pyright uses inference aggressively, and `standard` mode focuses on correctness where types are known or inferred.
+
+- **Work seamlessly with third-party libraries** - Many Python libraries ship without type stubs. In `standard` mode, these imports are treated as Any, allowing us to use them without blocking type checks while still preserving type safety inside our own code. 
+
+**Note: Type checks are only run on core source code and not on test-cases**
+
+---
+
 ### Important Notes
 
 - **Never edit `uv.lock` manually.** It is controlled by `uv`.
