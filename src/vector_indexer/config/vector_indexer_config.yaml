@@ -70,14 +70,14 @@ vector_indexer:
   dataset:
     base_path: "datasets"
     supported_extensions: [".txt"]
-    metadata_file: "source.meta.json"
+    metadata_file: "cleaned.meta.json"
     target_file: "cleaned.txt"
     
   # Document Loader Configuration
   document_loader:
     # File discovery (existing behavior maintained)
     target_file: "cleaned.txt"
-    metadata_file: "source.meta.json"
+    metadata_file: "cleaned.meta.json"
     
     # Validation rules
     min_content_length: 10

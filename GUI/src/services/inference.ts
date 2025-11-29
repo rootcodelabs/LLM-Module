@@ -25,6 +25,10 @@ export interface InferenceResponse {
     llmServiceActive: boolean;
     questionOutOfLlmScope: boolean;
     content: string;
+    chunks?: {
+      rank: number,
+      chunkRetrieved: string
+    }[]
   };
 }
 
