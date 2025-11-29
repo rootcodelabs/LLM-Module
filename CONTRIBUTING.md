@@ -198,6 +198,153 @@ You can check the exact type checking constraints enforced in `standard` mode he
 
 **Note: Type checks are only run on core source code and not on test-cases**
 
+## Linter Rules
+
+Consistent linting is essential for maintaining a reliable and scalable code-base. By adhering to a well-defined linter configuration, we ensure the code remains readable, secure, and predictable even as the project evolves.
+
+The following set of rules are enabled in this repository. Linter rules are enforced automatically through the CI pipeline and must pass before merging changes into the `wip`, `dev`, or `main` branches.
+. 
+
+Each category is summarized with a description and a link to the Ruff documentation explaining these rules.
+
+### Selected Linter Rule Categories
+
+#### E4, E7, E9 — Pycodestyle Error Rules
+
+These check for fundamental correctness issues such as import formatting, indentation, and syntax problems that would otherwise cause runtime failures.
+
+- **E4**: Import formatting and blank-line rules  
+    (https://docs.astral.sh/ruff/rules/#pycodestyle-e4)
+
+- **E7**: Indentation and tab-related issues  
+(https://docs.astral.sh/ruff/rules/#pycodestyle-e7)
+
+- **E9**: Syntax errors and runtime error patterns (e.g., undefined names in certain contexts)  
+(https://docs.astral.sh/ruff/rules/#pycodestyle-e9)
+
+#### F — Pyflakes
+
+Static analysis rules that detect real bug patterns such as unused variables, unused imports, undefined names, duplicate definitions, and logical mistakes that can cause bugs.
+
+(https://docs.astral.sh/ruff/rules/#pyflakes-f)
+
+#### B — Flake8-Bugbear
+
+A set of high-value checks for common Python pitfalls: mutable default arguments, improper exception handling, unsafe patterns, redundant checks, and subtle bugs that impact correctness and security.
+
+(https://docs.astral.sh/ruff/rules/#flake8-bugbear-b)
+
+#### T20 — Flake8-Print
+
+Flags any usage of `print()` or `pprint()` in production code to prevent leaking sensitive information, mixing debug output into logs, or introducing uncontrolled console output.
+
+(https://docs.astral.sh/ruff/rules/#flake8-print-t20)
+
+#### N — PEP8-Naming
+
+Ensures consistent and conventional naming across classes, functions, variables, and modules. This helps maintain readability across the engineering team and reinforces clarity in code reviews.
+
+(https://docs.astral.sh/ruff/rules/#pep8-naming-n)
+
+#### ANN — Flake8-Annotations
+
+Enforces type annotation discipline across functions, methods, and class structures. With Pyright used for type checking, these rules ensure that type information remains explicit and complete.
+
+(https://docs.astral.sh/ruff/rules/#flake8-annotations-ann)
+
+#### ERA — Eradicate
+
+Removes or flags commented-out code fragments. Commented code tends to accumulate over time and reduces clarity. The goal is to keep the repository clean and avoid keeping dead code in version control.
+
+(https://docs.astral.sh/ruff/rules/#eradicate-era)
+
+#### PERF — Perflint
+
+Performance-oriented rules that highlight inefficient constructs, slow loops, unnecessary list or dict operations, and patterns that degrade runtime efficiency.
+
+(https://docs.astral.sh/ruff/rules/#perflint-perf)
+
+### Fixing Linting Issues
+
+Linting issues should always be resolved manually. 
+We **strongly discourage** relying on autofixes using `ruff check --fix` for this repository.
+
+Unlike `ruff format`, which performs safe and predictable code formatting, the linter's autofix mode can alter control flow, refactor logic, or rewrite expressions in ways that introduce unintended bugs.
+
+All linter errors will have **rule-code** like `ANN204` for example. 
+You can use the command line command
+```bash
+ruff rule <rule-code> #for example: ANN204
+```
+
+to get an explanation on the rule code, why it's a problem and how you can fix it. 
+
+Human oversight is essential to ensure that any corrective changes maintain the intended behavior of the application. Contributors should review each reported linting issue, understand why it is flagged, and apply the appropriate fix by hand.
+
+---
+
+## Formatting Rules
+
+This repository uses the **Ruff Formatter** for code formatting. Its behavior is deterministic, safe, and aligned with the [Black Code Style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html).
+
+Formatting is enforced automatically through the CI pipeline and must pass before merging changes into the `wip`, `dev`, or `main` branches.
+
+### Selected Formatting Behaviors
+
+#### String Quote Style
+
+All string literals are formatted using **double quotes**.
+This preserves consistency across the codebase and avoids unnecessary formatting churn.
+
+(https://docs.astral.sh/ruff/formatter/#quote-style)
+
+#### Indentation Style
+
+Indentation always uses **spaces, not tabs**.
+This mirrors the formatting style adopted by Black and avoids ambiguity across editors and environments.
+
+(https://docs.astral.sh/ruff/formatter/#indent-style)
+
+#### Magic Trailing Commas
+
+The formatter respects magic trailing commas, meaning:
+
+- **Adding a trailing comma** in lists, dicts, tuples, or function calls will trigger multi-line formatting.
+- **Removing a trailing comma** results in a more compact single-line layout where appropriate.
+
+This produces stable diffs and predictable wrapping behavior.
+
+(https://docs.astral.sh/ruff/formatter/#skip-magic-trailing-comma)
+
+#### Automatic Line Ending Detection
+
+Ruff automatically detects and preserves the correct line-ending style (LF or CRLF) based on the existing file.
+This prevents accidental line-ending changes when multiple developers work on different systems.
+
+(https://docs.astral.sh/ruff/formatter/#line-ending)
+
+#### Docstring Code Blocks
+
+The formatter **does not reformat** code blocks inside docstrings.
+This ensures that examples, snippets, API usage patterns, and documentation content remain exactly as written, preventing unintended modifications to teaching material or markdown-style fenced blocks.
+
+(https://docs.astral.sh/ruff/formatter/#docstring-code-format)
+
+### Applying Formatting
+
+Unlike lint autofixes, **formatting changes are safe by design**.
+The formatter never changes logical behavior, control flow, or semantics. It only standardizes layout.
+
+You can run formatting locally using:
+
+```bash
+uv run ruff format
+```
+
+All formatting issues must be resolved before creating a pull request or merging into protected branches.
+
+
+
 ---
 
 ### Important Notes

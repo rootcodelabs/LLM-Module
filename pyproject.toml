@@ -121,5 +121,4 @@ exclude = [
 ]
 
 # --- Global strictness ---
-typeCheckingMode = "standard"      # Enforce full standard stubs, inspect its code to infer types where possible.
- 
+typeCheckingMode = "standard"      # Standard typechecking mode
