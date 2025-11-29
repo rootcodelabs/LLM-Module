@@ -117,7 +117,7 @@ venv = ".venv"                   # The specific env name uv manages (uv sync cre
 include = ["*"]       # Top-level packages & tests to check.
 exclude = [
   "**/.venv", "**/__pycache__", "build", "dist", ".git",
-  ".ruff_cache", ".mypy_cache"
+  ".ruff_cache", ".mypy_cache", "tests/", "**/tests/"
 ]
 
 # --- Global strictness ---

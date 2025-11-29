@@ -180,7 +180,7 @@ CI will validate that the lockfile and environment are consistent. If you forgot
 
 ---
 
-## Pyright Type Checking
+## Type Safety Practices
 
 Python is a dynamically typed language. This flexibility makes Python productive and expressive, but it also increases the risk of subtle bugs caused by incorrect function calls, unexpected None values, or inconsistent data structures.To balance flexibility with long-term maintainability we use [Pyright](https://microsoft.github.io/pyright) for CI level type-checking. 
 
@@ -195,6 +195,35 @@ You can check the exact type checking constraints enforced in `standard` mode he
 - **Maintain clarity without excessive annotation burden** - Developers are not expected to annotate every variable or build fully typed signatures for every function. Pyright uses inference aggressively, and `standard` mode focuses on correctness where types are known or inferred.
 
 - **Work seamlessly with third-party libraries** - Many Python libraries ship without type stubs. In `standard` mode, these imports are treated as Any, allowing us to use them without blocking type checks while still preserving type safety inside our own code. 
+
+### Runtime Type Safety at System Boundaries
+
+While Pyright provides excellent static type checking during development, **system boundaries** require additional runtime validation. These are points where our Python code interfaces with external systems, user input, or network requests where data types cannot be guaranteed at compile time.
+
+In this project, we use **Pydantic** for rigorous runtime type checking at these critical handover points:
+
+#### FastAPI Endpoints
+All FastAPI route handlers use Pydantic models for request/response validation:
+- Request bodies are validated against Pydantic schemas
+- Query parameters and path parameters are type-checked at runtime
+- Response models ensure consistent API contract enforcement
+```python
+# Example: API endpoint with Pydantic validation
+from pydantic import BaseModel
+from fastapi import FastAPI
+
+class UserRequest(BaseModel):
+    name: str
+    age: int
+
+@app.post("/users")
+async def create_user(user: UserRequest):
+    # Pydantic validates name is string, age is int
+    # Invalid data raises 422 before reaching this code
+    return {"id": 1, "name": user.name}
+```
+
+This dual approach of **static type checking with Pyright** + **runtime validation with Pydantic** ensures both development-time correctness and production-time reliability at system boundaries where type safety cannot be statically guaranteed.
 
 **Note: Type checks are only run on core source code and not on test-cases**
 
