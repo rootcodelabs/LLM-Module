@@ -90,4 +90,4 @@ VALIDATION_GENERIC_ERROR = "I apologize, but I couldn't process your request. Pl
 # Service endpoints
 RAG_SEARCH_RESQL = "http://resql:8082/rag-search"
 RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
-RAG_SEARCH_RUUTER_PRIVATE = "http://ruuter-private:8081/rag-search"
+RAG_SEARCH_RUUTER_PRIVATE = "http://ruuter-private:8088/rag-search"

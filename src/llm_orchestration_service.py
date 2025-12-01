@@ -10,6 +10,7 @@ from langfuse import Langfuse, observe
 import dspy
 from datetime import datetime
 import json as json_module
+import threading
 
 from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
@@ -1257,27 +1258,42 @@ class LLMOrchestrationService:
             # Get the production store instance
             production_store = get_production_store()
 
-            # Store the inference result
-            result = production_store.store_inference_result(
-                chat_id=request.chatId,
-                user_question=request.message,
-                refined_questions=refined_output.refined_questions,
-                conversation_history=conversation_history_list,
-                ranked_chunks=relevant_chunks,
-                embedding_scores=embedding_scores,
-                final_answer=final_response.content,
-                environment=request.environment,
-            )
-
-            if result["success"]:
-                logger.info(
-                    f"Successfully stored inference data for chat_id: {request.chatId}, environment: {request.environment}"
-                )
-            else:
-                logger.warning(
-                    f"Failed to store inference data for chat_id: {request.chatId}, environment: {request.environment} - "
-                    f"Error: {result['error']}"
-                )
+            # Store the inference result asynchronously without blocking
+            
+            def store_async():
+                """Run async storage in a new event loop in a separate thread."""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(
+                        production_store.store_inference_result_async(
+                            chat_id=request.chatId,
+                            user_question=request.message,
+                            refined_questions=refined_output.refined_questions,
+                            conversation_history=conversation_history_list,
+                            ranked_chunks=relevant_chunks,
+                            embedding_scores=embedding_scores,
+                            final_answer=final_response.content,
+                            environment=request.environment,
+                        )
+                    )
+                    loop.close()
+                    
+                    if result["success"]:
+                        logger.info(
+                            f"Successfully stored inference data for chat_id: {request.chatId}, environment: {request.environment}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to store inference data for chat_id: {request.chatId}, environment: {request.environment} - "
+                            f"Error: {result['error']}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error in async storage thread: {str(e)}")
+            
+            # Start storage in background thread (non-blocking)
+            storage_thread = threading.Thread(target=store_async, daemon=True)
+            storage_thread.start()
 
         except Exception as e:
             # Log the error but don't fail the request

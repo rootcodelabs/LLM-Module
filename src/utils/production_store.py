@@ -2,7 +2,7 @@
 Production Inference Data Storage Utility
 
 This module provides functionality to store production inference results
-to the Resql endpoint for analytics and monitoring purposes.
+to the Ruuter endpoint for analytics and monitoring purposes.
 """
 
 from typing import Dict, List, Any, Optional
@@ -12,19 +12,17 @@ from loguru import logger
 import requests
 import aiohttp
 from src.utils.connection_id_fetcher import get_connection_id_fetcher
-from ..llm_orchestrator_config.llm_ochestrator_constants import (
-    RAG_SEARCH_RUUTER_PRIVATE,
-)
+from ..llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RUUTER_PUBLIC
 
 
 class ProductionInferenceStore:
     """
-    Service for storing production inference results via Resql endpoint.
+    Service for storing production inference results via Ruuter endpoint.
     """
 
     def __init__(self):
         """Initialize the production inference store with Ruuter configuration."""
-        self.store_endpoint = f"{RAG_SEARCH_RUUTER_PRIVATE}/inference/results/store"
+        self.store_endpoint = f"{RAG_SEARCH_RUUTER_PUBLIC}/inference/results/store"
         self.timeout = 10  # seconds
         self.connection_fetcher = get_connection_id_fetcher()
 
@@ -58,6 +56,22 @@ class ProductionInferenceStore:
         self, response_data: Any, chat_id: str, environment: str
     ) -> Dict[str, Any]:
         """Handle and validate response data from the API."""
+        # Handle nested response structure from Ruuter: {"response": {"data": {...}}}
+        if isinstance(response_data, dict) and "response" in response_data:
+            nested_data = response_data.get("response", {})
+            if isinstance(nested_data, dict) and "data" in nested_data:
+                actual_data = nested_data.get("data")
+                if actual_data:
+                    logger.info(
+                        f"Successfully stored inference result for chat_id: {chat_id}, environment: {environment}"
+                    )
+                    return {
+                        "success": True,
+                        "data": actual_data,
+                        "error": None,
+                    }
+        
+        # Fallback: handle simple list format for backward compatibility
         if isinstance(response_data, list) and len(response_data) > 0:
             logger.info(
                 f"Successfully stored inference result for chat_id: {chat_id}, environment: {environment}"
@@ -67,16 +81,17 @@ class ProductionInferenceStore:
                 "data": response_data[0],  # Return first item
                 "error": None,
             }
-        else:
-            logger.warning(
-                f"Failed to store inference result for chat_id: {chat_id}, environment: {environment} - "
-                f"Empty or invalid response: {response_data}"
-            )
-            return {
-                "success": False,
-                "data": None,
-                "error": "Empty or invalid response from server",
-            }
+        
+        # Neither format matched - log warning
+        logger.warning(
+            f"Failed to store inference result for chat_id: {chat_id}, environment: {environment} - "
+            f"Empty or invalid response: {response_data}"
+        )
+        return {
+            "success": False,
+            "data": None,
+            "error": "Empty or invalid response from server",
+        }
 
     def store_inference_result(
         self,
