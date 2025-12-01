@@ -10,7 +10,7 @@ set -e
 # Prerequisites:
 # 1. Vault must be initialized and unsealed
 # 2. Environment variables must be set (LANGFUSE_INIT_PROJECT_PUBLIC_KEY, etc.)
-# 3. Root token must be available in /vault/data/unseal-keys.json
+# 3. Root token must be available in /vault/file/unseal-keys.json
 #
 # Usage:
 #   ./store-langfuse-secrets.sh
@@ -46,6 +46,7 @@ if [ "$SEALED" = "true" ]; then
     exit 1
 fi
 echo "Vault is unsealed"
+
 # Get root token
 echo "Loading Vault root token..."
 if [ ! -f "$UNSEAL_KEYS_FILE" ]; then
