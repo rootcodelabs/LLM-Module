@@ -7,6 +7,7 @@ INSERT INTO inference_results (
     embedding_scores,
     final_answer,
     environment,
+    llm_connection_id,
     created_at
 ) VALUES (
     :chat_id,
@@ -17,6 +18,7 @@ INSERT INTO inference_results (
     :embedding_scores::JSONB,
     :final_answer,
     :environment,
+    :llm_connection_id,
     :created_at::timestamp with time zone
 ) RETURNING 
     id, 
@@ -28,4 +30,5 @@ INSERT INTO inference_results (
     embedding_scores, 
     final_answer, 
     environment, 
+    llm_connection_id,
     created_at;

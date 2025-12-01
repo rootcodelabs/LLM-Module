@@ -4,7 +4,7 @@ OUT_OF_SCOPE_MESSAGE = (
 )
 
 TECHNICAL_ISSUE_MESSAGE = (
-    "2. Technical issue with response generation\n"
+    "Technical issue with response generation\n"
     "I apologize, but I’m currently unable to generate a response due to a temporary technical issue. "
     "Please try again in a moment."
 )
@@ -25,6 +25,7 @@ GUARDRAILS_BLOCKED_PHRASES = [
 # Streaming configuration
 STREAMING_ALLOWED_ENVS = {"production"}
 TEST_DEPLOYMENT_ENVIRONMENT = "testing"
+PRODUCTION_DEPLOYMENT_ENVIRONMENT = "production"
 
 # Stream limit error messages
 STREAM_TIMEOUT_MESSAGE = (
@@ -86,3 +87,8 @@ VALIDATION_REQUEST_TOO_LARGE = "Your request is too large. Please reduce the mes
 VALIDATION_REQUIRED_FIELDS_MISSING = "Required information is missing from your request. Please ensure all required fields are provided."
 
 VALIDATION_GENERIC_ERROR = "I apologize, but I couldn't process your request. Please check your input and try again."
+
+# Service endpoints
+RAG_SEARCH_RESQL = "http://resql:8082/rag-search"
+RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
+RAG_SEARCH_RUUTER_PRIVATE = "http://ruuter-private:8088/rag-search"
