@@ -12,7 +12,7 @@ from loguru import logger
 import requests
 import aiohttp
 
-from ..llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RESQL
+from src.llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RESQL
 
 
 class ConnectionIdFetcher:
