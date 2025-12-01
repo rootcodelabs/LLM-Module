@@ -11,6 +11,7 @@ const app = express();
 app.use(cors());
 app.use(helmet.hidePoweredBy());
 app.use(express.json({ extended: false }));
+
 app.get("/sse/stream/:channelId", (req, res) => {
   const { channelId } = req.params;
   buildSSEResponse({
@@ -30,7 +31,6 @@ app.get("/sse/stream/:channelId", (req, res) => {
   });
 });
 
-// LLM Orchestration streaming endpoint
 app.post("/channels/:channelId/orchestrate/stream", async (req, res) => {
   try {
     const { channelId } = req.params;
