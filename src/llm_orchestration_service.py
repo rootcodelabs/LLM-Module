@@ -1884,7 +1884,7 @@ class LLMOrchestrationService:
                 )
             output_json = validated_output.model_dump()
             logger.info(
-                f"Prompt refinement output: {json.dumps(output_json, indent=2)}"
+                f"Prompt refinement output: {json_module.dumps(output_json, indent=2)}"
             )
 
             logger.info("Prompt refinement completed successfully")
