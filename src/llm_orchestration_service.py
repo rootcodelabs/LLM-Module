@@ -35,6 +35,7 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     STREAM_TOKEN_LIMIT_MESSAGE,
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
+from src.vector_indexer.constants import ResponseGenerationConstants
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.stream_manager import stream_manager
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
@@ -359,7 +360,7 @@ class LLMOrchestrationService:
                 ].check_scope_quick(
                     question=refined_output.original_question,
                     chunks=relevant_chunks,
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
                 timing_dict["scope_check"] = time.time() - start_time
 
@@ -398,7 +399,7 @@ class LLMOrchestrationService:
                         agent=components["response_generator"],
                         question=refined_output.original_question,
                         chunks=relevant_chunks,
-                        max_blocks=10,
+                        max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                     ):
                         yield token
 
@@ -502,7 +503,7 @@ class LLMOrchestrationService:
                                     return  # Cleanup happens in finally
 
                                 # Log first few chunks for debugging
-                                if chunk_count <= 10:
+                                if chunk_count <= ResponseGenerationConstants.DEFAULT_MAX_BLOCKS:
                                     logger.debug(
                                         f"[{request.chatId}] [{stream_ctx.stream_id}] Validated chunk {chunk_count}: {repr(validated_chunk)}"
                                     )
@@ -693,7 +694,9 @@ class LLMOrchestrationService:
                     log_step_timings(timing_dict, request.chatId)
 
                     # Update budget even on client disconnect
-                    self._update_connection_budget(request.connection_id, costs_dict)
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
                     raise
                 except Exception as stream_error:
                     error_id = generate_error_id()
@@ -1065,7 +1068,6 @@ class LLMOrchestrationService:
         request: OrchestrationRequest,
     ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
         """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
-        import asyncio
 
         try:
             # Safely execute the async method in the sync context
@@ -1207,7 +1209,7 @@ class LLMOrchestrationService:
         final_response: OrchestrationResponse,
     ) -> None:
         """
-        Store production inference data to Ruuter endpoint for analytics.
+        Store production inference data to Resql endpoint for analytics.
 
         This method stores comprehensive inference data including:
         - User question and refined questions
@@ -1288,7 +1290,7 @@ class LLMOrchestrationService:
         accumulated_response: str,
     ) -> None:
         """
-        Async version: Store production inference data to Ruuter endpoint for analytics.
+        Async version: Store production inference data to Resql endpoint for analytics.
 
         This method stores comprehensive inference data including:
         - User question and refined questions
@@ -2074,7 +2076,7 @@ class LLMOrchestrationService:
                 generator_result = response_generator.forward(
                     question=refined_output.original_question,
                     chunks=relevant_chunks or [],
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
 
             answer = (generator_result.get("answer") or "").strip()

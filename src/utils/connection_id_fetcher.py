@@ -6,6 +6,7 @@ environments (production, testing) that can be reused across services.
 """
 
 import asyncio
+import threading
 from typing import Optional, Dict, Any
 from loguru import logger
 import requests
@@ -30,6 +31,8 @@ class ConnectionIdFetcher:
 
         # Cache connection IDs to avoid repeated requests
         self._connection_cache: Dict[str, int] = {}
+        # Thread-safe lock for cache access
+        self._cache_lock = threading.Lock()
 
     def _extract_connection_id_from_response(self, data: Any) -> Optional[int]:
         """
@@ -78,11 +81,15 @@ class ConnectionIdFetcher:
         """
         # Return cached value if available
         cache_key = f"{environment}_connection_id"
-        if cache_key in self._connection_cache:
-            logger.debug(
-                f"Using cached connection_id for {environment}: {self._connection_cache[cache_key]}"
-            )
-            return self._connection_cache[cache_key]
+        
+        # Thread-safe cache check
+        with self._cache_lock:
+            if cache_key in self._connection_cache:
+                cached_value = self._connection_cache[cache_key]
+                logger.debug(
+                    f"Using cached connection_id for {environment}: {cached_value}"
+                )
+                return cached_value
 
         try:
             logger.debug(f"Fetching {environment} connection ID from Resql (sync)...")
@@ -97,8 +104,9 @@ class ConnectionIdFetcher:
                 connection_id = self._extract_connection_id_from_response(data)
 
                 if connection_id is not None:
-                    # Cache the connection ID
-                    self._connection_cache[cache_key] = connection_id
+                    # Cache the connection ID (thread-safe)
+                    with self._cache_lock:
+                        self._connection_cache[cache_key] = connection_id
                     logger.info(
                         f"{environment.capitalize()} connection_id fetched: {connection_id}"
                     )
@@ -133,11 +141,15 @@ class ConnectionIdFetcher:
         """
         # Return cached value if available
         cache_key = f"{environment}_connection_id"
-        if cache_key in self._connection_cache:
-            logger.debug(
-                f"Using cached connection_id for {environment}: {self._connection_cache[cache_key]}"
-            )
-            return self._connection_cache[cache_key]
+        
+        # Thread-safe cache check
+        with self._cache_lock:
+            if cache_key in self._connection_cache:
+                cached_value = self._connection_cache[cache_key]
+                logger.debug(
+                    f"Using cached connection_id for {environment}: {cached_value}"
+                )
+                return cached_value
 
         try:
             logger.debug(f"Fetching {environment} connection ID from Resql (async)...")
@@ -156,8 +168,9 @@ class ConnectionIdFetcher:
                         connection_id = self._extract_connection_id_from_response(data)
 
                         if connection_id is not None:
-                            # Cache the connection ID
-                            self._connection_cache[cache_key] = connection_id
+                            # Cache the connection ID (thread-safe)
+                            with self._cache_lock:
+                                self._connection_cache[cache_key] = connection_id
                             logger.info(
                                 f"{environment.capitalize()} connection_id fetched: {connection_id}"
                             )
@@ -194,14 +207,15 @@ class ConnectionIdFetcher:
         Args:
             environment: Specific environment to clear, or None to clear all
         """
-        if environment:
-            cache_key = f"{environment}_connection_id"
-            if cache_key in self._connection_cache:
-                del self._connection_cache[cache_key]
-                logger.debug(f"Cleared cache for {environment} connection_id")
-        else:
-            self._connection_cache.clear()
-            logger.debug("Cleared all connection_id cache")
+        with self._cache_lock:
+            if environment:
+                cache_key = f"{environment}_connection_id"
+                if cache_key in self._connection_cache:
+                    del self._connection_cache[cache_key]
+                    logger.debug(f"Cleared cache for {environment} connection_id")
+            else:
+                self._connection_cache.clear()
+                logger.debug("Cleared all connection_id cache")
 
 
 # Singleton instance for reuse across modules

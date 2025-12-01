@@ -2,7 +2,7 @@
 Production Inference Data Storage Utility
 
 This module provides functionality to store production inference results
-to the Ruuter endpoint for analytics and monitoring purposes.
+to the Resql endpoint for analytics and monitoring purposes.
 """
 
 from typing import Dict, List, Any, Optional
@@ -12,7 +12,7 @@ from loguru import logger
 import requests
 import aiohttp
 from src.utils.connection_id_fetcher import get_connection_id_fetcher
-from ..llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RESQL
+from ..llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RUUTER_PRIVATE
 
 
 class ProductionInferenceStore:
@@ -21,9 +21,8 @@ class ProductionInferenceStore:
     """
 
     def __init__(self):
-        """Initialize the production inference store with Resql configuration."""
-        # Use Resql directly for storing production data (same pattern as budget_tracker)
-        self.store_endpoint = f"{RAG_SEARCH_RESQL}/store-production-inference-result"
+        """Initialize the production inference store with Ruuter configuration."""
+        self.store_endpoint = f"{RAG_SEARCH_RUUTER_PRIVATE}/inference/results/store"
         self.timeout = 10  # seconds
         self.connection_fetcher = get_connection_id_fetcher()
 
@@ -86,7 +85,7 @@ class ProductionInferenceStore:
         ranked_chunks: List[Dict[str, Any]],
         embedding_scores: List[float],
         final_answer: str,
-        environment: str = "production",
+        environment: str,
         connection_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
