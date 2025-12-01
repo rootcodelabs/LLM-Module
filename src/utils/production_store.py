@@ -70,7 +70,7 @@ class ProductionInferenceStore:
                         "data": actual_data,
                         "error": None,
                     }
-        
+
         # Fallback: handle simple list format for backward compatibility
         if isinstance(response_data, list) and len(response_data) > 0:
             logger.info(
@@ -81,7 +81,7 @@ class ProductionInferenceStore:
                 "data": response_data[0],  # Return first item
                 "error": None,
             }
-        
+
         # Neither format matched - log warning
         logger.warning(
             f"Failed to store inference result for chat_id: {chat_id}, environment: {environment} - "

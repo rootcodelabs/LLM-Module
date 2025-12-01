@@ -1259,7 +1259,7 @@ class LLMOrchestrationService:
             production_store = get_production_store()
 
             # Store the inference result asynchronously without blocking
-            
+
             def store_async():
                 """Run async storage in a new event loop in a separate thread."""
                 try:
@@ -1278,7 +1278,7 @@ class LLMOrchestrationService:
                         )
                     )
                     loop.close()
-                    
+
                     if result["success"]:
                         logger.info(
                             f"Successfully stored inference data for chat_id: {request.chatId}, environment: {request.environment}"
@@ -1290,7 +1290,7 @@ class LLMOrchestrationService:
                         )
                 except Exception as e:
                     logger.error(f"Error in async storage thread: {str(e)}")
-            
+
             # Start storage in background thread (non-blocking)
             storage_thread = threading.Thread(target=store_async, daemon=True)
             storage_thread.start()
