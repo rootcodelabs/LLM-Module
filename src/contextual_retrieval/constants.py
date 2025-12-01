@@ -45,16 +45,19 @@ class SearchConstants:
     DEFAULT_SEARCH_TIMEOUT = 2
 
     # Score and quality thresholds
-    DEFAULT_SCORE_THRESHOLD = 0.5
+    DEFAULT_SCORE_THRESHOLD = 0.4  # Lowered from 0.5 for better semantic diversity
     DEFAULT_BATCH_SIZE = 1
 
     # Rank fusion
-    DEFAULT_RRF_K = 60
+    DEFAULT_RRF_K = 35  # Lowered from 60 for better score differentiation
     CONTENT_PREVIEW_LENGTH = 150
 
     # Normalization
     MIN_NORMALIZED_SCORE = 0.0
     MAX_NORMALIZED_SCORE = 1.0
+
+    # BM25 indexing
+    DEFAULT_SCROLL_BATCH_SIZE = 100  # Batch size for scrolling through collections
 
 
 class CollectionConstants:

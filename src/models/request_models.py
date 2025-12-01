@@ -129,6 +129,14 @@ class OrchestrationRequest(BaseModel):
         return self
 
 
+class DocumentReference(BaseModel):
+    """Model for document reference with URL."""
+
+    document_url: str = Field(..., description="Source document URL")
+    chunk_rank: int = Field(..., description="Rank of chunk in retrieval (1-based)")
+    relevance_score: float = Field(..., description="Relevance score (0-1)")
+
+
 class OrchestrationResponse(BaseModel):
     """Model for LLM orchestration response."""
 
@@ -230,8 +238,15 @@ class TestOrchestrationRequest(BaseModel):
         ..., description="Environment context"
     )
     connectionId: Optional[int] = Field(
-        ..., description="Optional connection identifier"
+        None, description="Optional connection identifier"
     )
+
+
+class ChunkInfo(BaseModel):
+    """Model for chunk information in test response."""
+
+    rank: int = Field(..., description="Rank of the retrieved chunk")
+    chunkRetrieved: str = Field(..., description="Content of the retrieved chunk")
 
 
 class TestOrchestrationResponse(BaseModel):
@@ -245,3 +260,6 @@ class TestOrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+    chunks: Optional[List[ChunkInfo]] = Field(
+        default=None, description="Retrieved chunks with rank and content"
+    )

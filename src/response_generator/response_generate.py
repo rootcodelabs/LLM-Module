@@ -10,6 +10,7 @@ from dspy.streaming import StreamListener
 from src.llm_orchestrator_config.llm_ochestrator_constants import OUT_OF_SCOPE_MESSAGE
 from src.utils.cost_utils import get_lm_usage_since
 from src.optimization.optimized_module_loader import get_module_loader
+from src.vector_indexer.constants import ResponseGenerationConstants
 
 # Configure logging
 logging.basicConfig(
@@ -53,12 +54,14 @@ class ScopeChecker(dspy.Signature):
 
 
 def build_context_and_citations(
-    chunks: List[Dict[str, Any]], use_top_k: int = 10
+    chunks: List[Dict[str, Any]], use_top_k: int = None
 ) -> Tuple[List[str], List[str], bool]:
     """
     Turn retriever chunks -> numbered context blocks and source labels.
     Returns (blocks, labels, has_real_context).
     """
+    if use_top_k is None:
+        use_top_k = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
     logger.info(f"Building context from {len(chunks)} chunks (top_k={use_top_k}).")
     blocks: List[str] = []
     labels: List[str] = []
@@ -202,7 +205,7 @@ class ResponseGeneratorAgent(dspy.Module):
         self,
         question: str,
         chunks: List[Dict[str, Any]],
-        max_blocks: int = 10,
+        max_blocks: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """
         Stream response tokens directly from LLM using DSPy's native streaming.
@@ -210,11 +213,14 @@ class ResponseGeneratorAgent(dspy.Module):
         Args:
             question: User's question
             chunks: Retrieved context chunks
-            max_blocks: Maximum number of context blocks
+            max_blocks: Maximum number of context blocks (default: ResponseGenerationConstants.DEFAULT_MAX_BLOCKS)
 
         Yields:
             Token strings as they arrive from the LLM
         """
+        if max_blocks is None:
+            max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+
         logger.info(
             f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
         )
@@ -289,7 +295,10 @@ class ResponseGeneratorAgent(dspy.Module):
                     logger.debug(f"Error during cleanup (aclose): {cleanup_error}")
 
     async def check_scope_quick(
-        self, question: str, chunks: List[Dict[str, Any]], max_blocks: int = 10
+        self,
+        question: str,
+        chunks: List[Dict[str, Any]],
+        max_blocks: Optional[int] = None,
     ) -> bool:
         """
         Quick async check if question is out of scope.
@@ -297,11 +306,13 @@ class ResponseGeneratorAgent(dspy.Module):
         Args:
             question: User's question
             chunks: Retrieved context chunks
-            max_blocks: Maximum context blocks to use
+            max_blocks: Maximum context blocks to use (default: ResponseGenerationConstants.DEFAULT_MAX_BLOCKS)
 
         Returns:
             True if out of scope, False if in scope
         """
+        if max_blocks is None:
+            max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
         try:
             context_blocks, _, has_real_context = build_context_and_citations(
                 chunks, use_top_k=max_blocks
@@ -356,9 +367,15 @@ class ResponseGeneratorAgent(dspy.Module):
             return False
 
     def forward(
-        self, question: str, chunks: List[Dict[str, Any]], max_blocks: int = 10
+        self,
+        question: str,
+        chunks: List[Dict[str, Any]],
+        max_blocks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Non-streaming forward pass for backward compatibility."""
+        if max_blocks is None:
+            max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+
         logger.info(f"Generating response for question: '{question}'")
 
         lm = dspy.settings.lm

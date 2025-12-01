@@ -1,14 +1,15 @@
 """LLM Orchestration Service - Business logic for LLM orchestration."""
 
 from typing import Optional, List, Dict, Union, Any, AsyncIterator
-import json
 import os
 import time
+import asyncio
 from loguru import logger
 from langfuse import Langfuse, observe
 import dspy
 from datetime import datetime
 import json as json_module
+import threading
 
 from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
@@ -18,6 +19,8 @@ from models.request_models import (
     PromptRefinerOutput,
     ContextGenerationRequest,
     TestOrchestrationResponse,
+    ChunkInfo,
+    DocumentReference,
 )
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
@@ -30,12 +33,16 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
     TEST_DEPLOYMENT_ENVIRONMENT,
     STREAM_TOKEN_LIMIT_MESSAGE,
+    PRODUCTION_DEPLOYMENT_ENVIRONMENT,
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
+from src.vector_indexer.constants import ResponseGenerationConstants
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.stream_manager import stream_manager
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.utils.time_tracker import log_step_timings
+from src.utils.budget_tracker import get_budget_tracker
+from src.utils.production_store import get_production_store
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.llm_orchestrator_config.exceptions import (
@@ -131,6 +138,12 @@ class LLMOrchestrationService:
             # Log final costs and return response
             self._log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
+
+            # Update budget for the LLM connection
+            self._update_connection_budget(
+                request.connection_id, costs_dict, request.environment
+            )
+
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 total_costs = calculate_total_costs(costs_dict)
@@ -182,6 +195,12 @@ class LLMOrchestrationService:
                 langfuse.flush()
             self._log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
+
+            # Update budget even on error
+            self._update_connection_budget(
+                request.connection_id, costs_dict, request.environment
+            )
+
             return self._create_error_response(request)
 
     @observe(name="streaming_generation", as_type="generation", capture_output=False)
@@ -342,7 +361,7 @@ class LLMOrchestrationService:
                 ].check_scope_quick(
                     question=refined_output.original_question,
                     chunks=relevant_chunks,
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
                 timing_dict["scope_check"] = time.time() - start_time
 
@@ -381,7 +400,7 @@ class LLMOrchestrationService:
                         agent=components["response_generator"],
                         question=refined_output.original_question,
                         chunks=relevant_chunks,
-                        max_blocks=10,
+                        max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                     ):
                         yield token
 
@@ -391,7 +410,9 @@ class LLMOrchestrationService:
 
                 # Wrap entire streaming logic in try/except for proper error handling
                 try:
-                    # Track tokens in stream context
+                    # Track tokens and accumulated response in stream context
+                    accumulated_response = []  # Track the full response for production storage
+
                     if components["guardrails_adapter"]:
                         # Use NeMo's stream_with_guardrails helper method
                         # This properly integrates the external generator with NeMo's validation
@@ -409,6 +430,9 @@ class LLMOrchestrationService:
                                 # Estimate tokens (rough approximation: 4 characters = 1 token)
                                 chunk_tokens = len(validated_chunk) // 4
                                 stream_ctx.token_count += chunk_tokens
+
+                                # Accumulate response for production storage
+                                accumulated_response.append(validated_chunk)
 
                                 # Check token limit
                                 if (
@@ -480,7 +504,10 @@ class LLMOrchestrationService:
                                     return  # Cleanup happens in finally
 
                                 # Log first few chunks for debugging
-                                if chunk_count <= 10:
+                                if (
+                                    chunk_count
+                                    <= ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+                                ):
                                     logger.debug(
                                         f"[{request.chatId}] [{stream_ctx.stream_id}] Validated chunk {chunk_count}: {repr(validated_chunk)}"
                                     )
@@ -499,6 +526,31 @@ class LLMOrchestrationService:
                             f"[{request.chatId}] [{stream_ctx.stream_id}] Stream completed successfully "
                             f"({chunk_count} chunks streamed)"
                         )
+
+                        # Send document references before END token
+                        doc_references = self._extract_document_references(
+                            relevant_chunks
+                        )
+                        if doc_references:
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
+                            )
+                            references_data = [
+                                ref.model_dump() for ref in doc_references
+                            ]
+                            references_message = {
+                                "chatId": request.chatId,
+                                "payload": {
+                                    "type": "references",
+                                    "references": references_data,
+                                },
+                                "timestamp": str(
+                                    int(datetime.now().timestamp() * 1000)
+                                ),
+                                "sentTo": [],
+                            }
+                            yield f"data: {json_module.dumps(references_message)}\n\n"
+
                         yield self._format_sse(request.chatId, "END")
 
                     else:
@@ -513,6 +565,9 @@ class LLMOrchestrationService:
                             # Estimate tokens and check limit
                             token_estimate = len(token) // 4
                             stream_ctx.token_count += token_estimate
+
+                            # Accumulate response for production storage
+                            accumulated_response.append(token)
 
                             if (
                                 stream_ctx.token_count
@@ -530,6 +585,30 @@ class LLMOrchestrationService:
                                 return  # Stop immediately - cleanup in finally
 
                             yield self._format_sse(request.chatId, token)
+
+                        # Send document references before END token
+                        doc_references = self._extract_document_references(
+                            relevant_chunks
+                        )
+                        if doc_references:
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
+                            )
+                            references_data = [
+                                ref.model_dump() for ref in doc_references
+                            ]
+                            references_message = {
+                                "chatId": request.chatId,
+                                "payload": {
+                                    "type": "references",
+                                    "references": references_data,
+                                },
+                                "timestamp": str(
+                                    int(datetime.now().timestamp() * 1000)
+                                ),
+                                "sentTo": [],
+                            }
+                            yield f"data: {json_module.dumps(references_message)}\n\n"
 
                         yield self._format_sse(request.chatId, "END")
 
@@ -555,6 +634,11 @@ class LLMOrchestrationService:
                     # Log costs and trace
                     self._log_costs(costs_dict)
                     log_step_timings(timing_dict, request.chatId)
+
+                    # Update budget for the LLM connection
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
 
                     if self.langfuse_config.langfuse_client:
                         langfuse = self.langfuse_config.langfuse_client
@@ -584,6 +668,24 @@ class LLMOrchestrationService:
                         )
                         langfuse.flush()
 
+                    # Store inference data (for production and testing environments)
+                    if request.environment in [
+                        PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+                        TEST_DEPLOYMENT_ENVIRONMENT,
+                    ]:
+                        try:
+                            await self._store_production_inference_data_async(
+                                request=request,
+                                refined_output=refined_output,
+                                relevant_chunks=relevant_chunks,
+                                accumulated_response="".join(accumulated_response),
+                            )
+                        except Exception as storage_error:
+                            # Log storage error but don't fail the request
+                            logger.error(
+                                f"Storage failed for chat_id: {request.chatId}, environment: {request.environment} - {str(storage_error)}"
+                            )
+
                     # Mark stream as completed successfully
                     stream_ctx.mark_completed()
 
@@ -597,6 +699,11 @@ class LLMOrchestrationService:
                     costs_dict["streaming_generation"] = usage_info
                     self._log_costs(costs_dict)
                     log_step_timings(timing_dict, request.chatId)
+
+                    # Update budget even on client disconnect
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
                     raise
                 except Exception as stream_error:
                     error_id = generate_error_id()
@@ -616,6 +723,11 @@ class LLMOrchestrationService:
                     self._log_costs(costs_dict)
                     log_step_timings(timing_dict, request.chatId)
 
+                    # Update budget even on streaming error
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
+
             except Exception as e:
                 error_id = generate_error_id()
                 stream_ctx.mark_error(error_id)
@@ -628,6 +740,11 @@ class LLMOrchestrationService:
 
                 self._log_costs(costs_dict)
                 log_step_timings(timing_dict, request.chatId)
+
+                # Update budget even on outer exception
+                self._update_connection_budget(
+                    request.connection_id, costs_dict, request.environment
+                )
 
                 if self.langfuse_config.langfuse_client:
                     langfuse = self.langfuse_config.langfuse_client
@@ -849,9 +966,27 @@ class LLMOrchestrationService:
             components["guardrails_adapter"], generated_response, request, costs_dict
         )
         timing_dict["output_guardrails_check"] = time.time() - start_time
+
+        # Step 6: Store inference data (for production and testing environments)
+        if request.environment in [
+            PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+            TEST_DEPLOYMENT_ENVIRONMENT,
+        ]:
+            try:
+                self._store_production_inference_data(
+                    request=request,
+                    refined_output=refined_output,
+                    relevant_chunks=relevant_chunks,
+                    final_response=output_guardrails_response,
+                )
+            except Exception as storage_error:
+                # Log storage error but don't fail the request
+                logger.error(
+                    f"Storage failed for chat_id: {request.chatId}, environment: {request.environment} - {str(storage_error)}"
+                )
+
         return output_guardrails_response
 
-    @observe(name="safe_initialize_guardrails", as_type="span")
     def _safe_initialize_guardrails(
         self, environment: str, connection_id: Optional[str]
     ) -> Optional[NeMoRailsAdapter]:
@@ -922,6 +1057,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=True,
                     content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    chunks=None,
                 )
             else:
                 return OrchestrationResponse(
@@ -942,7 +1078,6 @@ class LLMOrchestrationService:
         request: OrchestrationRequest,
     ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
         """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
-        import asyncio
 
         try:
             # Safely execute the async method in the sync context
@@ -1075,6 +1210,175 @@ class LLMOrchestrationService:
             inputGuardFailed=False,
             content=OUT_OF_SCOPE_MESSAGE,
         )
+
+    def _store_production_inference_data(
+        self,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        final_response: OrchestrationResponse,
+    ) -> None:
+        """
+        Store production inference data to Resql endpoint for analytics.
+
+        This method stores comprehensive inference data including:
+        - User question and refined questions
+        - Conversation history
+        - Retrieved chunks with rankings
+        - Embedding scores
+        - Final generated answer
+
+        Args:
+            request: Original orchestration request
+            refined_output: Prompt refiner output with original and refined questions
+            relevant_chunks: Retrieved and ranked chunks
+            final_response: Final orchestration response with generated answer
+        """
+        try:
+            # Only store if the service was active and response was generated successfully
+            if not final_response.llmServiceActive:
+                logger.debug(
+                    f"Skipping production data storage for chat_id: {request.chatId} "
+                    f"- LLM service was not active"
+                )
+                return
+
+            # Extract embedding scores from chunks
+            embedding_scores = []
+            for chunk in relevant_chunks:
+                score_value = chunk.get("fused_score", chunk.get("score", 0.0))
+                try:
+                    if isinstance(score_value, (int, float)):
+                        embedding_scores.append(float(score_value))
+                    else:
+                        embedding_scores.append(0.0)
+                except (ValueError, TypeError):
+                    embedding_scores.append(0.0)
+
+            # Convert conversation history to list of dicts
+            conversation_history_list = [
+                {"role": item.authorRole, "content": item.message}
+                for item in (request.conversationHistory or [])
+            ]
+
+            # Get the production store instance
+            production_store = get_production_store()
+
+            # Store the inference result asynchronously without blocking
+
+            def store_async():
+                """Run async storage in a new event loop in a separate thread."""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(
+                        production_store.store_inference_result_async(
+                            chat_id=request.chatId,
+                            user_question=request.message,
+                            refined_questions=refined_output.refined_questions,
+                            conversation_history=conversation_history_list,
+                            ranked_chunks=relevant_chunks,
+                            embedding_scores=embedding_scores,
+                            final_answer=final_response.content,
+                            environment=request.environment,
+                        )
+                    )
+                    loop.close()
+
+                    if result["success"]:
+                        logger.info(
+                            f"Successfully stored inference data for chat_id: {request.chatId}, environment: {request.environment}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to store inference data for chat_id: {request.chatId}, environment: {request.environment} - "
+                            f"Error: {result['error']}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error in async storage thread: {str(e)}")
+
+            # Start storage in background thread (non-blocking)
+            storage_thread = threading.Thread(target=store_async, daemon=True)
+            storage_thread.start()
+
+        except Exception as e:
+            # Log the error but don't fail the request
+            logger.error(
+                f"Error storing inference data for chat_id: {request.chatId}, environment: {request.environment} - {str(e)}"
+            )
+
+    async def _store_production_inference_data_async(
+        self,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        accumulated_response: str,
+    ) -> None:
+        """
+        Async version: Store production inference data to Resql endpoint for analytics.
+
+        This method stores comprehensive inference data including:
+        - User question and refined questions
+        - Conversation history
+        - Retrieved chunks with rankings
+        - Embedding scores
+        - Final generated answer (from streaming)
+
+        Args:
+            request: Original orchestration request
+            refined_output: Prompt refiner output with original and refined questions
+            relevant_chunks: Retrieved and ranked chunks
+            accumulated_response: Complete streamed response
+        """
+        try:
+            # Extract embedding scores from chunks
+            embedding_scores = []
+            for chunk in relevant_chunks:
+                score_value = chunk.get("fused_score", chunk.get("score", 0.0))
+                try:
+                    if isinstance(score_value, (int, float)):
+                        embedding_scores.append(float(score_value))
+                    else:
+                        embedding_scores.append(0.0)
+                except (ValueError, TypeError):
+                    embedding_scores.append(0.0)
+
+            # Convert conversation history to list of dicts
+            conversation_history_list = [
+                {"role": item.authorRole, "content": item.message}
+                for item in (request.conversationHistory or [])
+            ]
+
+            # Get the production store instance
+            production_store = get_production_store()
+
+            # Store the inference result (async)
+            result = await production_store.store_inference_result_async(
+                chat_id=request.chatId,
+                user_question=request.message,
+                refined_questions=refined_output.refined_questions,
+                conversation_history=conversation_history_list,
+                ranked_chunks=relevant_chunks,
+                embedding_scores=embedding_scores,
+                final_answer=accumulated_response,
+                environment=request.environment,
+            )
+
+            if result["success"]:
+                logger.info(
+                    f"Successfully stored inference data (async) for chat_id: {request.chatId}, environment: {request.environment}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to store inference data (async) for chat_id: {request.chatId}, environment: {request.environment} - "
+                    f"Error: {result['error']}"
+                )
+
+        except Exception as e:
+            # Log the error but don't fail the request
+            logger.error(
+                f"Error storing inference data (async) for chat_id: {request.chatId}, environment: {request.environment} - {str(e)}"
+            )
 
     @observe(name="initialize_guardrails", as_type="span")
     def _initialize_guardrails(
@@ -1392,6 +1696,70 @@ class LLMOrchestrationService:
         except Exception as e:
             logger.warning(f"Failed to log costs: {str(e)}")
 
+    def _update_connection_budget(
+        self,
+        connection_id: Optional[str],
+        costs_dict: Dict[str, Dict[str, Any]],
+        environment: str = "development",
+    ) -> None:
+        """
+        Update the budget for an LLM connection based on usage costs.
+        For production environment, fetches the connection ID asynchronously if not provided.
+
+        Args:
+            connection_id: The LLM connection ID (optional)
+            costs_dict: Dictionary of costs per component
+            environment: The deployment environment (production/testing/development)
+        """
+        try:
+            budget_tracker = get_budget_tracker()
+
+            # For production environment, fetch connection ID if not provided
+            if environment == "production" and not connection_id:
+                logger.debug(
+                    "Production environment detected, fetching connection ID..."
+                )
+                try:
+                    # Use synchronous fetch to avoid event loop issues
+                    production_id = (
+                        budget_tracker.connection_fetcher.fetch_connection_id_sync(
+                            "production"
+                        )
+                    )
+                    if production_id:
+                        connection_id = str(production_id)
+                        logger.info(f"Using production connection_id: {connection_id}")
+                    else:
+                        logger.warning("Could not fetch production connection ID")
+                except Exception as fetch_error:
+                    logger.error(
+                        f"Error fetching production connection ID: {str(fetch_error)}"
+                    )
+
+            result = budget_tracker.update_budget_from_costs(connection_id, costs_dict)
+
+            if result.get("success"):
+                if result.get("budget_exceeded"):
+                    logger.warning(
+                        f"Budget threshold exceeded for connection_id={connection_id}. "
+                        "Connection may have been deactivated."
+                    )
+                else:
+                    logger.debug(
+                        f"Budget updated successfully for connection_id={connection_id}"
+                    )
+            else:
+                reason = result.get("reason", "unknown")
+                if reason not in ["no_connection_id", "zero_or_negative_cost"]:
+                    logger.warning(
+                        f"Failed to update budget for connection_id={connection_id}. "
+                        f"Reason: {reason}"
+                    )
+
+        except Exception as e:
+            # Don't fail the orchestration if budget update fails
+            logger.error(f"Error updating budget: {str(e)}")
+
     @observe(name="initialize_llm_manager", as_type="span")
     def _initialize_llm_manager(
         self, environment: str, connection_id: Optional[str]
@@ -1606,6 +1974,88 @@ class LLMOrchestrationService:
             logger.error(f"Failed to initialize response generator: {str(e)}")
             raise
 
+    @staticmethod
+    def _format_chunks_for_test_response(
+        relevant_chunks: Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]],
+    ) -> Optional[List[ChunkInfo]]:
+        """
+        Format retrieved chunks for test response.
+
+        Args:
+            relevant_chunks: List of retrieved chunks with metadata
+
+        Returns:
+            List of ChunkInfo objects with rank and content, or None if no chunks
+        """
+        if not relevant_chunks:
+            return None
+
+        formatted_chunks = []
+        for rank, chunk in enumerate(relevant_chunks, start=1):
+            # Extract text content - prefer "text" key, fallback to "content"
+            chunk_text = chunk.get("text", chunk.get("content", ""))
+            if isinstance(chunk_text, str) and chunk_text.strip():
+                formatted_chunks.append(ChunkInfo(rank=rank, chunkRetrieved=chunk_text))
+
+        return formatted_chunks if formatted_chunks else None
+
+    @staticmethod
+    def _extract_document_references(
+        relevant_chunks: Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]],
+    ) -> Optional[List[DocumentReference]]:
+        """
+        Extract unique document references from retrieved chunks.
+
+        Args:
+            relevant_chunks: List of retrieved chunks with metadata
+
+        Returns:
+            List of DocumentReference objects, or None if no chunks
+        """
+        if not relevant_chunks:
+            return None
+
+        seen_urls: set[str] = set()
+        references: List[DocumentReference] = []
+
+        for rank, chunk in enumerate(relevant_chunks, start=1):
+            # Extract document_url - try multiple keys for robustness
+            doc_url = chunk.get("document_url")
+            if not doc_url:
+                # Fallback to metadata
+                meta = chunk.get("meta", {})
+                if isinstance(meta, dict):
+                    doc_url = (
+                        meta.get("document_url")
+                        or meta.get("source_file")
+                        or meta.get("source")
+                    )
+
+            if doc_url and isinstance(doc_url, str) and doc_url.strip():
+                # Only include unique URLs (deduplicate)
+                if doc_url not in seen_urls:
+                    seen_urls.add(doc_url)
+
+                    # Extract score - try multiple keys, ensure it's a float
+                    score_value = chunk.get("fused_score") or chunk.get("score", 0.0)
+                    try:
+                        if isinstance(score_value, (int, float)):
+                            score = float(score_value)
+                        else:
+                            score = 0.0
+                    except (ValueError, TypeError):
+                        score = 0.0
+
+                    references.append(
+                        DocumentReference(
+                            document_url=doc_url,
+                            chunk_rank=rank,
+                            relevance_score=round(score, 4),
+                        )
+                    )
+
+        return references if references else None
+
     @observe(name="generate_rag_response", as_type="generation")
     def _generate_rag_response(
         self,
@@ -1639,6 +2089,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(
@@ -1654,7 +2105,7 @@ class LLMOrchestrationService:
                 generator_result = response_generator.forward(
                     question=refined_output.original_question,
                     chunks=relevant_chunks or [],
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
 
             answer = (generator_result.get("answer") or "").strip()
@@ -1697,6 +2148,19 @@ class LLMOrchestrationService:
                 )
             if question_out_of_scope:
                 logger.info("Question determined out-of-scope – sending fixed message.")
+
+                # Extract document references even for out-of-scope
+                doc_references = self._extract_document_references(relevant_chunks)
+
+                # Append references to content
+                content_with_refs = OUT_OF_SCOPE_MESSAGE
+                if doc_references:
+                    refs_text = "\n\n**References:**\n" + "\n".join(
+                        f"{i + 1}. {ref.document_url}"
+                        for i, ref in enumerate(doc_references)
+                    )
+                    content_with_refs += refs_text
+
                 if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                     logger.info(
                         "Test environment detected – returning out-of-scope message."
@@ -1705,7 +2169,8 @@ class LLMOrchestrationService:
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
-                        content=OUT_OF_SCOPE_MESSAGE,
+                        content=content_with_refs,
+                        chunks=self._format_chunks_for_test_response(relevant_chunks),
                     )
                 else:
                     return OrchestrationResponse(
@@ -1713,18 +2178,30 @@ class LLMOrchestrationService:
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
-                        content=OUT_OF_SCOPE_MESSAGE,
+                        content=content_with_refs,
                     )
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
+
+            # Extract document references and append to content
+            doc_references = self._extract_document_references(relevant_chunks)
+            content_with_refs = answer
+            if doc_references:
+                refs_text = "\n\n**References:**\n" + "\n".join(
+                    f"{i + 1}. {ref.document_url}"
+                    for i, ref in enumerate(doc_references)
+                )
+                content_with_refs += refs_text
+
             if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info("Test environment detected – returning generated answer.")
                 return TestOrchestrationResponse(
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=answer,
+                    content=content_with_refs,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(
@@ -1732,7 +2209,7 @@ class LLMOrchestrationService:
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=answer,
+                    content=content_with_refs,
                 )
 
         except Exception as e:
@@ -1765,6 +2242,7 @@ class LLMOrchestrationService:
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
                 return OrchestrationResponse(
@@ -1844,7 +2322,7 @@ class LLMOrchestrationService:
             raise
 
     def get_available_embedding_models_for_indexer(
-        self, environment: str = "production"
+        self, environment: str = PRODUCTION_DEPLOYMENT_ENVIRONMENT
     ) -> Dict[str, Any]:
         """Get available embedding models for vector indexer.
 
