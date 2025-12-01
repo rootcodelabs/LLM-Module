@@ -503,7 +503,10 @@ class LLMOrchestrationService:
                                     return  # Cleanup happens in finally
 
                                 # Log first few chunks for debugging
-                                if chunk_count <= ResponseGenerationConstants.DEFAULT_MAX_BLOCKS:
+                                if (
+                                    chunk_count
+                                    <= ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+                                ):
                                     logger.debug(
                                         f"[{request.chatId}] [{stream_ctx.stream_id}] Validated chunk {chunk_count}: {repr(validated_chunk)}"
                                     )

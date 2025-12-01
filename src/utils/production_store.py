@@ -12,7 +12,9 @@ from loguru import logger
 import requests
 import aiohttp
 from src.utils.connection_id_fetcher import get_connection_id_fetcher
-from ..llm_orchestrator_config.llm_ochestrator_constants import RAG_SEARCH_RUUTER_PRIVATE
+from ..llm_orchestrator_config.llm_ochestrator_constants import (
+    RAG_SEARCH_RUUTER_PRIVATE,
+)
 
 
 class ProductionInferenceStore:

@@ -81,7 +81,7 @@ class ConnectionIdFetcher:
         """
         # Return cached value if available
         cache_key = f"{environment}_connection_id"
-        
+
         # Thread-safe cache check
         with self._cache_lock:
             if cache_key in self._connection_cache:
@@ -141,7 +141,7 @@ class ConnectionIdFetcher:
         """
         # Return cached value if available
         cache_key = f"{environment}_connection_id"
-        
+
         # Thread-safe cache check
         with self._cache_lock:
             if cache_key in self._connection_cache:
