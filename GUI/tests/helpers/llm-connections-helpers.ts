@@ -7,7 +7,7 @@ export class LLMConnectionsHelper {
   constructor(private page: Page) {}
 
   async navigateToLLMConnections(): Promise<void> {
-    await this.page.goto('http://localhost:3001/rag-search/llm-connections');
+    await this.page.goto('http://localhost:3003/rag-search/llm-connections');
     await this.page.waitForLoadState('networkidle');
   }
 
@@ -25,7 +25,7 @@ export class LLMConnectionsHelper {
       await this.page.waitForLoadState('networkidle');
     } else {
       // Fallback to direct navigation
-      await this.page.goto('http://localhost:3001/rag-search/create-llm-connection');
+      await this.page.goto('http://localhost:3003/rag-search/create-llm-connection');
       await this.page.waitForLoadState('networkidle');
     }
 

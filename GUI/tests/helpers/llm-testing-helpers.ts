@@ -8,7 +8,7 @@ export class TestLLMHelper {
   constructor(private page: Page) {}
 
   async navigateToTestLLM(): Promise<void> {
-    await this.page.goto('http://localhost:3001/rag-search/test-llm');
+    await this.page.goto('http://localhost:3003/rag-search/test-llm');
     await this.page.waitForLoadState('networkidle');
   }
 
@@ -131,7 +131,7 @@ export class TestProductionLLMHelper {
   constructor(private page: Page) {}
 
   async navigateToTestProductionLLM(): Promise<void> {
-    await this.page.goto('http://localhost:3001/rag-search/test-production-llm');
+    await this.page.goto('http://localhost:3003/rag-search/test-production-llm');
     await this.page.waitForLoadState('networkidle');
   }
 

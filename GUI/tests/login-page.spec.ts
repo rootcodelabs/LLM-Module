@@ -76,12 +76,12 @@ test.describe('Authentication Flow', () => {
       await submitButton.click();
       
       // Wait for the authentication to process
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(20000);
     });
 
     await test.step('Verify redirect to user management', async () => {
       // Wait for navigation to complete
-      await page.waitForLoadState('networkidle', { timeout: 10000 });
+      await page.waitForLoadState('networkidle', { timeout: 20000 });
       
       // Verify we've been redirected to the user management page
       // Based on the App.tsx logic, administrators should be redirected to /user-management

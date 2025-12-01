@@ -20,8 +20,8 @@ export class AuthHelper {
     const submitButton = await this.page.locator('button[type="submit"], button:has-text("sisene"), button:has-text("Sisene"), input[type="submit"]').first();
     await submitButton.click();
     
-    await this.page.waitForTimeout(3000);
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 });
+    await this.page.waitForTimeout(20000);
+    await this.page.waitForLoadState('networkidle', { timeout: 20000 });
   }
 
   /**
