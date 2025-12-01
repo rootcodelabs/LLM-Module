@@ -15,6 +15,7 @@ from contextual_retrieval.constants import (
     HttpStatusConstants,
     ErrorContextConstants,
     LoggingConstants,
+    SearchConstants,
 )
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
 
@@ -141,19 +142,19 @@ class SmartBM25Search:
 
             logger.info(f"BM25 search found {len(results)} chunks")
 
-            # Debug logging for BM25 results
-            logger.info("=== BM25 SEARCH RESULTS BREAKDOWN ===")
+            # Detailed results at DEBUG level (loguru filters based on log level config)
+            logger.debug("=== BM25 SEARCH RESULTS BREAKDOWN ===")
             for i, chunk in enumerate(results[:10]):  # Show top 10 results
                 content_preview = (
                     (chunk.get("original_content", "")[:150] + "...")
                     if len(chunk.get("original_content", "")) > 150
                     else chunk.get("original_content", "")
                 )
-                logger.info(
+                logger.debug(
                     f"  Rank {i + 1}: BM25_score={chunk['score']:.4f}, id={chunk.get('chunk_id', 'unknown')}"
                 )
-                logger.info(f"           content: '{content_preview}'")
-            logger.info("=== END BM25 SEARCH RESULTS ===")
+                logger.debug(f"           content: '{content_preview}'")
+            logger.debug("=== END BM25 SEARCH RESULTS ===")
 
             return results
 
@@ -171,7 +172,7 @@ class SmartBM25Search:
                 # Use scroll to get all points from collection
                 chunks = await self._scroll_collection(collection_name)
                 all_chunks.extend(chunks)
-                logger.debug(f"Fetched {len(chunks)} chunks from {collection_name}")
+                logger.info(f"Fetched {len(chunks)} chunks from {collection_name}")
 
             except Exception as e:
                 logger.warning(f"Failed to fetch chunks from {collection_name}: {e}")
@@ -180,42 +181,65 @@ class SmartBM25Search:
         return all_chunks
 
     async def _scroll_collection(self, collection_name: str) -> List[Dict[str, Any]]:
-        """Scroll through all points in a collection."""
+        """Scroll through all points in a collection with pagination."""
         chunks: List[Dict[str, Any]] = []
+        next_page_offset = None
+        batch_count = 0
 
         try:
-            scroll_payload = {
-                "limit": 100,  # Batch size for scrolling
-                "with_payload": True,
-                "with_vector": False,
-            }
-
             client_manager = await self._get_http_client_manager()
             client = await client_manager.get_client()
 
             scroll_url = (
                 f"{self.qdrant_url}/collections/{collection_name}/points/scroll"
             )
-            response = await client.post(scroll_url, json=scroll_payload)
 
-            if response.status_code != HttpStatusConstants.OK:
-                SecureErrorHandler.log_secure_error(
-                    error=Exception(
-                        f"Failed to scroll collection with status {response.status_code}"
-                    ),
-                    context=ErrorContextConstants.PROVIDER_DETECTION,
-                    request_url=scroll_url,
-                    level=LoggingConstants.WARNING,
+            # Pagination loop to fetch all chunks
+            while True:
+                scroll_payload = {
+                    "limit": SearchConstants.DEFAULT_SCROLL_BATCH_SIZE,
+                    "with_payload": True,
+                    "with_vector": False,
+                }
+
+                # Add offset for continuation
+                if next_page_offset is not None:
+                    scroll_payload["offset"] = next_page_offset
+
+                response = await client.post(scroll_url, json=scroll_payload)
+
+                if response.status_code != HttpStatusConstants.OK:
+                    SecureErrorHandler.log_secure_error(
+                        error=Exception(
+                            f"Failed to scroll collection with status {response.status_code}"
+                        ),
+                        context=ErrorContextConstants.PROVIDER_DETECTION,
+                        request_url=scroll_url,
+                        level=LoggingConstants.WARNING,
+                    )
+                    return chunks  # Return what we have so far
+
+                result = response.json()
+                points = result.get("result", {}).get("points", [])
+                next_page_offset = result.get("result", {}).get("next_page_offset")
+
+                # Add chunks from this batch
+                for point in points:
+                    payload = point.get("payload", {})
+                    chunks.append(payload)
+
+                batch_count += 1
+                logger.debug(
+                    f"Fetched batch {batch_count} with {len(points)} points from {collection_name}"
                 )
-                return []
 
-            result = response.json()
-            points = result.get("result", {}).get("points", [])
+                # Exit conditions: no more points or no next page offset
+                if not points or next_page_offset is None:
+                    break
 
-            for point in points:
-                payload = point.get("payload", {})
-                chunks.append(payload)
-
+            logger.debug(
+                f"Completed scrolling {collection_name}: {len(chunks)} total chunks in {batch_count} batches"
+            )
             return chunks
 
         except Exception as e:

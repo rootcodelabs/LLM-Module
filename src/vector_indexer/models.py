@@ -10,7 +10,7 @@ class DocumentInfo(BaseModel):
 
     document_hash: str = Field(..., description="Document hash identifier")
     cleaned_txt_path: str = Field(..., description="Path to cleaned.txt file")
-    source_meta_path: str = Field(..., description="Path to source.meta.json file")
+    source_meta_path: str = Field(..., description="Path to cleaned.meta.json file")
     dataset_collection: str = Field(..., description="Dataset collection name")
 
 
@@ -18,7 +18,7 @@ class ProcessingDocument(BaseModel):
     """Document loaded and ready for processing."""
 
     content: str = Field(..., description="Document content from cleaned.txt")
-    metadata: Dict[str, Any] = Field(..., description="Metadata from source.meta.json")
+    metadata: Dict[str, Any] = Field(..., description="Metadata from cleaned.meta.json")
     document_hash: str = Field(..., description="Document hash identifier")
 
     @property

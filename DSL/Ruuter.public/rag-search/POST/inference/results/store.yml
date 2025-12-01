@@ -29,6 +29,12 @@ declaration:
       - field: final_answer
         type: string
         description: "LLM's final generated answer"
+      - field: environment
+        type: string
+        description: "Environment identifier (e.g., production, testing)"
+      - field: llm_connection_id
+        type: string
+        description: "Connection identifier"
      
 extract_request_data:
   assign:
@@ -39,6 +45,8 @@ extract_request_data:
     ranked_chunks: ${JSON.stringify(incoming.body.ranked_chunks) || null}
     embedding_scores: ${JSON.stringify(incoming.body.embedding_scores) || null}
     final_answer: ${incoming.body.final_answer}
+    environment: ${incoming.body.environment}
+    llm_connection_id: ${incoming.body.llm_connection_id}
     created_at: ${new Date().toISOString()}
   next: validate_required_fields
 
@@ -51,7 +59,7 @@ validate_required_fields:
 store_production_inference_result:
   call: http.post
   args:
-    url: "[#RAG_SEARCH_RESQL]/store-production-inference-result"
+    url: "[#RAG_SEARCH_RESQL]/store-inference-result"
     body:
       chat_id: ${chat_id}
       user_question: ${user_question}
@@ -60,7 +68,8 @@ store_production_inference_result:
       ranked_chunks: ${ranked_chunks}
       embedding_scores: ${embedding_scores}
       final_answer: ${final_answer}
-      environment: "production"
+      environment: ${environment}
+      llm_connection_id: ${llm_connection_id}
       created_at: ${created_at}
   result: store_result
   next: check_status

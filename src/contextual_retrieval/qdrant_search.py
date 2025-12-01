@@ -148,19 +148,19 @@ class QdrantContextualSearch:
                 f"Semantic search found {len(all_results)} chunks across {len(collections)} collections"
             )
 
-            # Debug logging for final sorted results
-            logger.info("=== SEMANTIC SEARCH RESULTS BREAKDOWN ===")
+            # Detailed results at DEBUG level (loguru filters based on log level config)
+            logger.debug("=== SEMANTIC SEARCH RESULTS BREAKDOWN ===")
             for i, chunk in enumerate(all_results[:10]):  # Show top 10 results
                 content_preview = (
                     (chunk.get("original_content", "")[:150] + "...")
                     if len(chunk.get("original_content", "")) > 150
                     else chunk.get("original_content", "")
                 )
-                logger.info(
+                logger.debug(
                     f"  Rank {i + 1}: score={chunk['score']:.4f}, collection={chunk.get('source_collection', 'unknown')}, id={chunk['chunk_id']}"
                 )
-                logger.info(f"           content: '{content_preview}'")
-            logger.info("=== END SEMANTIC SEARCH RESULTS ===")
+                logger.debug(f"           content: '{content_preview}'")
+            logger.debug("=== END SEMANTIC SEARCH RESULTS ===")
 
             return all_results
 
