@@ -25,6 +25,7 @@ GUARDRAILS_BLOCKED_PHRASES = [
 # Streaming configuration
 STREAMING_ALLOWED_ENVS = {"production"}
 TEST_DEPLOYMENT_ENVIRONMENT = "testing"
+PRODUCTION_DEPLOYMENT_ENVIRONMENT = "production"
 
 # Stream limit error messages
 STREAM_TIMEOUT_MESSAGE = (

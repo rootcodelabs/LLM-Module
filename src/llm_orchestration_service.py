@@ -34,6 +34,7 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
     TEST_DEPLOYMENT_ENVIRONMENT,
     STREAM_TOKEN_LIMIT_MESSAGE,
+    PRODUCTION_DEPLOYMENT_ENVIRONMENT,
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.vector_indexer.constants import ResponseGenerationConstants
@@ -669,7 +670,10 @@ class LLMOrchestrationService:
                         langfuse.flush()
 
                     # Store inference data (for production and testing environments)
-                    if request.environment in ["production", "testing"]:
+                    if request.environment in [
+                        PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+                        TEST_DEPLOYMENT_ENVIRONMENT,
+                    ]:
                         try:
                             await self._store_production_inference_data_async(
                                 request=request,
@@ -965,7 +969,10 @@ class LLMOrchestrationService:
         timing_dict["output_guardrails_check"] = time.time() - start_time
 
         # Step 6: Store inference data (for production and testing environments)
-        if request.environment in ["production", "testing"]:
+        if request.environment in [
+            PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+            TEST_DEPLOYMENT_ENVIRONMENT,
+        ]:
             try:
                 self._store_production_inference_data(
                     request=request,
@@ -1715,7 +1722,11 @@ class LLMOrchestrationService:
                 )
                 try:
                     # Use synchronous fetch to avoid event loop issues
-                    production_id = budget_tracker.fetch_production_connection_id_sync()
+                    production_id = (
+                        budget_tracker.connection_fetcher.fetch_connection_id_sync(
+                            "production"
+                        )
+                    )
                     if production_id:
                         connection_id = str(production_id)
                         logger.info(f"Using production connection_id: {connection_id}")
@@ -2312,7 +2323,7 @@ class LLMOrchestrationService:
             raise
 
     def get_available_embedding_models_for_indexer(
-        self, environment: str = "production"
+        self, environment: str = PRODUCTION_DEPLOYMENT_ENVIRONMENT
     ) -> Dict[str, Any]:
         """Get available embedding models for vector indexer.
 
