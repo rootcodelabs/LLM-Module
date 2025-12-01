@@ -23,6 +23,7 @@ from models.request_models import (
 from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.response_generator.response_generate import stream_response_native
+from src.vector_indexer.constants import ResponseGenerationConstants
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     OUT_OF_SCOPE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGE,
@@ -343,7 +344,7 @@ class LLMOrchestrationService:
                 ].check_scope_quick(
                     question=refined_output.original_question,
                     chunks=relevant_chunks,
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
                 timing_dict["scope_check"] = time.time() - start_time
 
@@ -382,7 +383,7 @@ class LLMOrchestrationService:
                         agent=components["response_generator"],
                         question=refined_output.original_question,
                         chunks=relevant_chunks,
-                        max_blocks=10,
+                        max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                     ):
                         yield token
 
@@ -1619,13 +1620,17 @@ class LLMOrchestrationService:
             relevant_chunks: List of retrieved chunks with metadata
 
         Returns:
-            List of ChunkInfo objects with rank and content, or None if no chunks
+            List of ChunkInfo objects with rank and content (limited to top 5), or None if no chunks
         """
         if not relevant_chunks:
             return None
 
+        # Limit to top-k chunks that are actually used in response generation
+        max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+        limited_chunks = relevant_chunks[:max_blocks]
+
         formatted_chunks = []
-        for rank, chunk in enumerate(relevant_chunks, start=1):
+        for rank, chunk in enumerate(limited_chunks, start=1):
             # Extract text content - prefer "text" key, fallback to "content"
             chunk_text = chunk.get("text", chunk.get("content", ""))
             if isinstance(chunk_text, str) and chunk_text.strip():
@@ -1682,7 +1687,7 @@ class LLMOrchestrationService:
                 generator_result = response_generator.forward(
                     question=refined_output.original_question,
                     chunks=relevant_chunks or [],
-                    max_blocks=10,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
                 )
 
             answer = (generator_result.get("answer") or "").strip()
