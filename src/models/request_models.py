@@ -129,6 +129,14 @@ class OrchestrationRequest(BaseModel):
         return self
 
 
+class DocumentReference(BaseModel):
+    """Model for document reference with URL."""
+
+    document_url: str = Field(..., description="Source document URL")
+    chunk_rank: int = Field(..., description="Rank of chunk in retrieval (1-based)")
+    relevance_score: float = Field(..., description="Relevance score (0-1)")
+
+
 class OrchestrationResponse(BaseModel):
     """Model for LLM orchestration response."""
 
