@@ -1,6 +1,6 @@
 # BYK-RAG (Retrieval-Augmented Generation Module)
 
-The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide **retrieval-augmented generation (RAG)** capabilities for Estonian government digital services. It ensures reliable, multilingual, and compliant AI-powered responses by integrating with multiple LLM providers, syncing with knowledge bases, and exposing flexible configuration and monitoring features for administrators.
+The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide **retrieval-augmented generation (RAG)** capabilities for Estonian government digital services. It ensures reliable, multilingual, and compliant AI-powered responses by integrating with multiple LLM providers syncing with knowledge bases, and exposing flexible configuration and monitoring features for administrators.
 
 ---
 
