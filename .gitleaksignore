@@ -1,0 +1,9 @@
+# Docker Compose test environment variables
+# These use ${VARIABLE} substitution from GitHub Actions secrets, not hardcoded values
+docker-compose-test.yml:NEXTAUTH_SECRET
+docker-compose-test.yml:SALT
+docker-compose-test.yml:ENCRYPTION_KEY
+
+# Integration test files with test API keys
+# These are test-only placeholder values, not real credentials
+tests/integration_tests/test_llm_connections.py
