@@ -24,3 +24,19 @@ The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide *
   - External **Langfuse dashboard** for API usage, inference trends, cost analysis, and performance logs.  
   - Agencies can configure cost alerts and view alerts via LLM Alerts UI.  
   - Logs integrated with **Grafana Loki**.  
+
+### Storing Langfuse Secrets
+
+1. **Generate API keys from Langfuse UI** (Settings → Project → API Keys)
+
+2. **Copy the script to vault container:**
+```bash
+docker cp store-langfuse-secrets.sh vault:/tmp/store-langfuse-secrets.sh
+```
+
+3. **Execute the script with your API keys:**
+```bash
+docker exec -e LANGFUSE_INIT_PROJECT_PUBLIC_KEY=<your public key> \
+            -e LANGFUSE_INIT_PROJECT_SECRET_KEY=<your secret key> \
+            vault sh -c "chmod +x /tmp/store-langfuse-secrets.sh && /tmp/store-langfuse-secrets.sh"
+```
