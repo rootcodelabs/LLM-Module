@@ -108,13 +108,6 @@ class RAGStackTestContainers:
         # (Ruuter loads DSL on startup, so guards must be removed before that)
         self._remove_ruuter_guard_files()
 
-        # Create Ruuter health endpoint for tests
-        self._create_ruuter_health_endpoint()
-
-        # Remove .guard files BEFORE starting containers
-        # (Ruuter loads DSL on startup, so guards must be removed before that)
-        self._remove_ruuter_guard_files()
-
         # Start all Docker Compose services
         logger.info("Starting Docker Compose services...")
         self.compose = DockerCompose(
@@ -169,9 +162,6 @@ class RAGStackTestContainers:
         # Run database migration
         self._run_database_migration()
 
-        # Run database migration
-        self._run_database_migration()
-
         logger.info("RAG Stack testcontainers ready")
 
     def stop(self) -> None:
@@ -180,9 +170,6 @@ class RAGStackTestContainers:
             logger.info("Stopping RAG Stack testcontainers...")
             self.compose.stop()
             logger.info("Testcontainers stopped")
-
-        # Clean up test files
-        self._remove_ruuter_health_endpoint()
 
         # Clean up test files
         self._remove_ruuter_health_endpoint()
@@ -207,8 +194,8 @@ class RAGStackTestContainers:
                 if status.get("initialized", False) and not status.get("sealed", True):
                     logger.info("Vault is available and unsealed")
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Vault not ready yet: {e}")
             time.sleep(2)
 
         raise TimeoutError("Vault did not become available within 60s")
@@ -422,42 +409,6 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         except Exception as e:
             logger.error(f"Failed to verify secrets: {e}")
             raise
-
-        # add the same secret configs to the 'testing' environment for test purposes
-        # connection_id is 1 (must match the database connection ID created by ensure_testing_connection)
-        llm_secret = {
-            "connection_id": 1,
-            "endpoint": azure_endpoint,
-            "api_key": azure_api_key,
-            "deployment_name": azure_deployment or "gpt-4o-mini",
-            "environment": "test",
-            "model": "gpt-4o-mini",
-            "model_type": "chat",
-            "api_version": "2024-02-15-preview",
-            "tags": "azure,test,chat",
-        }
-        client.secrets.kv.v2.create_or_update_secret(
-            mount_point="secret",
-            path="llm/connections/azure_openai/test/1",
-            secret=llm_secret,
-        )
-
-        embedding_secret = {
-            "connection_id": 1,
-            "endpoint": azure_embedding_endpoint,
-            "api_key": azure_api_key,
-            "deployment_name": azure_embedding_deployment,
-            "environment": "test",
-            "model": "text-embedding-3-large",
-            "api_version": "2024-12-01-preview",
-            "tags": "azure,test,text-embedding-3-large",
-        }
-        # Write to embeddings path with connection_id in the path
-        client.secrets.kv.v2.create_or_update_secret(
-            mount_point="secret",
-            path="embeddings/connections/azure_openai/test/1",
-            secret=embedding_secret,
-        )
 
         # add the same secret configs to the 'testing' environment for test purposes
         # connection_id is 1 (must match the database connection ID created by ensure_testing_connection)
@@ -792,10 +743,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         logger.info(f"Waiting for {name}...")
         start = time.time()
         attempt = 0
-        attempt = 0
         while time.time() - start < timeout:
-            attempt += 1
-            elapsed = time.time() - start
             attempt += 1
             elapsed = time.time() - start
             try:
@@ -804,13 +752,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
                 logger.debug(
                     f"{name} - Attempt {attempt} ({elapsed:.1f}s) - Checking {host}:{mapped_port}"
                 )
-                logger.debug(
-                    f"{name} - Attempt {attempt} ({elapsed:.1f}s) - Checking {host}:{mapped_port}"
-                )
                 if check(host, mapped_port):
-                    logger.info(
-                        f"{name} ready at {host}:{mapped_port} (took {elapsed:.1f}s, {attempt} attempts)"
-                    )
                     logger.info(
                         f"{name} ready at {host}:{mapped_port} (took {elapsed:.1f}s, {attempt} attempts)"
                     )
@@ -822,14 +764,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
                     return
             except Exception as e:
                 logger.debug(f"{name} - Attempt {attempt} failed: {e}")
-            except Exception as e:
-                logger.debug(f"{name} - Attempt {attempt} failed: {e}")
             time.sleep(3)
-
-        elapsed_total = time.time() - start
-        raise TimeoutError(
-            f"Timeout waiting for {name} after {elapsed_total:.1f}s ({attempt} attempts)"
-        )
 
         elapsed_total = time.time() - start
         raise TimeoutError(
@@ -1122,7 +1057,6 @@ def test_bucket(minio_client: Minio):
                 }
             ],
         }
-        import json
 
         minio_client.set_bucket_policy(bucket_name, json.dumps(policy))
 
@@ -1134,8 +1068,10 @@ def test_bucket(minio_client: Minio):
         for obj in objects:
             minio_client.remove_object(bucket_name, obj.object_name)
         minio_client.remove_bucket(bucket_name)
-    except Exception:
-        pass  # Ignore cleanup errors
+    except Exception as e:
+        # Ignore cleanup errors - bucket may not exist or objects already deleted
+        # This is acceptable in test teardown as it doesn't affect test results
+        logger.debug(f"MinIO cleanup failed for bucket {bucket_name}: {e}")
 
 
 @pytest.fixture

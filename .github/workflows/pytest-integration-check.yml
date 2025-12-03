@@ -2,7 +2,7 @@ name: RAG Module Integration Tests
 
 on:
   pull_request:
-    branches: [wip]
+    branches: [beta-test]
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
@@ -115,7 +115,7 @@ jobs:
             
             const existingComment = comments.data.find(
               comment => comment.user.login === 'github-actions[bot]' &&
-                comment.body.includes('Pytest Integration Tests: Missing Required Secrets')
+                comment.body.includes('RAG Module Integration Tests: Missing Required Secrets')
             );
             
             if (existingComment) {
