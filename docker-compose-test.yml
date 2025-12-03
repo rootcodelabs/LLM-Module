@@ -17,7 +17,7 @@ services:
     networks:
       - test-network
   
-  # Ruuter Private - API gateway for private endpoints
+  # Ruuter Private - API gateway for private endpoint
   ruuter-private:
     container_name: ruuter-private
     image: ghcr.io/buerokratt/ruuter:v2.2.8
