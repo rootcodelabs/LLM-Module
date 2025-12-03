@@ -2,7 +2,7 @@ name: RAG Module Integration Tests
 
 on:
   pull_request:
-    branches: [wip]
+    branches: [beta-test]
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
@@ -46,10 +46,6 @@ jobs:
           
           if [ -z "${{ secrets.AZURE_OPENAI_EMBEDDING_ENDPOINT }}" ]; then
             MISSING_SECRETS+=("AZURE_OPENAI_EMBEDDING_ENDPOINT")
-          fi
-          
-          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
-            MISSING_SECRETS+=("OPENAI_API_KEY")
           fi
 
           if [ -z "${{ secrets.SALT }}" ]; then
@@ -101,8 +97,6 @@ jobs:
             - \`AZURE_OPENAI_DEPLOYMENT_NAME\` - Chat model deployment name (e.g., \`gpt-4o-mini\`)
             - \`AZURE_OPENAI_EMBEDDING_DEPLOYMENT\` - Embedding model deployment name (e.g., \`text-embedding-3-large\`)
             
-            **Additional LLM APIs:**
-            - \`OPENAI_API_KEY\` - OpenAI API key (optional fallback)
             
             3. Re-run the workflow after adding the secrets
             
@@ -179,8 +173,6 @@ jobs:
         if: success()
         id: run_tests
         env:
-          # LLM API Keys
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Azure OpenAI - Chat Model
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
