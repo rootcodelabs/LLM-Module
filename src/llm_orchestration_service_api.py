@@ -777,7 +777,6 @@ def orchestrate_llm_request_eval(
             inputGuardFailed=response.inputGuardFailed,
             content=response.content,
             retrieval_context=response.retrieval_context,
-            refined_questions=response.refined_questions,
             expected_output=None,  # Will be populated by test framework
         )
 
