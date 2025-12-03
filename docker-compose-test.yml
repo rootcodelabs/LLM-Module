@@ -235,8 +235,8 @@ services:
       # Auth & Security (TEST VALUES ONLY - NOT FOR PRODUCTION)
       # gitleaks:allow - These are test-only hex strings
       NEXTAUTH_URL: http://localhost:3000
-      SALT: ef9d6c6f8b4a5e2c1d3f7a9b8c5e4d2a1f6b8c9d4e5f7a8b1c2d3e4f5a6b7c8d...TESTONLY
-      ENCRYPTION_KEY: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b...TESTONLY
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       
       # Features
       TELEMETRY_ENABLED: "false"
@@ -290,9 +290,9 @@ services:
       # Auth & Security (TEST VALUES ONLY - NOT FOR PRODUCTION)
       # gitleaks:allow - These are test-only hex strings
       NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: 9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e...TESTONLY
-      SALT: ef9d6c6f8b4a5e2c1d3f7a9b8c5e4d2a1f6b8c9d4e5f7a8b1c2d3e4f5a6b7c8d...TESTONLY
-      ENCRYPTION_KEY: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b...TESTONLY
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       
       # Features
       TELEMETRY_ENABLED: "false"

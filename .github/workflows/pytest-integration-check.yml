@@ -51,6 +51,19 @@ jobs:
           if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
             MISSING_SECRETS+=("OPENAI_API_KEY")
           fi
+
+          if [ -z "${{ secrets.SALT }}" ]; then
+            MISSING_SECRETS+=("SALT")
+          fi
+
+          if [ -z "${{ secrets.ENCRYPTION_KEY }}" ]; then
+            MISSING_SECRETS+=("ENCRYPTION_KEY")
+          fi
+
+          if [ -z "${{ secrets.NEXTAUTH_SECRET }}" ]; then
+            MISSING_SECRETS+=("NEXTAUTH_SECRET")
+          fi
+
           
           # If any secrets are missing, fail
           if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
