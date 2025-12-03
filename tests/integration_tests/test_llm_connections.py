@@ -12,8 +12,6 @@ These tests verify:
 import requests
 import time
 from loguru import logger
-import os
-
 
 
 class TestLLMConnectionsRuuter:
@@ -38,12 +36,12 @@ class TestLLMConnectionsRuuter:
             "llm_model": "gpt-4o-mini",
             "deployment_name": "gpt-4o-mini-deployment-ruuter",
             "target_uri": "https://test-ruuter.openai.azure.com/",
-            "api_key": os.getenv("TEST_AZURE_API_KEY"),
+            "api_key": "test-api-key-ruuter-12345",
             "embedding_platform": "azure",
             "embedding_model": "text-embedding-3-large",
             "embedding_deployment_name": "text-embedding-deployment-ruuter",
             "embedding_target_uri": "https://test-ruuter.openai.azure.com/",
-            "embedding_azure_api_key": os.getenv("TEST_EMBEDDING_API_KEY"),
+            "embedding_azure_api_key": "test-embedding-api-key-ruuter-67890",
             "monthly_budget": 1000.00,
             "warn_budget_threshold": 80,
             "stop_budget_threshold": 95,
@@ -135,12 +133,12 @@ class TestLLMConnectionsRuuter:
             "llm_model": "gpt-4o",
             "deployment_name": "gpt-4o-production-deployment-ruuter",
             "target_uri": "https://production-ruuter.openai.azure.com/",
-            "api_key": os.getenv("PROD_API_KEY"),
+            "api_key": "prod-api-key-ruuter-12345",
             "embedding_platform": "azure",
             "embedding_model": "text-embedding-3-large",
             "embedding_deployment_name": "text-embedding-prod-deployment-ruuter",
             "embedding_target_uri": "https://production-ruuter.openai.azure.com/",
-            "embedding_azure_api_key": os.getenv("PROD_EMBEDDING_API_KEY"),
+            "embedding_azure_api_key": "prod-embedding-api-key-ruuter-67890",
             "monthly_budget": 5000.00,
             "warn_budget_threshold": 75,
             "stop_budget_threshold": 90,
