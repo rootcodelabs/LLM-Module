@@ -284,9 +284,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         # ============================================================
         # CRITICAL DEBUG SECTION - Environment Variables
         # ============================================================
-        logger.info("=" * 80)
         logger.info("VAULT SECRET BOOTSTRAP - ENVIRONMENT VARIABLES DEBUG")
-        logger.info("=" * 80)
 
         azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
@@ -330,9 +328,9 @@ path "auth/token/renew-self" { capabilities = ["update"] }
             "tags": "azure,test,chat",
         }
 
-        logger.info(f"  → chat deployment: {llm_secret['deployment_name']}")
-        logger.info(f"  → endpoint: {llm_secret['endpoint']}")
-        logger.info(f"  → connection_id: {llm_secret['connection_id']}")
+        logger.info(f"  chat deployment: {llm_secret['deployment_name']}")
+        logger.info(f"  endpoint: {llm_secret['endpoint']}")
+        logger.info(f"  connection_id: {llm_secret['connection_id']}")
 
         client.secrets.kv.v2.create_or_update_secret(
             mount_point="secret",
@@ -388,7 +386,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
             )
             llm_data = verify_llm["data"]["data"]
             logger.info("LLM path verified:")
-            logger.info(f"    • connection_id: {llm_data.get('connection_id')}")
+            logger.info(f"    connection_id: {llm_data.get('connection_id')}")
 
             # Verify embeddings path
             verify_embedding = client.secrets.kv.v2.read_secret_version(
@@ -397,8 +395,8 @@ path "auth/token/renew-self" { capabilities = ["update"] }
             )
             embedding_data = verify_embedding["data"]["data"]
             logger.info("Embeddings path verified:")
-            logger.info(f"    • model: {embedding_data.get('model')}")
-            logger.info(f"    • connection_id: {embedding_data.get('connection_id')}")
+            logger.info(f"    model: {embedding_data.get('model')}")
+            logger.info(f"    connection_id: {embedding_data.get('connection_id')}")
 
             # Critical validation
             if embedding_data.get("deployment_name") != azure_embedding_deployment:
@@ -515,25 +513,8 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         # ============================================================
         # GUARDRAILS CONFIGURATION
         # ============================================================
-        logger.info("")
-        # logger.info("Writing Guardrails configuration secret...")
-        # guardrails_secret = {
-        #    "connection_id": "guardrails-test-1",
-        #    "api_key": os.getenv("ANTHROPIC_API_KEY", "TEST_ANTHROPIC_KEY"),
-        #    "model": "claude-3-5-sonnet-20241022",
-        #    "environment": "development",
-        #    "tags": "anthropic,guardrails,test",
-        # }
-        # client.secrets.kv.v2.create_or_update_secret(
-        #    mount_point="secret",
-        #    path="guardrails/anthropic/test/claude-3-5-sonnet",
-        #    secret=guardrails_secret,
-        # )
-        # logger.info("Guardrails configuration secret written")
 
-        logger.info("=" * 80)
         logger.info("ALL SECRETS WRITTEN SUCCESSFULLY")
-        logger.info("=" * 80)
 
     def _run_database_migration(self) -> None:
         """Run Liquibase database migration using migrate.sh script."""
@@ -1571,7 +1552,4 @@ def capture_container_logs_on_exit(rag_stack):
         except Exception as e:
             logger.warning(f"Failed to capture logs from {container_name}: {e}")
 
-    logger.info("")
-    logger.info("=" * 80)
     logger.info("LOG CAPTURE COMPLETE")
-    logger.info("=" * 80)
