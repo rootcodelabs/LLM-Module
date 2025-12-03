@@ -990,7 +990,6 @@ def rag_stack() -> Generator[RAGStackTestContainers, None, None]:
             stack._capture_service_logs()
         except Exception as e:
             logger.error(f"Could not capture logs after startup failure: {e}")
-            pass
         raise
     finally:
         logger.info("=" * 80)

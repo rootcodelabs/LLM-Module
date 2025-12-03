@@ -128,7 +128,9 @@ class TestIndexingPipeline:
                     if health_data.get("orchestration_service") == "initialized":
                         break
             except requests.exceptions.RequestException:
-                pass
+                logger.debug(
+                    f"LLM orchestration health check attempt {i+1}/{max_retries} failed"
+                )
             time.sleep(2)
         else:
             pytest.fail("LLM orchestration service not healthy after 60 seconds")
