@@ -1,5 +1,5 @@
 """LLM Orchestration Service API - FastAPI application."""
-
+import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
 
