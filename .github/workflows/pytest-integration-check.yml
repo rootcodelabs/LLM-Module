@@ -188,6 +188,9 @@ jobs:
           # Azure OpenAI - Embedding Model
           AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
           AZURE_OPENAI_EMBEDDING_ENDPOINT: ${{ secrets.AZURE_OPENAI_EMBEDDING_ENDPOINT }}
+          SALT: ${{ secrets.SALT }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
         run: |
           # Run tests with testcontainers managing Docker Compose
           uv run python -m pytest tests/integration_tests/ -v --tb=short --log-cli-level=INFO
