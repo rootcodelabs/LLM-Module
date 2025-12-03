@@ -604,6 +604,8 @@ volumes:
     name: vault-agent-creds
   vault-agent-token:
     name: vault-agent-token
+  opensearch-data:
+    name: opensearch-data
 
 networks:
   bykstack:
