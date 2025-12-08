@@ -16,7 +16,7 @@ async function createLLMOrchestrationStreamRequest({ channelId, message, options
   console.log(`Active connections for channel ${channelId}:`, connections.length);
 
   if (connections.length === 0) {
-    const requestId = streamQueue.addToQueue(channelId, { message, options });
+    streamQueue.addToQueue(channelId, { message, options });
     
     if (streamQueue.shouldRetry({ retryCount: 0 })) {
       throw new Error("No active connections found for this channel - request queued");

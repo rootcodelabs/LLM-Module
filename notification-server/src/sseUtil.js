@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const streamQueue = require("./streamQueue");
-const { createLLMOrchestrationStreamRequest } = require("./openSearch");
+const { createLLMOrchestrationStreamRequest } = require("./streamingService");
 const { activeConnections } = require("./connectionManager");
 
 function buildSSEResponse({ res, req, buildCallbackFunction, channelId }) {
