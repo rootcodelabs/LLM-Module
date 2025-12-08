@@ -6,7 +6,10 @@ from typing import Optional, Dict, Any, Union, List
 from pydantic import BaseModel
 from loguru import logger
 
-from llm_orchestrator_config.vault.vault_client import VaultAgentClient
+from llm_orchestrator_config.vault.vault_client import (
+    VaultAgentClient,
+    get_vault_client,
+)
 from llm_orchestrator_config.vault.models import (
     AzureOpenAISecret,
     AWSBedrockSecret,
@@ -39,7 +42,7 @@ class SecretResolver:
             cache_ttl_minutes: Cache TTL in minutes
             background_refresh: Enable background refresh of expired secrets
         """
-        self.vault_client = vault_client or VaultAgentClient()
+        self.vault_client = vault_client or get_vault_client()
         self.cache_ttl = timedelta(minutes=cache_ttl_minutes)
         self.background_refresh = background_refresh
 

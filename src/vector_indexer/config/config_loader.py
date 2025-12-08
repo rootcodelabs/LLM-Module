@@ -112,7 +112,7 @@ class VectorIndexerConfig(BaseModel):
     # Dataset Configuration
     dataset_base_path: str = "datasets"
     target_file: str = "cleaned.txt"
-    metadata_file: str = "source.meta.json"
+    metadata_file: str = "cleaned.meta.json"
 
     # Enhanced Configuration Models
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
@@ -274,7 +274,7 @@ class ConfigLoader:
             "target_file", "cleaned.txt"
         )
         flattened_config["metadata_file"] = dataset_config.get(
-            "metadata_file", "source.meta.json"
+            "metadata_file", "cleaned.meta.json"
         )
 
         try:

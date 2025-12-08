@@ -59,9 +59,16 @@ get_model_name() {
 build_vault_path() {
     local secret_type=$1  # "llm" or "embeddings"
     local platform=$(get_platform_name)
-    local model=$(get_model_name)
     
-    if [ "$deploymentEnvironment" = "test" ]; then
+    # Use appropriate model based on secret type
+    local model
+    if [ "$secret_type" = "embeddings" ]; then
+        model="$embeddingModel"
+    else
+        model=$(get_model_name)
+    fi
+    
+    if [ "$deploymentEnvironment" = "testing" ]; then
         echo "secret/$secret_type/connections/$platform/$deploymentEnvironment/$connectionId"
     else
         echo "secret/$secret_type/connections/$platform/$deploymentEnvironment/$model"

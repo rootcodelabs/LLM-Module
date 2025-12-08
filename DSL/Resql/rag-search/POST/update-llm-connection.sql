@@ -25,19 +25,19 @@ SET
     embedding_target_uri = :embedding_target_uri,
     embedding_azure_api_key = :embedding_azure_api_key
 WHERE id = :connection_id
-RETURNING 
-    id, 
+RETURNING
+    id,
     connection_name,
-    llm_platform, 
-    llm_model, 
-    embedding_platform, 
-    embedding_model, 
-    monthly_budget, 
+    llm_platform,
+    llm_model,
+    embedding_platform,
+    embedding_model,
+    monthly_budget,
     warn_budget_threshold,
     stop_budget_threshold,
     disconnect_on_budget_exceed,
-    environment, 
-    connection_status, 
+    environment,
+    connection_status,
     created_at,
     deployment_name,
     target_uri,

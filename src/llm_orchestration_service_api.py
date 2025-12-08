@@ -4,10 +4,32 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from loguru import logger
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
+from src.llm_orchestrator_config.llm_ochestrator_constants import (
+    STREAMING_ALLOWED_ENVS,
+    STREAM_TIMEOUT_MESSAGE,
+    RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE,
+    RATE_LIMIT_TOKENS_EXCEEDED_MESSAGE,
+    VALIDATION_MESSAGE_TOO_SHORT,
+    VALIDATION_MESSAGE_TOO_LONG,
+    VALIDATION_MESSAGE_INVALID_FORMAT,
+    VALIDATION_MESSAGE_GENERIC,
+    VALIDATION_CONVERSATION_HISTORY_ERROR,
+    VALIDATION_REQUEST_TOO_LARGE,
+    VALIDATION_REQUIRED_FIELDS_MISSING,
+    VALIDATION_GENERIC_ERROR,
+)
+from src.llm_orchestrator_config.stream_config import StreamConfig
+from src.llm_orchestrator_config.exceptions import StreamTimeoutException
+from src.utils.stream_timeout import stream_timeout
+from src.utils.error_utils import generate_error_id, log_error_with_context
+from src.utils.rate_limiter import RateLimiter
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
@@ -29,6 +51,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         app.state.orchestration_service = LLMOrchestrationService()
         logger.info("LLM Orchestration Service initialized successfully")
+
+        # Initialize rate limiter if enabled
+        if StreamConfig.RATE_LIMIT_ENABLED:
+            app.state.rate_limiter = RateLimiter(
+                requests_per_minute=StreamConfig.RATE_LIMIT_REQUESTS_PER_MINUTE,
+                tokens_per_second=StreamConfig.RATE_LIMIT_TOKENS_PER_SECOND,
+            )
+            logger.info("Rate limiter initialized successfully")
+        else:
+            app.state.rate_limiter = None
+            logger.info("Rate limiting disabled")
     except Exception as e:
         logger.error(f"Failed to initialize LLM Orchestration Service: {e}")
         raise
@@ -49,6 +82,123 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+# Custom exception handlers for user-friendly error messages
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors with user-friendly messages.
+
+    For streaming endpoints: Returns SSE format
+    For non-streaming endpoints: Returns JSON format
+    """
+    import json as json_module
+    from datetime import datetime
+
+    error_id = generate_error_id()
+
+    # Extract the first error for user-friendly message
+    from typing import Dict, Any
+
+    first_error: Dict[str, Any] = exc.errors()[0] if exc.errors() else {}
+    error_msg = str(first_error.get("msg", ""))
+    field_location: Any = first_error.get("loc", [])
+
+    # Log full technical details for debugging (internal only)
+    logger.error(
+        f"[{error_id}] Request validation failed at {field_location}: {error_msg} | "
+        f"Full errors: {exc.errors()}"
+    )
+
+    # Map technical errors to user-friendly messages
+    user_message = VALIDATION_GENERIC_ERROR
+
+    if "message" in field_location:
+        if "at least 3 characters" in error_msg.lower():
+            user_message = VALIDATION_MESSAGE_TOO_SHORT
+        elif "maximum length" in error_msg.lower() or "exceeds" in error_msg.lower():
+            user_message = VALIDATION_MESSAGE_TOO_LONG
+        elif "sanitization" in error_msg.lower():
+            user_message = VALIDATION_MESSAGE_INVALID_FORMAT
+        else:
+            user_message = VALIDATION_MESSAGE_GENERIC
+
+    elif "conversationhistory" in "".join(str(loc).lower() for loc in field_location):
+        user_message = VALIDATION_CONVERSATION_HISTORY_ERROR
+
+    elif "payload" in error_msg.lower() or "size" in error_msg.lower():
+        user_message = VALIDATION_REQUEST_TOO_LARGE
+
+    elif any(
+        field in field_location
+        for field in ["chatId", "authorId", "url", "environment"]
+    ):
+        user_message = VALIDATION_REQUIRED_FIELDS_MISSING
+
+    # Check if this is a streaming endpoint request
+    if request.url.path == "/orchestrate/stream":
+        # Extract chatId from request body if available
+        chat_id = "unknown"
+        try:
+            body = await request.body()
+            if body:
+                body_json = json_module.loads(body)
+                chat_id = body_json.get("chatId", "unknown")
+        except Exception:
+            # Silently fall back to "unknown" if body parsing fails
+            # This is a validation error handler, so body is already malformed
+            pass
+
+        # Return SSE format for streaming endpoint
+        async def validation_error_stream():
+            error_payload: Dict[str, Any] = {
+                "chatId": chat_id,
+                "payload": {"content": user_message},
+                "timestamp": str(int(datetime.now().timestamp() * 1000)),
+                "sentTo": [],
+            }
+            yield f"data: {json_module.dumps(error_payload)}\n\n"
+
+        return StreamingResponse(
+            validation_error_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Return JSON format for non-streaming endpoints
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": user_message,
+            "error_id": error_id,
+            "type": "validation_error",
+        },
+    )
+
+
+@app.exception_handler(ValidationError)
+async def pydantic_validation_exception_handler(
+    request: Request, exc: ValidationError
+) -> JSONResponse:
+    """Handle Pydantic ValidationError with user-friendly messages."""
+    error_id = generate_error_id()
+
+    # Log technical details internally
+    logger.error(f"[{error_id}] Pydantic validation error: {exc.errors()} | {str(exc)}")
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "I apologize, but I couldn't process your request due to invalid data format. Please check your input and try again.",
+            "error_id": error_id,
+            "type": "validation_error",
+        },
+    )
 
 
 @app.get("/health")
@@ -119,7 +269,10 @@ def orchestrate_llm_request(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error processing request: {str(e)}")
+        error_id = generate_error_id()
+        log_error_with_context(
+            logger, error_id, "orchestrate_endpoint", request.chatId, e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
@@ -179,7 +332,9 @@ def test_orchestrate_llm_request(
             conversationHistory=[],
             url="test-context",
             environment=request.environment,
-            connection_id=str(request.connectionId),
+            connection_id=str(request.connectionId)
+            if request.connectionId is not None
+            else None,
         )
 
         logger.info(f"This is full request constructed for testing: {full_request}")
@@ -187,12 +342,20 @@ def test_orchestrate_llm_request(
         # Process the request using the same logic
         response = orchestration_service.process_orchestration_request(full_request)
 
-        # Convert to TestOrchestrationResponse (exclude chatId)
+        # If response is already TestOrchestrationResponse (when environment is testing), return it directly
+        if isinstance(response, TestOrchestrationResponse):
+            logger.info(
+                f"Successfully processed test request for environment: {request.environment}"
+            )
+            return response
+
+        # Convert to TestOrchestrationResponse (exclude chatId) for other cases
         test_response = TestOrchestrationResponse(
             llmServiceActive=response.llmServiceActive,
             questionOutOfLLMScope=response.questionOutOfLLMScope,
             inputGuardFailed=response.inputGuardFailed,
             content=response.content,
+            chunks=None,  # OrchestrationResponse doesn't have chunks
         )
 
         logger.info(
@@ -203,10 +366,247 @@ def test_orchestrate_llm_request(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error processing test request: {str(e)}")
+        error_id = generate_error_id()
+        log_error_with_context(
+            logger, error_id, "test_orchestrate_endpoint", "test-session", e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
+        )
+
+
+@app.post(
+    "/orchestrate/stream",
+    status_code=status.HTTP_200_OK,
+    summary="Stream LLM orchestration response with validation-first guardrails",
+    description="Streams LLM response with NeMo Guardrails validation-first approach",
+)
+async def stream_orchestrated_response(
+    http_request: Request,
+    request: OrchestrationRequest,
+):
+    """
+    Stream LLM orchestration response with validation-first guardrails.
+
+    Flow:
+    1. Validate input with guardrails (blocking)
+    2. Refine prompt (blocking)
+    3. Retrieve context chunks (blocking)
+    4. Check if question is in scope (blocking)
+    5. Stream through NeMo Guardrails (validation-first)
+       - Tokens buffered (chunk_size=200)
+       - Each buffer validated before streaming
+       - Only validated tokens reach client
+
+    Request Body:
+        Same as /orchestrate endpoint - OrchestrationRequest
+
+    Response:
+        Server-Sent Events (SSE) stream with format:
+        data: {"chatId": "...", "payload": {"content": "..."}, "timestamp": "...", "sentTo": []}
+
+    Content Types:
+        - Regular token: "Token1", "Token2", "Token3", ...
+        - Stream complete: "END"
+        - Input blocked: Fixed message from constants
+        - Out of scope: Fixed message from constants
+        - Guardrail failed: Fixed message from constants
+        - Validation error: User-friendly validation message
+        - Technical error: Fixed message from constants
+
+    Notes:
+        - Available for configured environments (see STREAMING_ALLOWED_ENVS)
+        - All responses use SSE format for consistency
+        - Streaming uses validation-first approach (stream_first=False)
+        - All tokens are validated before being sent to client
+    """
+
+    import json as json_module
+    from datetime import datetime
+
+    def create_sse_error_stream(chat_id: str, error_message: str):
+        """Create SSE format error response."""
+        from typing import Dict, Any
+
+        error_payload: Dict[str, Any] = {
+            "chatId": chat_id,
+            "payload": {"content": error_message},
+            "timestamp": str(int(datetime.now().timestamp() * 1000)),
+            "sentTo": [],
+        }
+        return f"data: {json_module.dumps(error_payload)}\n\n"
+
+    try:
+        logger.info(
+            f"Streaming request received - "
+            f"chatId: {request.chatId}, "
+            f"environment: {request.environment}, "
+            f"message: {request.message[:100]}..."
+        )
+
+        # Streaming is only for allowed environments
+        if request.environment not in STREAMING_ALLOWED_ENVS:
+            error_msg = f"Streaming is only available for production environment. Current environment: {request.environment}. Please use /orchestrate endpoint for non-streaming environments."
+            logger.warning(error_msg)
+
+            async def env_error_stream():
+                yield create_sse_error_stream(request.chatId, error_msg)
+
+            return StreamingResponse(
+                env_error_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        # Get the orchestration service from app state
+        if not hasattr(http_request.app.state, "orchestration_service"):
+            error_msg = "I apologize, but the service is not available at the moment. Please try again later."
+            logger.error("Orchestration service not found in app state")
+
+            async def service_error_stream():
+                yield create_sse_error_stream(request.chatId, error_msg)
+
+            return StreamingResponse(
+                service_error_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        orchestration_service = http_request.app.state.orchestration_service
+        if orchestration_service is None:
+            error_msg = "I apologize, but the service is not available at the moment. Please try again later."
+            logger.error("Orchestration service is None")
+
+            async def service_none_stream():
+                yield create_sse_error_stream(request.chatId, error_msg)
+
+            return StreamingResponse(
+                service_none_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        # Check rate limits if enabled
+        if StreamConfig.RATE_LIMIT_ENABLED and hasattr(
+            http_request.app.state, "rate_limiter"
+        ):
+            rate_limiter = http_request.app.state.rate_limiter
+
+            # Estimate tokens for this request (message + history)
+            estimated_tokens = len(request.message) // 4  # 4 chars = 1 token
+            for item in request.conversationHistory:
+                estimated_tokens += len(item.message) // 4
+
+            # Check rate limit
+            rate_limit_result = rate_limiter.check_rate_limit(
+                author_id=request.authorId,
+                estimated_tokens=estimated_tokens,
+            )
+
+            if not rate_limit_result.allowed:
+                # Determine appropriate error message
+                if rate_limit_result.limit_type == "requests":
+                    error_msg = RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE
+                else:
+                    error_msg = RATE_LIMIT_TOKENS_EXCEEDED_MESSAGE
+
+                logger.warning(
+                    f"Rate limit exceeded for {request.authorId} - "
+                    f"type: {rate_limit_result.limit_type}, "
+                    f"usage: {rate_limit_result.current_usage}/{rate_limit_result.limit}, "
+                    f"retry_after: {rate_limit_result.retry_after}s"
+                )
+
+                # Return SSE format with rate limit error
+                async def rate_limit_error_stream():
+                    yield create_sse_error_stream(request.chatId, error_msg)
+
+                return StreamingResponse(
+                    rate_limit_error_stream(),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                        "Retry-After": str(rate_limit_result.retry_after),
+                    },
+                    status_code=429,
+                )
+
+        # Wrap streaming response with timeout
+        async def timeout_wrapped_stream():
+            """Generator wrapper with timeout enforcement."""
+            try:
+                async with stream_timeout(StreamConfig.MAX_STREAM_DURATION_SECONDS):
+                    async for (
+                        chunk
+                    ) in orchestration_service.stream_orchestration_response(request):
+                        yield chunk
+            except StreamTimeoutException as timeout_exc:
+                # StreamTimeoutException already has error_id
+                log_error_with_context(
+                    logger,
+                    timeout_exc.error_id,
+                    "streaming_timeout",
+                    request.chatId,
+                    timeout_exc,
+                )
+                # Send timeout message to client
+                yield create_sse_error_stream(request.chatId, STREAM_TIMEOUT_MESSAGE)
+            except Exception as stream_error:
+                error_id = generate_error_id()
+                log_error_with_context(
+                    logger, error_id, "streaming_error", request.chatId, stream_error
+                )
+                # Send generic error message to client
+                yield create_sse_error_stream(
+                    request.chatId,
+                    "I apologize, but I encountered an issue while generating your response. Please try again.",
+                )
+
+        # Stream the response
+        return StreamingResponse(
+            timeout_wrapped_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    except Exception as e:
+        # Catch any unexpected errors and return SSE format
+        error_id = generate_error_id()
+        logger.error(f"[{error_id}] Unexpected error in streaming endpoint: {str(e)}")
+
+        async def unexpected_error_stream():
+            yield create_sse_error_stream(
+                request.chatId if hasattr(request, "chatId") else "unknown",
+                "I apologize, but I encountered an unexpected issue. Please try again.",
+            )
+
+        return StreamingResponse(
+            unexpected_error_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
 
@@ -243,12 +643,19 @@ async def create_embeddings(request: EmbeddingRequest) -> EmbeddingResponse:
         return EmbeddingResponse(**result)
 
     except Exception as e:
-        logger.error(f"Embedding creation failed: {e}")
+        error_id = generate_error_id()
+        log_error_with_context(
+            logger,
+            error_id,
+            "embeddings_endpoint",
+            None,
+            e,
+            {"num_texts": len(request.texts), "environment": request.environment},
+        )
         raise HTTPException(
             status_code=500,
             detail={
-                "error": str(e),
-                "failed_texts": request.texts[:5],  # Don't log all texts for privacy
+                "error": "Embedding creation failed",
                 "retry_after": 30,
             },
         )
@@ -270,8 +677,9 @@ async def generate_context_with_caching(
         return ContextGenerationResponse(**result)
 
     except Exception as e:
-        logger.error(f"Context generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_id = generate_error_id()
+        log_error_with_context(logger, error_id, "context_generation_endpoint", None, e)
+        raise HTTPException(status_code=500, detail="Context generation failed")
 
 
 @app.get("/embedding-models")
@@ -296,8 +704,18 @@ async def get_available_embedding_models(
         return result
 
     except Exception as e:
-        logger.error(f"Failed to get embedding models: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_id = generate_error_id()
+        log_error_with_context(
+            logger,
+            error_id,
+            "embedding_models_endpoint",
+            None,
+            e,
+            {"environment": environment},
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve embedding models"
+        )
 
 
 if __name__ == "__main__":

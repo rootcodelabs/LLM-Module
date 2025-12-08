@@ -1,6 +1,7 @@
 """Vault Agent client using hvac library."""
 
 import os
+import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, cast
 from loguru import logger
@@ -11,6 +12,46 @@ from llm_orchestrator_config.vault.exceptions import (
     VaultSecretError,
     VaultTokenError,
 )
+
+# Global singleton instance
+_vault_client_instance: Optional["VaultAgentClient"] = None
+_vault_client_lock = threading.Lock()
+
+
+def get_vault_client(
+    vault_url: Optional[str] = None,
+    token_path: str = "/agent/out/token",
+    mount_point: str = "secret",
+    timeout: int = 10,
+) -> "VaultAgentClient":
+    """Get or create singleton VaultAgentClient instance.
+
+    This ensures only one Vault client is created per process,
+    avoiding redundant token loading and health checks (~35ms overhead per instantiation).
+
+    Args:
+        vault_url: Vault server URL (defaults to VAULT_ADDR env var)
+        token_path: Path to Vault Agent token file
+        mount_point: KV v2 mount point
+        timeout: Request timeout in seconds
+
+    Returns:
+        Singleton VaultAgentClient instance
+    """
+    global _vault_client_instance
+
+    if _vault_client_instance is None:
+        with _vault_client_lock:
+            if _vault_client_instance is None:
+                _vault_client_instance = VaultAgentClient(
+                    vault_url=vault_url,
+                    token_path=token_path,
+                    mount_point=mount_point,
+                    timeout=timeout,
+                )
+                logger.info("Created singleton VaultAgentClient instance")
+
+    return _vault_client_instance
 
 
 class VaultAgentClient:

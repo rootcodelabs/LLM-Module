@@ -29,3 +29,81 @@ class InvalidConfigurationError(LLMConfigError):
     """Raised when configuration validation fails."""
 
     pass
+
+
+class ContextualRetrievalError(LLMConfigError):
+    """Base exception for contextual retrieval errors."""
+
+    pass
+
+
+class ContextualRetrieverInitializationError(ContextualRetrievalError):
+    """Raised when contextual retriever fails to initialize."""
+
+    pass
+
+
+class ContextualRetrievalFailureError(ContextualRetrievalError):
+    """Raised when contextual chunk retrieval fails."""
+
+    pass
+
+
+class StreamTimeoutException(LLMConfigError):
+    """Raised when stream duration exceeds maximum allowed time."""
+
+    def __init__(self, message: str = "Stream timeout", error_id: str = None):
+        """
+        Initialize StreamTimeoutException with error tracking.
+
+        Args:
+            message: Human-readable error message
+            error_id: Optional error ID (auto-generated if not provided)
+        """
+        from src.utils.error_utils import generate_error_id
+
+        self.error_id = error_id or generate_error_id()
+        super().__init__(f"[{self.error_id}] {message}")
+
+
+class StreamSizeLimitException(LLMConfigError):
+    """Raised when stream size limits are exceeded."""
+
+    pass
+
+
+# Comprehensive error hierarchy for error boundaries
+class StreamException(LLMConfigError):
+    """Base exception for streaming operations with error tracking."""
+
+    def __init__(self, message: str, error_id: str = None):
+        """
+        Initialize StreamException with error tracking.
+
+        Args:
+            message: Human-readable error message
+            error_id: Optional error ID (auto-generated if not provided)
+        """
+        from src.utils.error_utils import generate_error_id
+
+        self.error_id = error_id or generate_error_id()
+        self.user_message = message
+        super().__init__(f"[{self.error_id}] {message}")
+
+
+class ValidationException(StreamException):
+    """Raised when input or request validation fails."""
+
+    pass
+
+
+class ServiceException(StreamException):
+    """Raised when external service calls fail (LLM, Qdrant, Vault, etc.)."""
+
+    pass
+
+
+class GuardrailException(StreamException):
+    """Raised when guardrails processing encounters errors."""
+
+    pass

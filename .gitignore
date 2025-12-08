@@ -9,3 +9,6 @@ datasets
 logs/
 data_sets
 vault/agent-out
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md

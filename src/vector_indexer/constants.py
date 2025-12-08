@@ -13,7 +13,7 @@ class DocumentConstants:
 
     # Default file names
     DEFAULT_TARGET_FILE = "cleaned.txt"
-    DEFAULT_METADATA_FILE = "source.meta.json"
+    DEFAULT_METADATA_FILE = "cleaned.meta.json"
 
     # Directory scanning
     MAX_SCAN_DEPTH = 5
@@ -95,6 +95,16 @@ class ProcessingConstants:
     # Quality validation
     MIN_WORD_COUNT = 5  # Minimum words for valid chunk content
     MAX_REPETITION_RATIO = 0.5  # Maximum allowed repetition in content
+
+
+class ResponseGenerationConstants:
+    """Constants for response generation and context retrieval."""
+
+    # Top-K blocks for response generation
+    # This controls how many of the retrieved chunks are used
+    # for generating the final response
+    DEFAULT_MAX_BLOCKS = 5  # Maximum context blocks to use in response generation
+    MIN_BLOCKS_REQUIRED = 3  # Minimum blocks required for valid response
 
 
 class LoggingConstants:
