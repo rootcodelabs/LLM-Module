@@ -54,15 +54,15 @@
     "maxFileSize": "Faili suurus ei tohiks ületada 20 MB.",
     "select": "-Vali-",
     "replace": "Asenda",
-    "clearFilters": "Puhasta Filtrid",
+    "clearFilters": "Puhasta filtrid",
     "showEntries": "Näita",
     "entries": "kirjeid",
-    "deleteSelected": "Kustuta Valik"
+    "deleteSelected": "Kustuta valik"
   },
   "menu": {
     "userManagement": "Kasutajate haldus",
-    "testLLM": "Testi LLM",
-    "llmConnections": "LLM Ühendused"
+    "testLLM": "Testi mudelit",
+    "llmConnections": "Mudelite ühendused"
   },
   "userManagement": {
     "title": "Kasutajate haldus",
@@ -76,24 +76,24 @@
       "namePlaceholder": "Sisesta nimi",
       "role": "Roll",
       "rolePlaceholder": "-Vali-",
-      "personalId": "Isiklik ID",
-      "personalIdPlaceholder": "Sisesta isiklik ID",
+      "personalId": "Isikukood",
+      "personalIdPlaceholder": "Sisesta isikukood",
       "title": "Ametinimetus",
       "titlePlaceholder": "Sisesta ametinimetus",
       "email": "E-post",
       "emailPlaceholder": "Sisesta e-post",
       "nameRequired": "Nimi on kohustuslik",
       "roleRequired": "Roll on kohustuslik",
-      "idCodeRequired": "ID kood on kohustuslik",
+      "idCodeRequired": "Isikukood on kohustuslik",
       "titleRequired": "Ametinimetus on kohustuslik",
       "emailRequired": "E-posti aadress on kohustuslik",
-      "invalidIdCode": "Vigane ID kood",
+      "invalidIdCode": "Vigane isikukood",
       "invalidEmail": "Vigane e-posti aadress",
       "userExists": "Kasutaja on juba olemas"
     },
     "table": {
       "fullName": "Täisnimi",
-      "personalId": "Isiklik ID",
+      "personalId": "Isikukood",
       "role": "Roll",
       "email": "E-post",
       "actions": "Tegevused",
@@ -103,7 +103,7 @@
 
   "roles": {
     "ROLE_ADMINISTRATOR": "Administraator",
-    "ROLE_MODEL_TRAINER": "Mudeli treener"
+    "ROLE_MODEL_TRAINER": "Treener"
   },
   "toast": {
     "success": {
@@ -120,29 +120,29 @@
   },
   "dataModels": {
     "settings": "Seaded",
-    "dataModels": "LLM Ühendused",
-    "noModels": "LLM ühendusi ei leitud",
-    "createModel": "Loo LLM Ühendus",
-    "productionConnections": "Tootmise LLM Ühendus",
-    "otherConnections": "Muud LLM Ühendused",
+    "dataModels": "Mudelite ühendused",
+    "noModels": "Mudelite ühendusi ei leitud",
+    "createModel": "Loo mudeli ühendus",
+    "productionConnections": "Mudel toodangukeskkonnas",
+    "otherConnections": "Muud mudeli ühendused",
     "sortOptions": {
-      "createdDateNewest": "Loomise Kuupäev (Uusim)",
-      "createdDateOldest": "Loomise Kuupäev (Vanim)",
+      "createdDateNewest": "Loomise kuupäev (uusim)",
+      "createdDateOldest": "Loomise kuupäev (vanim)",
       "platformAZ": "Platvorm A-Z",
       "platformZA": "Platvorm Z-A",
       "modelAZ": "Mudel A-Z",
       "modelZA": "Mudel Z-A",
-      "budgetHighToLow": "Eelarve (Kõrgest Madalani)",
-      "budgetLowToHigh": "Eelarve (Madalast Kõrgeni)"
+      "budgetHighToLow": "Eelarve (kõrgest madalamani)",
+      "budgetLowToHigh": "Eelarve (madalast kõrgemani)"
     },
     "filters": {
       "platform": "Platvorm",
       "model": "Mudel",
       "environment": "Keskkond",
       "sortBy": "Sorteeri",
-      "allPlatforms": "Kõik Platvormid",
-      "allModels": "Kõik Mudelid",
-      "allEnvironments": "Kõik Keskkonnad"
+      "allPlatforms": "Kõik platvormid",
+      "allModels": "Kõik mudelid",
+      "allEnvironments": "Kõik keskkonnad"
     },
     "platforms": {
       "azure": "Azure OpenAI",
@@ -156,68 +156,67 @@
     },
     "environments": {
       "testing": "Testimine",
-      "production": "Tootmine"
+      "production": "Toodang"
     },
     "budgetStatus": {
-      "withinBudget": "Eelarve Piires",
-      "overBudget": "Eelarve Ületatud",
-      "closeToExceed": "Lähedal Eelarve Ületamisele"
+      "withinBudget": "Eelarve piires",
+      "closeToExceed": "Lähedal eelarve ületamisele"
     }
   },
   "llmConnectionForm": {
-    "createTitle": "Loo LLM Ühendus",
-    "editTitle": "Redigeeri LLM Ühendust",
+    "createTitle": "Loo mudeli ühendus",
+    "editTitle": "Muuda mudeli ühendust",
     "sections": {
-      "llmConfiguration": "LLM Konfiguratsioon",
-      "embeddingConfiguration": "Sisestamismudeli Konfiguratsioon",
-      "budgetDeployment": "Eelarve ja Kasutuselevõtt"
+      "llmConfiguration": "Mudeli seadistus",
+      "embeddingConfiguration": "Vektor-teisenduse seadistus",
+      "budgetDeployment": "Eelarve ja kasutuselevõtt"
     },
     "fields": {
       "connectionName": {
-        "label": "Ühenduse Nimi",
-        "description": "Unikaalne nimi selle LLM ühenduse tuvastamiseks",
-        "placeholder": "Sisesta ühenduse nimi (nt Azure GPT-4 Tootmine)"
+        "label": "Ühenduse nimi",
+        "description": "Unikaalne nimi selle mudeli ühenduse tuvastamiseks",
+        "placeholder": "Sisesta ühenduse nimi (nt Azure GPT-4 toodang)"
       },
       "llmPlatform": {
-        "label": "LLM Platvorm",
+        "label": "Mudeli platvorm",
         "description": "Pilve/kohalik platvorm, kus teie mudel on majutatud",
-        "placeholder": "Vali LLM Platvorm"
+        "placeholder": "Vali mudeli platvorm"
       },
       "llmModel": {
         "label": "LLM Mudel",
         "description": "LLM mudel, mida soovite kasutada",
-        "placeholder": "Vali LLM Mudel"
+        "placeholder": "Vali LLM mudel"
       },
       "embeddingPlatform": {
-        "label": "Sisestamismudeli Platvorm",
-        "description": "See on pilve/kohalik platvorm, kus teie sisestamismudel on majutatud",
-        "placeholder": "Vali Sisestamisplatvorm"
+        "label": "Vektor-teisendusmudeli platvorm",
+        "description": "See on pilve/kohalik platvorm, kus teie vektor-teisendusmudel on majutatud",
+        "placeholder": "Vali vektor-teisendusmudeli platvorm"
       },
       "embeddingModel": {
-        "label": "Sisestamismudel",
-        "description": "Sisestamismudel, mida kasutatakse teie teadmistebaasi otsimiseks",
-        "placeholder": "Vali Sisestamismudel"
+        "label": "Vektor-teisendusmudel",
+        "description": "vektor-teisendusmudel, mida kasutatakse teie teadmusbaasist otsimiseks",
+        "placeholder": "Vali vektor-teisendusmudel"
       },
       "monthlyBudget": {
         "label": "Kuueelarve",
-        "description": "Kogu kuueelarve sisestamismudeli ja LLM mudeli jaoks. Kui LLM integratsiooni kasutamise kulu ületab alljärgneva eelarve, vastab LLM 'mitteaktiivse' olekuga",
+        "description": "Kogu kuueelarve vektor-teisendusmudeli ja suure keelemudeli jaoks. Kui mudeli kasutamise kulu ületab eelarve, muutub mudel 'mitteaktiivseks'",
         "placeholder": "Sisesta kuueelarve"
       },
       "disconnectOnBudgetExceed": {
-        "label": "Katkesta LLM ühendus automaatselt, kui peatamise eelarve lävi on ületatud"
+        "label": "Katkesta mudeli ühendus automaatselt, kui peatamise eelarve lävi on ületatud"
       },
       "warnBudget": {
-        "label": "Hoiatuse Eelarve Lävi",
-        "description": "Saate teatise, kui teie kasutus jõuab sellise protsendini teie eraldatud kuueelarvest.",
+        "label": "Hoiatuse eelarve lävi",
+        "description": "Saate teatise, kui teie kasutus jõuab teie poolt määratud protsendini kuueelarvest.",
         "placeholder": "Sisesta hoiatuse eelarve lävi"
       },
       "stopBudget": {
-        "label": "Katkestamise Eelarve Lävi",
-        "description": "Teie LLM ühendus katkestatakse automaatselt ja kõik edaspidised päringud peatatakse, kui teie kasutus jõuab sellise protsendini teie kuueelarvest.",
+        "label": "Katkestamise eelarve lävi",
+        "description": "Teie mudeli ühendus katkestatakse automaatselt ja kõik edaspidised päringud peatatakse, kui kasutamise kulu jõuab määratud protsendini kuueelarvest.",
         "placeholder": "Sisesta peatamise eelarve lävi"
       },
       "deploymentEnvironment": {
-        "label": "Kasutuselevõtu Keskkond"
+        "label": "Paigalduskeskkond"
       }
     },
     "aws": {
@@ -232,24 +231,24 @@
         "placeholder": "Sisesta AWS salavõti"
       },
       "embeddingAccessKey": {
-        "label": "Sisestamise Juurdepääsuvõti",
-        "description": "AWS juurdepääsuvõti Bedrock sisestamise teenuse jaoks",
-        "placeholder": "Sisesta AWS juurdepääsuvõti sisestamiste jaoks"
+        "label": "Vektor-teisenduse juurdepääsuvõti",
+        "description": "AWS juurdepääsuvõti Bedrock vektor-teisenduse teenuse jaoks",
+        "placeholder": "Sisesta AWS juurdepääsuvõti vektor-teisenduse jaoks"
       },
       "embeddingSecretKey": {
-        "label": "Sisestamise Salavõti",
-        "description": "AWS salavõti Bedrock sisestamise teenuse jaoks",
-        "placeholder": "Sisesta AWS salavõti sisestamiste jaoks"
+        "label": "Vektor-teisenduse salavõti",
+        "description": "AWS salavõti Bedrock vektor-teisenduse teenuse jaoks",
+        "placeholder": "Sisesta AWS salavõti vektor-teisenduse jaoks"
       }
     },
     "azure": {
       "deploymentName": {
-        "label": "Kasutuselevõtu Nimi",
-        "description": "Azure OpenAI kasutuselevõtu nimi",
-        "placeholder": "Sisesta kasutuselevõtu nimi"
+        "label": "Paigalduse nimi",
+        "description": "Azure OpenAI paigalduse nimi",
+        "placeholder": "Sisesta paigalduse nimi"
       },
       "targetUri": {
-        "label": "Lõpp-punkt / Siht URI",
+        "label": "Lõpp-punkt / siht URI",
         "description": "Azure OpenAI teenuse lõpp-punkti URL",
         "placeholder": "https://your-resource.openai.azure.com/"
       },
@@ -259,30 +258,30 @@
         "placeholder": "Sisesta Azure OpenAI API võti"
       },
       "embeddingDeploymentName": {
-        "label": "Sisestamise Kasutuselevõtu Nimi",
-        "description": "Azure OpenAI sisestamise kasutuselevõtu nimi",
-        "placeholder": "Sisesta sisestamise kasutuselevõtu nimi"
+        "label": "Vektor-teisenduse paigalduse nimi",
+        "description": "Azure OpenAI vektor-teisenduse paigalduse nimi",
+        "placeholder": "Sisesta vektor-teisenduse paigalduse nimi"
       },
       "embeddingTargetUri": {
-        "label": "Sisestamise Lõpp-punkt / Siht URI",
-        "description": "Azure OpenAI sisestamise teenuse lõpp-punkti URL"
+        "label": "Vektor-teisenduse lõpp-punkt / siht URI",
+        "description": "Azure OpenAI vektor-teisenduse teenuse lõpp-punkti URL"
       },
       "embeddingApiKey": {
-        "label": "Sisestamise API Võti",
-        "description": "Azure OpenAI sisestamise API võti",
-        "placeholder": "Sisesta Azure OpenAI sisestamise API võti"
+        "label": "Vektor-teisenduse API võti",
+        "description": "Azure OpenAI vektor-teisenduse API võti",
+        "placeholder": "Sisesta Azure OpenAI vektor-teisenduse API võti"
       }
     },
     "generic": {
       "llmApiKey": {
-        "label": "LLM API Võti",
+        "label": "LLM API võti",
         "description": "LLM mudeli API võti",
         "placeholder": "Sisesta oma LLM API võti"
       },
       "embeddingApiKey": {
-        "label": "Sisestamismudeli API Võti",
-        "description": "Teie sisestamismudeli API võti",
-        "placeholder": "Sisesta oma sisestamise API võti"
+        "label": "Vektor-teisendusmudeli API võti",
+        "description": "Teie vektor-teisendusmudeli API võti",
+        "placeholder": "Sisesta oma vektor-teisendusmudeli API võti"
       }
     },
     "placeholders": {
@@ -296,96 +295,96 @@
       "connectionNameRequired": "Ühenduse nimi on kohustuslik",
       "llmPlatformRequired": "LLM platvorm on kohustuslik",
       "llmModelRequired": "LLM mudel on kohustuslik",
-      "embeddingPlatformRequired": "Sisestamismudeli platvorm on kohustuslik",
-      "embeddingModelRequired": "Sisestamismudel on kohustuslik",
+      "embeddingPlatformRequired": "Vektor-teisendusmudeli platvorm on kohustuslik",
+      "embeddingModelRequired": "Vektor-teisendusmudel on kohustuslik",
       "monthlyBudgetRequired": "Kuueelarve on kohustuslik",
       "monthlyBudgetInvalid": "Palun sisesta kehtiv eelarve summa",
       "monthlyBudgetPositive": "Kuueelarve peab olema positiivne arv",
       "warnBudgetRequired": "Hoiatuse eelarve lävi on kohustuslik",
-      "warnBudgetRange": "Hoiatuse eelarve lävi peab olema vahemikus 1-100%",
+      "warnBudgetRange": "Hoiatuse eelarve lävi peab olema võrdne või vahemikus 1-100%",
       "stopBudgetRequired": "Peatamise eelarve lävi on kohustuslik",
-      "stopBudgetRange": "Peatamise eelarve lävi peab olema vahemikus 1-200%",
+      "stopBudgetRange": "Peatamise eelarve lävi peab olema võrdne või vahemikus 1-200%",
       "stopBudgetGreater": "Peatamise eelarve lävi peab olema suurem kui hoiatuse eelarve lävi",
-      "deploymentEnvironmentRequired": "Kasutuselevõtu keskkond on kohustuslik",
+      "deploymentEnvironmentRequired": "Paigalduse keskkond on kohustuslik",
       "numbersOnly": "Palun sisesta ainult numbrid",
       "accessKeyRequiredAws": "Juurdepääsuvõti on AWS Bedrock jaoks kohustuslik",
       "secretKeyRequiredAws": "Salavõti on AWS Bedrock jaoks kohustuslik",
-      "deploymentNameRequiredAzure": "Kasutuselevõtu nimi on Azure OpenAI jaoks kohustuslik",
+      "deploymentNameRequiredAzure": "Paigalduse nimi on Azure OpenAI jaoks kohustuslik",
       "endpointRequiredAzure": "Lõpp-punkt on Azure OpenAI jaoks kohustuslik",
       "apiKeyRequiredAzure": "API võti on Azure OpenAI jaoks kohustuslik",
       "llmApiKeyRequired": "LLM API võti on kohustuslik",
-      "embeddingAccessKeyRequiredAws": "Sisestamise juurdepääsuvõti on AWS Bedrock jaoks kohustuslik",
-      "embeddingSecretKeyRequiredAws": "Sisestamise salavõti on AWS Bedrock jaoks kohustuslik",
-      "embeddingDeploymentNameRequiredAzure": "Sisestamise kasutuselevõtu nimi on Azure OpenAI jaoks kohustuslik",
-      "embeddingEndpointRequiredAzure": "Sisestamise lõpp-punkt on Azure OpenAI jaoks kohustuslik",
-      "embeddingApiKeyRequiredAzure": "Sisestamise API võti on Azure OpenAI jaoks kohustuslik",
-      "embeddingApiKeyRequired": "Sisestamise API võti on kohustuslik",
+      "embeddingAccessKeyRequiredAws": "Vektor-teisenduse juurdepääsuvõti on AWS Bedrock jaoks kohustuslik",
+      "embeddingSecretKeyRequiredAws": "Vektor-teisenduse salavõti on AWS Bedrock jaoks kohustuslik",
+      "embeddingDeploymentNameRequiredAzure": "Vektor-teisenduse paigalduse nimi on Azure OpenAI jaoks kohustuslik",
+      "embeddingEndpointRequiredAzure": "Vektor-teisenduse lõpp-punkt on Azure OpenAI jaoks kohustuslik",
+      "embeddingApiKeyRequiredAzure": "Vektor-teisenduse API võti on Azure OpenAI jaoks kohustuslik",
+      "embeddingApiKeyRequired": "Vektor-teisenduse API võti on kohustuslik",
       "invalidUrl": "Palun sisesta kehtiv URL, mis algab http:// või https://",
       "failedToLoadPlatforms": "Platvormide laadimine ebaõnnestus",
       "failedToLoadModels": "Mudelite laadimine ebaõnnestus"
     },
     "buttons": {
-      "deleteConnection": "Kustuta Ühendus",
-      "updateConnection": "Uuenda Ühendus",
-      "createConnection": "Loo Ühendus"
+      "deleteConnection": "Kustuta ühendus",
+      "updateConnection": "Uuenda ühendus",
+      "createConnection": "Loo ühendus"
     },
     "environments": {
       "testing": "Testimine",
-      "production": "Tootmine"
+      "production": "Toodang"
     },
     "createConnection": {
-      "title": "Loo LLM Ühendus",
-      "successDialogTitle": "Ühendus Õnnestus",
-      "successDialogMessage": "Esitatud LLM konfiguratsioon on edukalt konfigureeritud",
-      "viewConnectionsButton": "Vaata LLM Ühendusi",
-      "errorDialogTitle": "Ühendus Ebaõnnestus",
-      "errorDialogMessage": "Ühendust ei saanud luua kas vigaste API mandaatide või kasutuselevõtu platvormi valekonfiguratsiooni tõttu",
-      "goBackButton": "Mine Tagasi",
-      "replaceProductionDialogTitle": "Asenda Tootmisühendus",
-      "replaceProductionDialogMessage": "Tootmisühendus \"{connectionName}\" on juba olemas.",
-      "replaceProductionDialogWarning": "Selle uue tootmisühenduse loomine asendab praeguse. Kas oled kindel, et soovid jätkata?",
+      "title": "Loo mudeli ühendus",
+      "successDialogTitle": "Ühendus õnnestus",
+      "successDialogMessage": "Mudeli seadistus on edukalt lõpetatud",
+      "viewConnectionsButton": "Vaata mudeli ühendusi",
+      "errorDialogTitle": "Ühendus ebaõnnestus",
+      "errorDialogMessage": "Ühendust ei saanud luua kas vigaste API autentimisandmete või paigaldusplatvormi vale seadistuse tõttu",
+      "goBackButton": "Mine tagasi",
+      "replaceProductionDialogTitle": "Asenda toodanguühendus",
+      "replaceProductionDialogMessage": "Toodanguühendus \"{connectionName}\" on juba olemas.",
+      "replaceProductionDialogWarning": "Uue toodanguühenduse loomine asendab praeguse. Kas oled kindel, et soovid jätkata?",
       "cancelButton": "Tühista",
-      "confirmReplaceButton": "Jah, Asenda Tootmisühendus"
+      "confirmReplaceButton": "Jah, asenda toodanguühendus"
     },
     "viewConnection": {
-      "updateSuccessTitle": "Ühenduse Uuendamine Õnnestus",
-      "updateSuccessMessage": "LLM konfiguratsioon uuendati edukalt!",
-      "updateErrorTitle": "Ühenduse Uuendamine Ebaõnnestus",
-      "updateErrorMessage": "LLM ühenduse uuendamine ebaõnnestus. Palun proovi uuesti.",
-      "deleteSuccessTitle": "Ühenduse Kustutamine Õnnestus",
-      "deleteSuccessMessage": "LLM ühendus kustutati edukalt!",
+      "updateSuccessTitle": "Ühenduse uuendamine õnnestus",
+      "updateSuccessMessage": "Mudeli seadistus uuendati edukalt!",
+      "updateErrorTitle": "Ühenduse uuendamine ebaõnnestus",
+      "updateErrorMessage": "Mudeli ühenduse uuendamine ebaõnnestus. Palun proovi uuesti.",
+      "deleteSuccessTitle": "Ühenduse kustutamine õnnestus",
+      "deleteSuccessMessage": "Mudeli ühendus kustutati edukalt!",
       "deleteErrorTitle": "Viga",
-      "deleteErrorMessage": "LLM ühenduse kustutamine ebaõnnestus. Palun proovi uuesti.",
-      "viewConnectionsButton": "Vaata LLM Ühendusi",
-      "goBackButton": "Mine Tagasi",
-      "confirmEnvironmentChangeTitle": "Kinnita Tootmiskeskkonna Muutus",
-      "confirmEnvironmentChangeMessage": "Oled tootmisühendust muutmas testimiskeskkonnaks.",
-      "confirmEnvironmentChangeWarning": "See mõjutab praegust tootmisseadistust. Kas oled kindel, et soovid jätkata?",
+      "deleteErrorMessage": "Mudeli ühenduse kustutamine ebaõnnestus. Palun proovi uuesti.",
+      "viewConnectionsButton": "Vaata mudeli ühendusi",
+      "goBackButton": "Mine tagasi",
+      "confirmEnvironmentChangeTitle": "Kinnita toodangukeskkonna muutus",
+      "confirmEnvironmentChangeMessage": "Oled toodanguühendust muutmas testimiskeskkonnaks.",
+      "confirmEnvironmentChangeWarning": "See mõjutab praegust toodanguseadistust. Kas oled kindel, et soovid jätkata?",
       "cancelButton": "Tühista",
-      "confirmChangeButton": "Jah, Muuda Keskkonda",
-      "cannotDeleteProductionTitle": "Ei Saa Kustutada Tootmisühendust",
-      "cannotDeleteProductionMessage": "See LLM ühendus on praegu määratud tootmisühendusena ja seda ei saa kustutada.",
-      "cannotDeleteProductionInstructions": "Selle ühenduse kustutamiseks veendu, et mõni teine ühendus on määratud tootmisühendusena.",
-      "confirmDeleteTitle": "Kinnita Kustutamine",
-      "confirmDeleteMessage": "Kas oled kindel, et soovid selle LLM ühenduse kustutada? Seda tegevust ei saa tagasi võtta.",
+      "confirmChangeButton": "Jah, muuda keskkonda",
+      "cannotDeleteProductionTitle": "Ei saa kustutada toodanguühendust",
+      "cannotDeleteProductionMessage": "See mudeli ühendus on praegu määratud toodanguühendusena ja seda ei saa kustutada.",
+      "cannotDeleteProductionInstructions": "Selle ühenduse kustutamiseks veendu, et mõni teine ühendus on määratud toodanguühendusena.",
+      "confirmDeleteTitle": "Kinnita kustutamine",
+      "confirmDeleteMessage": "Kas oled kindel, et soovid selle mudeli ühenduse kustutada? Seda tegevust ei saa tagasi võtta.",
       "deleteButton": "Kustuta",
       "okButton": "OK",
-      "connectionNotFoundTitle": "Ühendust Ei Leitud",
-      "connectionNotFoundMessage": "Soovitud LLM ühendust ei leitud."
+      "connectionNotFoundTitle": "Ühendust ei leitud",
+      "connectionNotFoundMessage": "Soovitud mudeli ühendust ei leitud."
     }
   },
   "testModels": {
-    "title": "Testi LLM",
-    "llmConnectionLabel": "LLM Ühendus",
-    "selectConnectionPlaceholder": "Vali LLM Ühendus",
-    "connectionNotExist": "Ühendus ei eksisteeri",
+    "title": "Testi mudelit",
+    "llmConnectionLabel": "Mudeli ühendus",
+    "selectConnectionPlaceholder": "Vali mudeli ühendus",
+    "connectionNotExist": "Ühendust ei eksisteeri",
     "classifyTextLabel": "Sisesta tekst testimiseks",
     "sendButton": "Saada",
     "sendingButton": "Saatmine...",
     "responseLabel": "Vastus:",
-    "inferenceErrorTitle": "Järeldamise Viga",
-    "inferenceErrorMessage": "Järeldamise tulemuse saamine ebaõnnestus. Palun proovi uuesti.",
-    "classificationFailed": "Järeldamine ebaõnnestus. Palun proovi uuesti.",
+    "inferenceErrorTitle": "Järeldamise (inference) viga",
+    "inferenceErrorMessage": "Tulemuse saamine ebaõnnestus. Palun proovi uuesti.",
+    "classificationFailed": "Järeldamine (inference) ebaõnnestus. Palun proovi uuesti.",
     "closeButton": "Sulge"
   },
   "budgetBanner": {
