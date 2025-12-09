@@ -160,6 +160,7 @@
     },
     "budgetStatus": {
       "withinBudget": "Eelarve piires",
+      "overBudget": "Eelarve ületatud",
       "closeToExceed": "Lähedal eelarve ületamisele"
     }
   },
