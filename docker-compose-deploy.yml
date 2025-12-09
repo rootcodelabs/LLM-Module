@@ -173,7 +173,7 @@ services:
 
   cron-manager:
     container_name: cron-manager
-    image: ghcr.io/buerokratt/cron-manager-python:latest
+    image: buerokratt/cronmanager:python-1.2.0
     user: "root"
     volumes:
       - ./DSL/CronManager/DSL:/DSL
