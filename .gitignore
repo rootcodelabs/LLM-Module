@@ -12,3 +12,5 @@ vault/agent-out
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+# Dynamically created Ruuter health endpoint for tests
+DSL/Ruuter.private/rag-search/GET/health.yml
