@@ -444,7 +444,6 @@ async def stream_response_native(
 ) -> AsyncIterator[str]:
     """
     Compatibility wrapper for the new stream_response method.
-
     DEPRECATED: Use agent.stream_response() instead.
     This function is kept for backward compatibility.
 
