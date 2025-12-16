@@ -570,12 +570,12 @@ services:
     depends_on:
       - vault
       - vault-agent-llm
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 40s
-      retries: 3
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   start_period: 40s
+    #   retries: 3
 
 volumes:
   loki-data:
