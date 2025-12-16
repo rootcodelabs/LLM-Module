@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const { buildSSEResponse } = require("./sseUtil");
 const { serverConfig } = require("./config");
-const { createLLMOrchestrationStreamRequest } = require("./openSearch");
+const { createLLMOrchestrationStreamRequest } = require("./streamingService");
 const helmet = require("helmet");
 const streamQueue = require("./streamQueue");
 
