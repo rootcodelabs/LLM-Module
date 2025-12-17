@@ -1,0 +1,2403 @@
+"""LLM Orchestration Service - Business logic for LLM orchestration."""
+
+from typing import Optional, List, Dict, Union, Any, AsyncIterator
+import os
+import time
+import asyncio
+from loguru import logger
+from langfuse import Langfuse, observe
+import dspy
+from datetime import datetime
+import json as json_module
+import threading
+
+from llm_orchestrator_config.llm_manager import LLMManager
+from models.request_models import (
+    OrchestrationRequest,
+    OrchestrationResponse,
+    ConversationItem,
+    PromptRefinerOutput,
+    ContextGenerationRequest,
+    TestOrchestrationResponse,
+    ChunkInfo,
+    DocumentReference,
+)
+from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
+from src.response_generator.response_generate import ResponseGeneratorAgent
+from src.response_generator.response_generate import stream_response_native
+from src.llm_orchestrator_config.llm_ochestrator_constants import (
+    OUT_OF_SCOPE_MESSAGE,
+    TECHNICAL_ISSUE_MESSAGE,
+    INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    GUARDRAILS_BLOCKED_PHRASES,
+    TEST_DEPLOYMENT_ENVIRONMENT,
+    STREAM_TOKEN_LIMIT_MESSAGE,
+    PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+)
+from src.llm_orchestrator_config.stream_config import StreamConfig
+from src.vector_indexer.constants import ResponseGenerationConstants
+from src.utils.error_utils import generate_error_id, log_error_with_context
+from src.utils.stream_manager import stream_manager
+from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
+from src.utils.time_tracker import log_step_timings
+from src.utils.budget_tracker import get_budget_tracker
+from src.utils.production_store import get_production_store
+from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
+from src.contextual_retrieval import ContextualRetriever
+from src.llm_orchestrator_config.exceptions import (
+    ContextualRetrieverInitializationError,
+    ContextualRetrievalFailureError,
+)
+
+
+class LangfuseConfig:
+    """Configuration for Langfuse integration."""
+
+    def __init__(self):
+        self.langfuse_client: Optional[Langfuse] = None
+        self._initialize_langfuse()
+
+    def _initialize_langfuse(self) -> None:
+        """Initialize Langfuse client with Vault secrets."""
+        try:
+            from llm_orchestrator_config.vault.vault_client import get_vault_client
+
+            vault = get_vault_client()
+            if vault.is_vault_available():
+                langfuse_secrets = vault.get_secret("langfuse/config")
+                if langfuse_secrets:
+                    self.langfuse_client = Langfuse(
+                        public_key=langfuse_secrets.get("public_key"),
+                        secret_key=langfuse_secrets.get("secret_key"),
+                        host=langfuse_secrets.get("host", "http://langfuse-web:3000"),
+                    )
+                    logger.info("Langfuse client initialized successfully")
+                else:
+                    logger.warning("Langfuse secrets not found in Vault")
+            else:
+                logger.warning("Vault not available, Langfuse tracing disabled")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Langfuse: {e}")
+
+
+class LLMOrchestrationService:
+    """
+    Service class for handling LLM orchestration with integrated guardrails.
+    Features:
+    - Input guardrails before prompt refinement
+    - Output guardrails after response generation
+    - Comprehensive cost tracking for all components
+    """
+
+    def __init__(self) -> None:
+        """Initialize the orchestration service."""
+        self.langfuse_config = LangfuseConfig()
+
+    @observe(name="orchestration_request", as_type="agent")
+    def process_orchestration_request(
+        self, request: OrchestrationRequest
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
+        """
+        Process an orchestration request with guardrails and return response.
+
+        Pipeline:
+        1. Input Guardrails Check
+        2. Prompt Refinement (if input allowed)
+        3. Chunk Retrieval
+        4. Response Generation
+        5. Output Guardrails Check
+        6. Cost Logging
+
+        Args:
+            request: The orchestration request containing user message and context
+
+        Returns:
+            OrchestrationResponse: Response with LLM output and status flags
+
+        Raises:
+            Exception: For any processing errors
+        """
+        costs_dict: Dict[str, Dict[str, Any]] = {}
+        timing_dict: Dict[str, float] = {}
+
+        try:
+            logger.info(
+                f"Processing orchestration request for chatId: {request.chatId}, "
+                f"authorId: {request.authorId}, environment: {request.environment}"
+            )
+
+            # Initialize all service components
+            components = self._initialize_service_components(request)
+
+            # Execute the orchestration pipeline
+            response = self._execute_orchestration_pipeline(
+                request, components, costs_dict, timing_dict
+            )
+
+            # Log final costs and return response
+            self._log_costs(costs_dict)
+            log_step_timings(timing_dict, request.chatId)
+
+            # Update budget for the LLM connection
+            self._update_connection_budget(
+                request.connection_id, costs_dict, request.environment
+            )
+
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                total_costs = calculate_total_costs(costs_dict)
+
+                total_input_tokens = sum(
+                    c.get("total_prompt_tokens", 0) for c in costs_dict.values()
+                )
+                total_output_tokens = sum(
+                    c.get("total_completion_tokens", 0) for c in costs_dict.values()
+                )
+
+                langfuse.update_current_generation(
+                    model=components["llm_manager"]
+                    .get_provider_info()
+                    .get("model", "unknown"),
+                    usage_details={
+                        "input": total_input_tokens,
+                        "output": total_output_tokens,
+                        "total": total_costs.get("total_tokens", 0),
+                    },
+                    cost_details={
+                        "total": total_costs.get("total_cost", 0.0),
+                    },
+                    metadata={
+                        "total_calls": total_costs.get("total_calls", 0),
+                        "cost_breakdown": costs_dict,
+                        "chat_id": request.chatId,
+                        "author_id": request.authorId,
+                        "environment": request.environment,
+                    },
+                )
+                langfuse.flush()
+            return response
+
+        except Exception as e:
+            error_id = generate_error_id()
+            log_error_with_context(
+                logger, error_id, "orchestration_request", request.chatId, e
+            )
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error_id": error_id,
+                        "error_type": type(e).__name__,
+                        "response_type": "technical_issue",
+                    }
+                )
+                langfuse.flush()
+            self._log_costs(costs_dict)
+            log_step_timings(timing_dict, request.chatId)
+
+            # Update budget even on error
+            self._update_connection_budget(
+                request.connection_id, costs_dict, request.environment
+            )
+
+            return self._create_error_response(request)
+
+    @observe(name="streaming_generation", as_type="generation", capture_output=False)
+    async def stream_orchestration_response(
+        self, request: OrchestrationRequest
+    ) -> AsyncIterator[str]:
+        """
+        Stream orchestration response with validation-first guardrails.
+
+        Pipeline:
+        1. Input Guardrails Check (blocking)
+        2. Prompt Refinement (blocking)
+        3. Chunk Retrieval (blocking)
+        4. Out-of-scope Check (blocking, quick)
+        5. Stream through NeMo Guardrails (validation-first)
+
+        Args:
+            request: The orchestration request containing user message and context
+
+        Yields:
+            SSE-formatted strings: "data: {json}\\n\\n"
+
+        SSE Message Format:
+            {
+                "chatId": "...",
+                "payload": {"content": "..."},
+                "timestamp": "...",
+                "sentTo": []
+            }
+
+        Content Types:
+            - Regular token: "Python", " is", " awesome"
+            - Stream complete: "END"
+            - Input blocked: INPUT_GUARDRAIL_VIOLATION_MESSAGE
+            - Out of scope: OUT_OF_SCOPE_MESSAGE
+            - Guardrail failed: OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
+            - Technical error: TECHNICAL_ISSUE_MESSAGE
+        """
+
+        # Track costs after streaming completes
+        costs_dict: Dict[str, Dict[str, Any]] = {}
+        timing_dict: Dict[str, float] = {}
+        streaming_start_time = datetime.now()
+
+        # Use StreamManager for centralized tracking and guaranteed cleanup
+        async with stream_manager.managed_stream(
+            chat_id=request.chatId, author_id=request.authorId
+        ) as stream_ctx:
+            try:
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Starting streaming orchestration "
+                    f"(environment: {request.environment})"
+                )
+
+                # Initialize all service components
+                components = self._initialize_service_components(request)
+
+                # STEP 1: CHECK INPUT GUARDRAILS (blocking)
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 1: Checking input guardrails"
+                )
+
+                if components["guardrails_adapter"]:
+                    start_time = time.time()
+                    input_check_result = await self._check_input_guardrails_async(
+                        guardrails_adapter=components["guardrails_adapter"],
+                        user_message=request.message,
+                        costs_dict=costs_dict,
+                    )
+                    timing_dict["input_guardrails_check"] = time.time() - start_time
+
+                    if not input_check_result.allowed:
+                        logger.warning(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked by guardrails: "
+                            f"{input_check_result.reason}"
+                        )
+                        yield self._format_sse(
+                            request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
+                        )
+                        yield self._format_sse(request.chatId, "END")
+                        self._log_costs(costs_dict)
+                        stream_ctx.mark_completed()
+                        return
+
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed "
+                )
+
+                # STEP 2: REFINE USER PROMPT (blocking)
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 2: Refining user prompt"
+                )
+
+                start_time = time.time()
+                refined_output, refiner_usage = self._refine_user_prompt(
+                    llm_manager=components["llm_manager"],
+                    original_message=request.message,
+                    conversation_history=request.conversationHistory,
+                )
+                timing_dict["prompt_refiner"] = time.time() - start_time
+                costs_dict["prompt_refiner"] = refiner_usage
+
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Prompt refinement complete "
+                )
+
+                # STEP 3: RETRIEVE CONTEXT CHUNKS (blocking)
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 3: Retrieving context chunks"
+                )
+
+                try:
+                    start_time = time.time()
+                    relevant_chunks = await self._safe_retrieve_contextual_chunks(
+                        components["contextual_retriever"], refined_output, request
+                    )
+                    timing_dict["contextual_retrieval"] = time.time() - start_time
+                except (
+                    ContextualRetrieverInitializationError,
+                    ContextualRetrievalFailureError,
+                ) as e:
+                    logger.warning(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Contextual retrieval failed: {str(e)}"
+                    )
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Returning out-of-scope due to retrieval failure"
+                    )
+                    yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                    yield self._format_sse(request.chatId, "END")
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+                    stream_ctx.mark_completed()
+                    return
+
+                if len(relevant_chunks) == 0:
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] No relevant chunks - out of scope"
+                    )
+                    yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                    yield self._format_sse(request.chatId, "END")
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+                    stream_ctx.mark_completed()
+                    return
+
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Retrieved {len(relevant_chunks)} chunks "
+                )
+
+                # STEP 4: QUICK OUT-OF-SCOPE CHECK (blocking)
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 4: Checking if question is in scope"
+                )
+
+                start_time = time.time()
+                is_out_of_scope = await components[
+                    "response_generator"
+                ].check_scope_quick(
+                    question=refined_output.original_question,
+                    chunks=relevant_chunks,
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
+                )
+                timing_dict["scope_check"] = time.time() - start_time
+
+                if is_out_of_scope:
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Question out of scope"
+                    )
+                    yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                    yield self._format_sse(request.chatId, "END")
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+                    stream_ctx.mark_completed()
+                    return
+
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Question is in scope "
+                )
+
+                # STEP 5: STREAM THROUGH NEMO GUARDRAILS (validation-first)
+                logger.info(
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 5: Starting streaming through NeMo Guardrails "
+                    f"(validation-first, chunk_size=200)"
+                )
+
+                streaming_step_start = time.time()
+
+                # Record history length before streaming
+                lm = dspy.settings.lm
+                history_length_before = (
+                    len(lm.history) if lm and hasattr(lm, "history") else 0
+                )
+
+                async def bot_response_generator() -> AsyncIterator[str]:
+                    """Generator that yields tokens from NATIVE DSPy LLM streaming."""
+                    async for token in stream_response_native(
+                        agent=components["response_generator"],
+                        question=refined_output.original_question,
+                        chunks=relevant_chunks,
+                        max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
+                    ):
+                        yield token
+
+                # Create and store bot_generator in stream context for guaranteed cleanup
+                bot_generator = bot_response_generator()
+                stream_ctx.bot_generator = bot_generator
+
+                # Wrap entire streaming logic in try/except for proper error handling
+                try:
+                    # Track tokens and accumulated response in stream context
+                    accumulated_response = []  # Track the full response for production storage
+
+                    if components["guardrails_adapter"]:
+                        # Use NeMo's stream_with_guardrails helper method
+                        # This properly integrates the external generator with NeMo's validation
+                        chunk_count = 0
+
+                        try:
+                            async for validated_chunk in components[
+                                "guardrails_adapter"
+                            ].stream_with_guardrails(
+                                user_message=refined_output.original_question,
+                                bot_message_generator=bot_generator,
+                            ):
+                                chunk_count += 1
+
+                                # Estimate tokens (rough approximation: 4 characters = 1 token)
+                                chunk_tokens = len(validated_chunk) // 4
+                                stream_ctx.token_count += chunk_tokens
+
+                                # Accumulate response for production storage
+                                accumulated_response.append(validated_chunk)
+
+                                # Check token limit
+                                if (
+                                    stream_ctx.token_count
+                                    > StreamConfig.MAX_TOKENS_PER_STREAM
+                                ):
+                                    logger.error(
+                                        f"[{request.chatId}] [{stream_ctx.stream_id}] Token limit exceeded: "
+                                        f"{stream_ctx.token_count} > {StreamConfig.MAX_TOKENS_PER_STREAM}"
+                                    )
+                                    # Send error message and end stream immediately
+                                    yield self._format_sse(
+                                        request.chatId, STREAM_TOKEN_LIMIT_MESSAGE
+                                    )
+                                    yield self._format_sse(request.chatId, "END")
+
+                                    # Extract usage and log costs
+                                    usage_info = get_lm_usage_since(
+                                        history_length_before
+                                    )
+                                    costs_dict["streaming_generation"] = usage_info
+                                    self._log_costs(costs_dict)
+                                    log_step_timings(timing_dict, request.chatId)
+                                    stream_ctx.mark_completed()
+                                    return  # Stop immediately - cleanup happens in finally
+
+                                # Check for guardrail violations using blocked phrases
+                                # Match the actual behavior of NeMo Guardrails adapter
+                                is_guardrail_error = False
+                                if isinstance(validated_chunk, str):
+                                    # Use the same blocked phrases as the guardrails adapter
+                                    blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
+                                    chunk_lower = validated_chunk.strip().lower()
+                                    # Check if the chunk is primarily a blocked phrase
+                                    for phrase in blocked_phrases:
+                                        # More robust check: ensure the phrase is the main content
+                                        if (
+                                            phrase.lower() in chunk_lower
+                                            and len(chunk_lower)
+                                            <= len(phrase.lower()) + 20
+                                        ):
+                                            is_guardrail_error = True
+                                            break
+
+                                if is_guardrail_error:
+                                    logger.warning(
+                                        f"[{request.chatId}] [{stream_ctx.stream_id}] Guardrails violation detected"
+                                    )
+                                    # Send the violation message and end stream
+                                    yield self._format_sse(
+                                        request.chatId,
+                                        OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                                    )
+                                    yield self._format_sse(request.chatId, "END")
+
+                                    # Log the violation
+                                    logger.warning(
+                                        f"[{request.chatId}] [{stream_ctx.stream_id}] Output blocked by guardrails: {validated_chunk}"
+                                    )
+
+                                    # Extract usage and log costs
+                                    usage_info = get_lm_usage_since(
+                                        history_length_before
+                                    )
+                                    costs_dict["streaming_generation"] = usage_info
+                                    self._log_costs(costs_dict)
+                                    log_step_timings(timing_dict, request.chatId)
+                                    stream_ctx.mark_completed()
+                                    return  # Cleanup happens in finally
+
+                                # Log first few chunks for debugging
+                                if (
+                                    chunk_count
+                                    <= ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+                                ):
+                                    logger.debug(
+                                        f"[{request.chatId}] [{stream_ctx.stream_id}] Validated chunk {chunk_count}: {repr(validated_chunk)}"
+                                    )
+
+                                # Yield the validated chunk to client
+                                yield self._format_sse(request.chatId, validated_chunk)
+                        except GeneratorExit:
+                            # Client disconnected
+                            stream_ctx.mark_cancelled()
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Client disconnected during guardrails streaming"
+                            )
+                            raise
+
+                        logger.info(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Stream completed successfully "
+                            f"({chunk_count} chunks streamed)"
+                        )
+
+                        # Send document references before END token
+                        doc_references = self._extract_document_references(
+                            relevant_chunks
+                        )
+                        if doc_references:
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
+                            )
+                            references_data = [
+                                ref.model_dump() for ref in doc_references
+                            ]
+                            references_message = {
+                                "chatId": request.chatId,
+                                "payload": {
+                                    "type": "references",
+                                    "references": references_data,
+                                },
+                                "timestamp": str(
+                                    int(datetime.now().timestamp() * 1000)
+                                ),
+                                "sentTo": [],
+                            }
+                            yield f"data: {json_module.dumps(references_message)}\n\n"
+
+                        yield self._format_sse(request.chatId, "END")
+
+                    else:
+                        # No guardrails - stream directly
+                        logger.warning(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Streaming without guardrails validation"
+                        )
+                        chunk_count = 0
+                        async for token in bot_generator:
+                            chunk_count += 1
+
+                            # Estimate tokens and check limit
+                            token_estimate = len(token) // 4
+                            stream_ctx.token_count += token_estimate
+
+                            # Accumulate response for production storage
+                            accumulated_response.append(token)
+
+                            if (
+                                stream_ctx.token_count
+                                > StreamConfig.MAX_TOKENS_PER_STREAM
+                            ):
+                                logger.error(
+                                    f"[{request.chatId}] [{stream_ctx.stream_id}] Token limit exceeded (no guardrails): "
+                                    f"{stream_ctx.token_count} > {StreamConfig.MAX_TOKENS_PER_STREAM}"
+                                )
+                                yield self._format_sse(
+                                    request.chatId, STREAM_TOKEN_LIMIT_MESSAGE
+                                )
+                                yield self._format_sse(request.chatId, "END")
+                                stream_ctx.mark_completed()
+                                return  # Stop immediately - cleanup in finally
+
+                            yield self._format_sse(request.chatId, token)
+
+                        # Send document references before END token
+                        doc_references = self._extract_document_references(
+                            relevant_chunks
+                        )
+                        if doc_references:
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
+                            )
+                            references_data = [
+                                ref.model_dump() for ref in doc_references
+                            ]
+                            references_message = {
+                                "chatId": request.chatId,
+                                "payload": {
+                                    "type": "references",
+                                    "references": references_data,
+                                },
+                                "timestamp": str(
+                                    int(datetime.now().timestamp() * 1000)
+                                ),
+                                "sentTo": [],
+                            }
+                            yield f"data: {json_module.dumps(references_message)}\n\n"
+
+                        yield self._format_sse(request.chatId, "END")
+
+                    # Extract usage information after streaming completes
+                    usage_info = get_lm_usage_since(history_length_before)
+                    costs_dict["streaming_generation"] = usage_info
+
+                    # Record streaming generation time
+                    timing_dict["streaming_generation"] = (
+                        time.time() - streaming_step_start
+                    )
+                    # Mark output guardrails as inline (not blocking)
+                    timing_dict["output_guardrails"] = 0.0  # Inline during streaming
+
+                    # Calculate streaming duration
+                    streaming_duration = (
+                        datetime.now() - streaming_start_time
+                    ).total_seconds()
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Streaming completed in {streaming_duration:.2f}s"
+                    )
+
+                    # Log costs and trace
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+
+                    # Update budget for the LLM connection
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
+
+                    if self.langfuse_config.langfuse_client:
+                        langfuse = self.langfuse_config.langfuse_client
+                        total_costs = calculate_total_costs(costs_dict)
+
+                        langfuse.update_current_generation(
+                            model=components["llm_manager"]
+                            .get_provider_info()
+                            .get("model", "unknown"),
+                            usage_details={
+                                "input": usage_info.get("total_prompt_tokens", 0),
+                                "output": usage_info.get("total_completion_tokens", 0),
+                                "total": usage_info.get("total_tokens", 0),
+                            },
+                            cost_details={
+                                "total": total_costs.get("total_cost", 0.0),
+                            },
+                            metadata={
+                                "streaming": True,
+                                "streaming_duration_seconds": streaming_duration,
+                                "chunks_streamed": chunk_count,
+                                "cost_breakdown": costs_dict,
+                                "chat_id": request.chatId,
+                                "environment": request.environment,
+                                "stream_id": stream_ctx.stream_id,
+                            },
+                        )
+                        langfuse.flush()
+
+                    # Store inference data (for production and testing environments)
+                    if request.environment in [
+                        PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+                        TEST_DEPLOYMENT_ENVIRONMENT,
+                    ]:
+                        try:
+                            await self._store_production_inference_data_async(
+                                request=request,
+                                refined_output=refined_output,
+                                relevant_chunks=relevant_chunks,
+                                accumulated_response="".join(accumulated_response),
+                            )
+                        except Exception as storage_error:
+                            # Log storage error but don't fail the request
+                            logger.error(
+                                f"Storage failed for chat_id: {request.chatId}, environment: {request.environment} - {str(storage_error)}"
+                            )
+
+                    # Mark stream as completed successfully
+                    stream_ctx.mark_completed()
+
+                except GeneratorExit:
+                    # Client disconnected - mark as cancelled
+                    stream_ctx.mark_cancelled()
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Client disconnected"
+                    )
+                    usage_info = get_lm_usage_since(history_length_before)
+                    costs_dict["streaming_generation"] = usage_info
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+
+                    # Update budget even on client disconnect
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
+                    raise
+                except Exception as stream_error:
+                    error_id = generate_error_id()
+                    stream_ctx.mark_error(error_id)
+                    log_error_with_context(
+                        logger,
+                        error_id,
+                        "streaming_generation",
+                        request.chatId,
+                        stream_error,
+                    )
+                    yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+                    yield self._format_sse(request.chatId, "END")
+
+                    usage_info = get_lm_usage_since(history_length_before)
+                    costs_dict["streaming_generation"] = usage_info
+                    self._log_costs(costs_dict)
+                    log_step_timings(timing_dict, request.chatId)
+
+                    # Update budget even on streaming error
+                    self._update_connection_budget(
+                        request.connection_id, costs_dict, request.environment
+                    )
+
+            except Exception as e:
+                error_id = generate_error_id()
+                stream_ctx.mark_error(error_id)
+                log_error_with_context(
+                    logger, error_id, "streaming_orchestration", request.chatId, e
+                )
+
+                yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+                yield self._format_sse(request.chatId, "END")
+
+                self._log_costs(costs_dict)
+                log_step_timings(timing_dict, request.chatId)
+
+                # Update budget even on outer exception
+                self._update_connection_budget(
+                    request.connection_id, costs_dict, request.environment
+                )
+
+                if self.langfuse_config.langfuse_client:
+                    langfuse = self.langfuse_config.langfuse_client
+                    langfuse.update_current_generation(
+                        metadata={
+                            "error_id": error_id,
+                            "error_type": type(e).__name__,
+                            "streaming": True,
+                            "streaming_failed": True,
+                            "stream_id": stream_ctx.stream_id,
+                        }
+                    )
+                    langfuse.flush()
+
+    def _format_sse(self, chat_id: str, content: str) -> str:
+        """
+        Format SSE message with exact specification.
+
+        Args:
+            chat_id: Chat/channel identifier
+            content: Content to send (token, "END", error message, etc.)
+
+        Returns:
+            SSE-formatted string: "data: {json}\\n\\n"
+        """
+
+        payload: Dict[str, Any] = {
+            "chatId": chat_id,
+            "payload": {"content": content},
+            "timestamp": str(int(datetime.now().timestamp() * 1000)),
+            "sentTo": [],
+        }
+        return f"data: {json_module.dumps(payload)}\n\n"
+
+    @observe(name="initialize_service_components", as_type="span")
+    def _initialize_service_components(
+        self, request: OrchestrationRequest
+    ) -> Dict[str, Any]:
+        """Initialize all service components and return them as a dictionary."""
+        components: Dict[str, Any] = {}
+
+        # Initialize LLM Manager
+        components["llm_manager"] = self._initialize_llm_manager(
+            environment=request.environment, connection_id=request.connection_id
+        )
+
+        # Initialize Guardrails Adapter (optional)
+        components["guardrails_adapter"] = self._safe_initialize_guardrails(
+            request.environment, request.connection_id
+        )
+
+        # Initialize Contextual Retriever (replaces hybrid retriever)
+        components["contextual_retriever"] = self._safe_initialize_contextual_retriever(
+            request.environment, request.connection_id
+        )
+
+        # Initialize Response Generator
+        components["response_generator"] = self._safe_initialize_response_generator(
+            components["llm_manager"]
+        )
+
+        # Log optimization status for all components
+        self._log_optimization_status(components)
+
+        return components
+
+    def _log_optimization_status(self, components: Dict[str, Any]) -> None:
+        """Log optimization status for all initialized components."""
+        try:
+            logger.info("=== OPTIMIZATION STATUS ===")
+
+            self._log_guardrails_status(components)
+            self._log_refiner_status(components)
+            self._log_generator_status(components)
+
+            logger.info("=== END OPTIMIZATION STATUS ===")
+
+        except Exception as e:
+            logger.warning(f"Failed to log optimization status: {str(e)}")
+
+    def _log_guardrails_status(self, components: Dict[str, Any]) -> None:
+        """Log guardrails optimization status."""
+        if not components.get("guardrails_adapter"):
+            logger.info(" Guardrails: Not initialized")
+            return
+
+        try:
+            from src.guardrails.optimized_guardrails_loader import get_guardrails_loader
+
+            guardrails_loader = get_guardrails_loader()
+            _, metadata = guardrails_loader.get_optimized_config_path()
+
+            if metadata.get("optimized", False):
+                logger.info(
+                    f" Guardrails: OPTIMIZED (version: {metadata.get('version', 'unknown')})"
+                )
+                metrics = metadata.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: weighted_accuracy={metrics.get('weighted_accuracy', 'N/A')}"
+                    )
+            else:
+                logger.info(" Guardrails: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f" Guardrails: Status check failed - {str(e)}")
+
+    def _log_refiner_status(self, components: Dict[str, Any]) -> None:
+        """Log refiner optimization status."""
+        if not hasattr(components.get("llm_manager"), "__class__"):
+            logger.info(" Refiner: LLM Manager not available")
+            return
+
+        try:
+            from src.prompt_refine_manager.prompt_refiner import PromptRefinerAgent
+
+            test_refiner = PromptRefinerAgent(llm_manager=components["llm_manager"])
+            refiner_info = test_refiner.get_module_info()
+
+            if refiner_info.get("optimized", False):
+                logger.info(
+                    f" Refiner: OPTIMIZED (version: {refiner_info.get('version', 'unknown')})"
+                )
+                metrics = refiner_info.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+            else:
+                logger.info(" Refiner: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f" Refiner: Status check failed - {str(e)}")
+
+    def _log_generator_status(self, components: Dict[str, Any]) -> None:
+        """Log generator optimization status."""
+        if not components.get("response_generator"):
+            logger.info(" Generator: Not initialized")
+            return
+
+        try:
+            generator_info = components["response_generator"].get_module_info()
+
+            if generator_info.get("optimized", False):
+                logger.info(
+                    f" Generator: OPTIMIZED (version: {generator_info.get('version', 'unknown')})"
+                )
+                metrics = generator_info.get("metrics", {})
+                if metrics:
+                    logger.info(
+                        f"  Metrics: avg_quality={metrics.get('average_quality', 'N/A')}"
+                    )
+            else:
+                logger.info(" Generator: BASE (no optimization)")
+        except Exception as e:
+            logger.warning(f" Generator: Status check failed - {str(e)}")
+
+    @observe(name="execute_orchestration_pipeline", as_type="span")
+    def _execute_orchestration_pipeline(
+        self,
+        request: OrchestrationRequest,
+        components: Dict[str, Any],
+        costs_dict: Dict[str, Dict[str, Any]],
+        timing_dict: Dict[str, float],
+    ) -> OrchestrationResponse:
+        """Execute the main orchestration pipeline with all components."""
+        # Step 1: Input Guardrails Check
+        if components["guardrails_adapter"]:
+            start_time = time.time()
+            input_blocked_response = self.handle_input_guardrails(
+                components["guardrails_adapter"], request, costs_dict
+            )
+            timing_dict["input_guardrails_check"] = time.time() - start_time
+            if input_blocked_response:
+                return input_blocked_response
+
+        # Step 2: Refine user prompt
+        start_time = time.time()
+        refined_output, refiner_usage = self._refine_user_prompt(
+            llm_manager=components["llm_manager"],
+            original_message=request.message,
+            conversation_history=request.conversationHistory,
+        )
+        timing_dict["prompt_refiner"] = time.time() - start_time
+        costs_dict["prompt_refiner"] = refiner_usage
+
+        # Step 3: Retrieve relevant chunks using contextual retrieval
+        try:
+            start_time = time.time()
+            relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
+                components["contextual_retriever"], refined_output, request
+            )
+            timing_dict["contextual_retrieval"] = time.time() - start_time
+        except (
+            ContextualRetrieverInitializationError,
+            ContextualRetrievalFailureError,
+        ) as e:
+            logger.warning(f"Contextual retrieval failed: {str(e)}")
+            return self._create_out_of_scope_response(request)
+
+        # Handle zero chunks scenario - return out-of-scope response
+        if len(relevant_chunks) == 0:
+            logger.info("No relevant chunks found - returning out-of-scope response")
+            return self._create_out_of_scope_response(request)
+
+        # Step 4: Generate response
+        start_time = time.time()
+        generated_response = self._generate_rag_response(
+            llm_manager=components["llm_manager"],
+            request=request,
+            refined_output=refined_output,
+            relevant_chunks=relevant_chunks,
+            response_generator=components["response_generator"],
+            costs_dict=costs_dict,
+        )
+        timing_dict["response_generation"] = time.time() - start_time
+
+        # Step 5: Output Guardrails Check
+        start_time = time.time()
+        output_guardrails_response = self.handle_output_guardrails(
+            components["guardrails_adapter"], generated_response, request, costs_dict
+        )
+        timing_dict["output_guardrails_check"] = time.time() - start_time
+
+        # Step 6: Store inference data (for production and testing environments)
+        if request.environment in [
+            PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+            TEST_DEPLOYMENT_ENVIRONMENT,
+        ]:
+            try:
+                self._store_production_inference_data(
+                    request=request,
+                    refined_output=refined_output,
+                    relevant_chunks=relevant_chunks,
+                    final_response=output_guardrails_response,
+                )
+            except Exception as storage_error:
+                # Log storage error but don't fail the request
+                logger.error(
+                    f"Storage failed for chat_id: {request.chatId}, environment: {request.environment} - {str(storage_error)}"
+                )
+
+        return output_guardrails_response
+
+    def _safe_initialize_guardrails(
+        self, environment: str, connection_id: Optional[str]
+    ) -> Optional[NeMoRailsAdapter]:
+        """Safely initialize guardrails adapter with error handling."""
+        try:
+            adapter = self._initialize_guardrails(environment, connection_id)
+            logger.info("Guardrails adapter initialization successful")
+            return adapter
+        except Exception as guardrails_error:
+            logger.warning(f"Guardrails initialization failed: {str(guardrails_error)}")
+            logger.warning("Continuing without guardrails protection")
+            return None
+
+    @observe(name="safe_initialize_contextual_retriever", as_type="span")
+    def _safe_initialize_contextual_retriever(
+        self, environment: str, connection_id: Optional[str]
+    ) -> Optional[ContextualRetriever]:
+        """Safely initialize contextual retriever with error handling."""
+        try:
+            retriever = self._initialize_contextual_retriever(
+                environment, connection_id
+            )
+            logger.info("Contextual Retriever initialization successful")
+            return retriever
+        except Exception as retriever_error:
+            logger.warning(
+                f"Contextual Retriever initialization failed: {str(retriever_error)}"
+            )
+            logger.warning("Continuing without chunk retrieval capabilities")
+            return None
+
+    @observe(name="safe_initialize_response_generator", as_type="span")
+    def _safe_initialize_response_generator(
+        self, llm_manager: LLMManager
+    ) -> Optional[ResponseGeneratorAgent]:
+        """Safely initialize response generator with error handling."""
+        try:
+            generator = self._initialize_response_generator(llm_manager)
+            logger.info("Response Generator initialization successful")
+            return generator
+        except Exception as generator_error:
+            logger.warning(
+                f"Response Generator initialization failed: {str(generator_error)}"
+            )
+            return None
+
+    def handle_input_guardrails(
+        self,
+        guardrails_adapter: NeMoRailsAdapter,
+        request: OrchestrationRequest,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse, None]:
+        """Check input guardrails and return blocked response if needed."""
+        input_check_result = self._check_input_guardrails(
+            guardrails_adapter=guardrails_adapter,
+            user_message=request.message,
+            costs_dict=costs_dict,
+        )
+
+        if not input_check_result.allowed:
+            logger.warning(f"Input blocked by guardrails: {input_check_result.reason}")
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                logger.info(
+                    "Test environment detected – returning input guardrail violation message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=True,
+                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    chunks=None,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=True,
+                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                )
+
+        logger.info("Input guardrails check passed")
+        return None
+
+    def _safe_retrieve_contextual_chunks_sync(
+        self,
+        contextual_retriever: Optional[ContextualRetriever],
+        refined_output: PromptRefinerOutput,
+        request: OrchestrationRequest,
+    ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
+        """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
+
+        try:
+            # Safely execute the async method in the sync context
+            try:
+                asyncio.get_running_loop()
+                # If we get here, there's a running event loop; cannot block synchronously
+                raise RuntimeError(
+                    "Cannot call _safe_retrieve_contextual_chunks_sync from an async context with a running event loop. "
+                    "Please use the async version _safe_retrieve_contextual_chunks instead."
+                )
+            except RuntimeError:
+                # No running loop, safe to use asyncio.run()
+                return asyncio.run(
+                    self._safe_retrieve_contextual_chunks(
+                        contextual_retriever, refined_output, request
+                    )
+                )
+        except (
+            ContextualRetrieverInitializationError,
+            ContextualRetrievalFailureError,
+        ):
+            # Re-raise our custom exceptions
+            raise
+        except Exception as e:
+            logger.error(f"Error in synchronous contextual chunks retrieval: {str(e)}")
+            raise ContextualRetrievalFailureError(
+                f"Synchronous contextual retrieval wrapper failed: {str(e)}"
+            ) from e
+
+    async def _safe_retrieve_contextual_chunks(
+        self,
+        contextual_retriever: Optional[ContextualRetriever],
+        refined_output: PromptRefinerOutput,
+        request: OrchestrationRequest,
+    ) -> List[Dict[str, Union[str, float, Dict[str, Any]]]]:
+        """Safely retrieve chunks using contextual retrieval with error handling."""
+        if not contextual_retriever:
+            logger.info("Contextual Retriever not available, skipping chunk retrieval")
+            return []
+
+        try:
+            # Ensure retriever is initialized
+            if not contextual_retriever.initialized:
+                initialization_success = await contextual_retriever.initialize()
+                if not initialization_success:
+                    logger.error("Failed to initialize contextual retriever")
+                    raise ContextualRetrieverInitializationError(
+                        "Contextual retriever failed to initialize"
+                    )
+
+            # Call the async method directly (DO NOT use asyncio.run())
+            relevant_chunks = await contextual_retriever.retrieve_contextual_chunks(
+                original_question=refined_output.original_question,
+                refined_questions=refined_output.refined_questions,
+                environment=request.environment,
+                connection_id=request.connection_id,
+            )
+
+            logger.info(
+                f"Successfully retrieved {len(relevant_chunks)} contextual chunks"
+            )
+            return relevant_chunks
+        except ContextualRetrieverInitializationError:
+            # Re-raise our custom exceptions
+            raise
+        except Exception as retrieval_error:
+            logger.error(f"Contextual chunk retrieval failed: {str(retrieval_error)}")
+            raise ContextualRetrievalFailureError(
+                f"Contextual chunk retrieval failed: {str(retrieval_error)}"
+            ) from retrieval_error
+
+    def handle_output_guardrails(
+        self,
+        guardrails_adapter: Optional[NeMoRailsAdapter],
+        generated_response: OrchestrationResponse,
+        request: OrchestrationRequest,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> OrchestrationResponse:
+        """Check output guardrails and handle blocked responses."""
+        if (
+            guardrails_adapter is not None
+            and generated_response.llmServiceActive
+            and not generated_response.questionOutOfLLMScope
+        ):
+            output_check_result = self._check_output_guardrails(
+                guardrails_adapter=guardrails_adapter,
+                assistant_message=generated_response.content,
+                costs_dict=costs_dict,
+            )
+
+            if not output_check_result.allowed:
+                logger.warning(
+                    f"Output blocked by guardrails: {output_check_result.reason}"
+                )
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                )
+
+            logger.info("Output guardrails check passed")
+        else:
+            logger.info("Skipping output guardrails check")
+
+        logger.info(f"Successfully generated RAG response for chatId: {request.chatId}")
+        return generated_response
+
+    def _create_error_response(
+        self, request: OrchestrationRequest
+    ) -> OrchestrationResponse:
+        """Create standardized error response."""
+        return OrchestrationResponse(
+            chatId=request.chatId,
+            llmServiceActive=False,
+            questionOutOfLLMScope=False,
+            inputGuardFailed=False,
+            content=TECHNICAL_ISSUE_MESSAGE,
+        )
+
+    def _create_out_of_scope_response(
+        self, request: OrchestrationRequest
+    ) -> OrchestrationResponse:
+        """Create standardized out-of-scope response."""
+        return OrchestrationResponse(
+            chatId=request.chatId,
+            llmServiceActive=True,
+            questionOutOfLLMScope=True,
+            inputGuardFailed=False,
+            content=OUT_OF_SCOPE_MESSAGE,
+        )
+
+    def _store_production_inference_data(
+        self,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        final_response: OrchestrationResponse,
+    ) -> None:
+        """
+        Store production inference data to Resql endpoint for analytics.
+
+        This method stores comprehensive inference data including:
+        - User question and refined questions
+        - Conversation history
+        - Retrieved chunks with rankings
+        - Embedding scores
+        - Final generated answer
+
+        Args:
+            request: Original orchestration request
+            refined_output: Prompt refiner output with original and refined questions
+            relevant_chunks: Retrieved and ranked chunks
+            final_response: Final orchestration response with generated answer
+        """
+        try:
+            # Only store if the service was active and response was generated successfully
+            if not final_response.llmServiceActive:
+                logger.debug(
+                    f"Skipping production data storage for chat_id: {request.chatId} "
+                    f"- LLM service was not active"
+                )
+                return
+
+            # Extract embedding scores from chunks
+            embedding_scores = []
+            for chunk in relevant_chunks:
+                score_value = chunk.get("fused_score", chunk.get("score", 0.0))
+                try:
+                    if isinstance(score_value, (int, float)):
+                        embedding_scores.append(float(score_value))
+                    else:
+                        embedding_scores.append(0.0)
+                except (ValueError, TypeError):
+                    embedding_scores.append(0.0)
+
+            # Convert conversation history to list of dicts
+            conversation_history_list = [
+                {"role": item.authorRole, "content": item.message}
+                for item in (request.conversationHistory or [])
+            ]
+
+            # Get the production store instance
+            production_store = get_production_store()
+
+            # Store the inference result asynchronously without blocking
+
+            def store_async():
+                """Run async storage in a new event loop in a separate thread."""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(
+                        production_store.store_inference_result_async(
+                            chat_id=request.chatId,
+                            user_question=request.message,
+                            refined_questions=refined_output.refined_questions,
+                            conversation_history=conversation_history_list,
+                            ranked_chunks=relevant_chunks,
+                            embedding_scores=embedding_scores,
+                            final_answer=final_response.content,
+                            environment=request.environment,
+                        )
+                    )
+                    loop.close()
+
+                    if result["success"]:
+                        logger.info(
+                            f"Successfully stored inference data for chat_id: {request.chatId}, environment: {request.environment}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to store inference data for chat_id: {request.chatId}, environment: {request.environment} - "
+                            f"Error: {result['error']}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error in async storage thread: {str(e)}")
+
+            # Start storage in background thread (non-blocking)
+            storage_thread = threading.Thread(target=store_async, daemon=True)
+            storage_thread.start()
+
+        except Exception as e:
+            # Log the error but don't fail the request
+            logger.error(
+                f"Error storing inference data for chat_id: {request.chatId}, environment: {request.environment} - {str(e)}"
+            )
+
+    async def _store_production_inference_data_async(
+        self,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        accumulated_response: str,
+    ) -> None:
+        """
+        Async version: Store production inference data to Resql endpoint for analytics.
+
+        This method stores comprehensive inference data including:
+        - User question and refined questions
+        - Conversation history
+        - Retrieved chunks with rankings
+        - Embedding scores
+        - Final generated answer (from streaming)
+
+        Args:
+            request: Original orchestration request
+            refined_output: Prompt refiner output with original and refined questions
+            relevant_chunks: Retrieved and ranked chunks
+            accumulated_response: Complete streamed response
+        """
+        try:
+            # Extract embedding scores from chunks
+            embedding_scores = []
+            for chunk in relevant_chunks:
+                score_value = chunk.get("fused_score", chunk.get("score", 0.0))
+                try:
+                    if isinstance(score_value, (int, float)):
+                        embedding_scores.append(float(score_value))
+                    else:
+                        embedding_scores.append(0.0)
+                except (ValueError, TypeError):
+                    embedding_scores.append(0.0)
+
+            # Convert conversation history to list of dicts
+            conversation_history_list = [
+                {"role": item.authorRole, "content": item.message}
+                for item in (request.conversationHistory or [])
+            ]
+
+            # Get the production store instance
+            production_store = get_production_store()
+
+            # Store the inference result (async)
+            result = await production_store.store_inference_result_async(
+                chat_id=request.chatId,
+                user_question=request.message,
+                refined_questions=refined_output.refined_questions,
+                conversation_history=conversation_history_list,
+                ranked_chunks=relevant_chunks,
+                embedding_scores=embedding_scores,
+                final_answer=accumulated_response,
+                environment=request.environment,
+            )
+
+            if result["success"]:
+                logger.info(
+                    f"Successfully stored inference data (async) for chat_id: {request.chatId}, environment: {request.environment}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to store inference data (async) for chat_id: {request.chatId}, environment: {request.environment} - "
+                    f"Error: {result['error']}"
+                )
+
+        except Exception as e:
+            # Log the error but don't fail the request
+            logger.error(
+                f"Error storing inference data (async) for chat_id: {request.chatId}, environment: {request.environment} - {str(e)}"
+            )
+
+    @observe(name="initialize_guardrails", as_type="span")
+    def _initialize_guardrails(
+        self, environment: str, connection_id: Optional[str]
+    ) -> NeMoRailsAdapter:
+        """
+        Initialize NeMo Guardrails adapter.
+
+        Args:
+            environment: Environment context (production/testing/development)
+            connection_id: Optional connection identifier
+
+        Returns:
+            NeMoRailsAdapter: Initialized guardrails adapter instance
+
+        Raises:
+            Exception: For initialization errors
+        """
+        try:
+            logger.info(f"Initializing Guardrails for environment: {environment}")
+
+            guardrails_adapter = NeMoRailsAdapter(
+                environment=environment, connection_id=connection_id
+            )
+
+            logger.info("Guardrails adapter initialized successfully")
+            return guardrails_adapter
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Guardrails adapter: {str(e)}")
+            raise
+
+    @observe(name="check_input_guardrails", as_type="span")
+    async def _check_input_guardrails_async(
+        self,
+        guardrails_adapter: NeMoRailsAdapter,
+        user_message: str,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> GuardrailCheckResult:
+        """
+        Check user input against guardrails and track costs (async version).
+
+        Args:
+            guardrails_adapter: The guardrails adapter instance
+            user_message: The user message to check
+            costs_dict: Dictionary to store cost information
+
+        Returns:
+            GuardrailCheckResult: Result of the guardrail check
+        """
+        logger.info("Starting input guardrails check")
+
+        try:
+            # Use async version for streaming context
+            result = await guardrails_adapter.check_input_async(user_message)
+
+            # Store guardrail costs
+            costs_dict["input_guardrails"] = result.usage
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    input=user_message,
+                    metadata={
+                        "guardrail_type": "input",
+                        "allowed": result.allowed,
+                        "verdict": result.verdict,
+                        "blocked_reason": result.reason if not result.allowed else None,
+                        "error": result.error if result.error else None,
+                    },
+                    usage_details={
+                        "input": result.usage.get("total_prompt_tokens", 0),
+                        "output": result.usage.get("total_completion_tokens", 0),
+                        "total": result.usage.get("total_tokens", 0),
+                    },  # type: ignore
+                    cost_details={
+                        "total": result.usage.get("total_cost", 0.0),
+                    },
+                )
+            logger.info(
+                f"Input guardrails check completed: allowed={result.allowed}, "
+                f"cost=${result.usage.get('total_cost', 0):.6f}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Input guardrails check failed: {str(e)}")
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "guardrail_type": "input",
+                    }
+                )
+            # Return conservative result on error
+            return GuardrailCheckResult(
+                allowed=False,
+                verdict="yes",
+                content="Error during input guardrail check",
+                error=str(e),
+                usage={},
+            )
+
+    @observe(name="check_input_guardrails", as_type="span")
+    def _check_input_guardrails(
+        self,
+        guardrails_adapter: NeMoRailsAdapter,
+        user_message: str,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> GuardrailCheckResult:
+        """
+        Check user input against guardrails and track costs (sync version for non-streaming).
+
+        Args:
+            guardrails_adapter: The guardrails adapter instance
+            user_message: The user message to check
+            costs_dict: Dictionary to store cost information
+
+        Returns:
+            GuardrailCheckResult: Result of the guardrail check
+        """
+        logger.info("Starting input guardrails check")
+
+        try:
+            result = guardrails_adapter.check_input(user_message)
+
+            # Store guardrail costs
+            costs_dict["input_guardrails"] = result.usage
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    input=user_message,
+                    metadata={
+                        "guardrail_type": "input",
+                        "allowed": result.allowed,
+                        "verdict": result.verdict,
+                        "blocked_reason": result.reason if not result.allowed else None,
+                        "error": result.error if result.error else None,
+                    },
+                    usage_details={
+                        "input": result.usage.get("total_prompt_tokens", 0),
+                        "output": result.usage.get("total_completion_tokens", 0),
+                        "total": result.usage.get("total_tokens", 0),
+                    },  # type: ignore
+                    cost_details={
+                        "total": result.usage.get("total_cost", 0.0),
+                    },
+                )
+            logger.info(
+                f"Input guardrails check completed: allowed={result.allowed}, "
+                f"cost=${result.usage.get('total_cost', 0):.6f}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Input guardrails check failed: {str(e)}")
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "guardrail_type": "input",
+                    }
+                )
+            # Return conservative result on error
+            return GuardrailCheckResult(
+                allowed=False,
+                verdict="yes",
+                content="Error during input guardrail check",
+                error=str(e),
+                usage={},
+            )
+
+    @observe(name="check_output_guardrails", as_type="span")
+    def _check_output_guardrails(
+        self,
+        guardrails_adapter: NeMoRailsAdapter,
+        assistant_message: str,
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> GuardrailCheckResult:
+        """
+        Check assistant output against guardrails and track costs.
+
+        Args:
+            guardrails_adapter: The guardrails adapter instance
+            assistant_message: The assistant message to check
+            costs_dict: Dictionary to store cost information
+
+        Returns:
+            GuardrailCheckResult: Result of the guardrail check
+        """
+        logger.info("Starting output guardrails check")
+
+        try:
+            result = guardrails_adapter.check_output(assistant_message)
+
+            # Store guardrail costs
+            costs_dict["output_guardrails"] = result.usage
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    input=assistant_message[:500],  # Truncate for readability
+                    output=result.verdict,
+                    metadata={
+                        "guardrail_type": "output",
+                        "allowed": result.allowed,
+                        "verdict": result.verdict,
+                        "reason": result.reason if not result.allowed else None,
+                        "error": result.error if result.error else None,
+                        "response_length": len(assistant_message),
+                    },
+                    usage_details={
+                        "input": result.usage.get("total_prompt_tokens", 0),
+                        "output": result.usage.get("total_completion_tokens", 0),
+                        "total": result.usage.get("total_tokens", 0),
+                    },  # type: ignore
+                    cost_details={
+                        "total": result.usage.get("total_cost", 0.0),
+                    },
+                )
+            logger.info(
+                f"Output guardrails check completed: allowed={result.allowed}, "
+                f"cost=${result.usage.get('total_cost', 0):.6f}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Output guardrails check failed: {str(e)}")
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "guardrail_type": "output",
+                    }
+                )
+            # Return conservative result on error
+            return GuardrailCheckResult(
+                allowed=False,
+                verdict="yes",
+                content="Error during output guardrail check",
+                error=str(e),
+                usage={},
+            )
+
+    def _log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
+        """
+        Log cost information for tracking.
+
+        Args:
+            costs_dict: Dictionary of costs per component
+        """
+        try:
+            if not costs_dict:
+                return
+
+            total_costs = calculate_total_costs(costs_dict)
+
+            logger.info("LLM USAGE COSTS BREAKDOWN:")
+
+            for component, costs in costs_dict.items():
+                logger.info(
+                    f"  {component:20s}: ${costs.get('total_cost', 0):.6f} "
+                    f"({costs.get('num_calls', 0)} calls, "
+                    f"{costs.get('total_tokens', 0)} tokens)"
+                )
+
+            logger.info(
+                f"  {'TOTAL':20s}: ${total_costs['total_cost']:.6f} "
+                f"({total_costs['total_calls']} calls, "
+                f"{total_costs['total_tokens']} tokens)"
+            )
+
+            # Log module versions being used
+            logger.info("\nMODULE VERSIONS IN USE:")
+            try:
+                from src.optimization.optimized_module_loader import get_module_loader
+                from src.guardrails.optimized_guardrails_loader import (
+                    get_guardrails_loader,
+                )
+
+                loader = get_module_loader()
+                guardrails_loader = get_guardrails_loader()
+
+                # Log refiner version (uses cache, no disk I/O)
+                refiner_meta = loader.get_module_metadata("refiner")
+                logger.info(
+                    f"  Refiner: {refiner_meta.get('version', 'unknown')} "
+                    f"({'optimized' if refiner_meta.get('optimized') else 'base'})"
+                )
+
+                # Log generator version (uses cache, no disk I/O)
+                generator_meta = loader.get_module_metadata("generator")
+                logger.info(
+                    f"  Generator: {generator_meta.get('version', 'unknown')} "
+                    f"({'optimized' if generator_meta.get('optimized') else 'base'})"
+                )
+
+                # Log guardrails version
+                _, guardrails_meta = guardrails_loader.get_optimized_config_path()
+                logger.info(
+                    f"  Guardrails: {guardrails_meta.get('version', 'unknown')} "
+                    f"({'optimized' if guardrails_meta.get('optimized') else 'base'})"
+                )
+
+            except Exception as version_error:
+                logger.debug(f"Could not log module versions: {str(version_error)}")
+
+        except Exception as e:
+            logger.warning(f"Failed to log costs: {str(e)}")
+
+    def _update_connection_budget(
+        self,
+        connection_id: Optional[str],
+        costs_dict: Dict[str, Dict[str, Any]],
+        environment: str = "development",
+    ) -> None:
+        """
+        Update the budget for an LLM connection based on usage costs.
+        For production environment, fetches the connection ID asynchronously if not provided.
+
+        Args:
+            connection_id: The LLM connection ID (optional)
+            costs_dict: Dictionary of costs per component
+            environment: The deployment environment (production/testing/development)
+        """
+        try:
+            budget_tracker = get_budget_tracker()
+
+            # For production environment, fetch connection ID if not provided
+            if environment == "production" and not connection_id:
+                logger.debug(
+                    "Production environment detected, fetching connection ID..."
+                )
+                try:
+                    # Use synchronous fetch to avoid event loop issues
+                    production_id = (
+                        budget_tracker.connection_fetcher.fetch_connection_id_sync(
+                            "production"
+                        )
+                    )
+                    if production_id:
+                        connection_id = str(production_id)
+                        logger.info(f"Using production connection_id: {connection_id}")
+                    else:
+                        logger.warning("Could not fetch production connection ID")
+                except Exception as fetch_error:
+                    logger.error(
+                        f"Error fetching production connection ID: {str(fetch_error)}"
+                    )
+
+            result = budget_tracker.update_budget_from_costs(connection_id, costs_dict)
+
+            if result.get("success"):
+                if result.get("budget_exceeded"):
+                    logger.warning(
+                        f"Budget threshold exceeded for connection_id={connection_id}. "
+                        "Connection may have been deactivated."
+                    )
+                else:
+                    logger.debug(
+                        f"Budget updated successfully for connection_id={connection_id}"
+                    )
+            else:
+                reason = result.get("reason", "unknown")
+                if reason not in ["no_connection_id", "zero_or_negative_cost"]:
+                    logger.warning(
+                        f"Failed to update budget for connection_id={connection_id}. "
+                        f"Reason: {reason}"
+                    )
+
+        except Exception as e:
+            # Don't fail the orchestration if budget update fails
+            logger.error(f"Error updating budget: {str(e)}")
+
+    @observe(name="initialize_llm_manager", as_type="span")
+    def _initialize_llm_manager(
+        self, environment: str, connection_id: Optional[str]
+    ) -> LLMManager:
+        """
+        Initialize LLM Manager with proper configuration.
+
+        Args:
+            environment: Environment context (production/testing/development)
+            connection_id: Optional connection identifier
+
+        Returns:
+            LLMManager: Initialized LLM manager instance
+        """
+        try:
+            logger.info(f"Initializing LLM Manager for environment: {environment}")
+
+            llm_manager = LLMManager(
+                environment=environment, connection_id=connection_id
+            )
+
+            llm_manager.ensure_global_config()
+
+            logger.info("LLM Manager initialized successfully")
+            return llm_manager
+
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM Manager: {str(e)}")
+            raise
+
+    @observe(name="refine_user_prompt", as_type="chain")
+    def _refine_user_prompt(
+        self,
+        llm_manager: LLMManager,
+        original_message: str,
+        conversation_history: List[ConversationItem],
+    ) -> tuple[PromptRefinerOutput, Dict[str, Any]]:
+        """
+        Refine user prompt using loaded LLM configuration and return usage info.
+
+        Args:
+            llm_manager: The LLM manager instance to use
+            original_message: The original user message to refine
+            conversation_history: Previous conversation context
+
+        Returns:
+            Tuple of (PromptRefinerOutput, usage_dict): The refined prompt output and usage info
+
+        Raises:
+            ValueError: When LLM Manager is not initialized
+            ValidationError: When prompt refinement output validation fails
+            Exception: For other prompt refinement failures
+        """
+        logger.info("Starting prompt refinement process")
+
+        try:
+            # Convert conversation history to DSPy format
+            history: List[Dict[str, str]] = []
+            for item in conversation_history:
+                role = "assistant" if item.authorRole == "bot" else item.authorRole
+                history.append({"role": role, "content": item.message})
+
+            # Create prompt refiner using the same LLM manager instance
+            refiner = PromptRefinerAgent(llm_manager=llm_manager)
+
+            # Generate structured prompt refinement output with usage tracking
+            refinement_result = refiner.forward_structured(
+                history=history, question=original_message
+            )
+
+            # Extract usage information
+            usage_info = refinement_result.get(
+                "usage",
+                {
+                    "total_cost": 0.0,
+                    "total_prompt_tokens": 0,
+                    "total_completion_tokens": 0,
+                    "total_tokens": 0,
+                    "num_calls": 0,
+                },
+            )
+
+            # Validate the output schema using Pydantic
+            try:
+                validated_output = PromptRefinerOutput(
+                    original_question=refinement_result["original_question"],
+                    refined_questions=refinement_result["refined_questions"],
+                )
+            except Exception as validation_error:
+                logger.error(
+                    f"Prompt refinement output validation failed: {str(validation_error)}"
+                )
+                logger.error(f"Invalid refinement result: {refinement_result}")
+                raise ValueError(
+                    f"Prompt refinement validation failed: {str(validation_error)}"
+                ) from validation_error
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                refinement_applied = (
+                    original_message.strip()
+                    != validated_output.original_question.strip()
+                )
+                langfuse.update_current_generation(
+                    model=llm_manager.get_provider_info().get("model", "unknown"),
+                    input=original_message,
+                    usage_details={
+                        "input": usage_info.get("total_prompt_tokens", 0),
+                        "output": usage_info.get("total_completion_tokens", 0),
+                        "total": usage_info.get("total_tokens", 0),
+                    },
+                    cost_details={
+                        "total": usage_info.get("total_cost", 0.0),
+                    },
+                    metadata={
+                        "num_calls": usage_info.get("num_calls", 0),
+                        "num_refined_questions": len(
+                            validated_output.refined_questions
+                        ),
+                        "refinement_applied": refinement_applied,
+                        "conversation_history_length": len(history),
+                    },  # type: ignore
+                )
+            output_json = validated_output.model_dump()
+            logger.info(
+                f"Prompt refinement output: {json_module.dumps(output_json, indent=2)}"
+            )
+
+            logger.info("Prompt refinement completed successfully")
+            return validated_output, usage_info
+
+        except ValueError:
+            raise
+        except Exception as e:
+            error_id = generate_error_id()
+            log_error_with_context(
+                logger,
+                error_id,
+                "prompt_refinement",
+                None,
+                e,
+                {"message_preview": original_message[:100]},
+            )
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error_id": error_id,
+                        "error_type": type(e).__name__,
+                        "refinement_failed": True,
+                    }
+                )
+            raise RuntimeError(f"Prompt refinement process failed: {str(e)}") from e
+
+    @observe(name="initialize_contextual_retriever", as_type="span")
+    def _initialize_contextual_retriever(
+        self, environment: str, connection_id: Optional[str]
+    ) -> ContextualRetriever:
+        """
+        Initialize contextual retriever for enhanced document retrieval.
+
+        Args:
+            environment: Environment for model resolution
+            connection_id: Optional connection ID
+
+        Returns:
+            ContextualRetriever: Initialized contextual retriever instance
+        """
+        logger.info("Initializing contextual retriever")
+
+        try:
+            # Initialize with Qdrant URL - use environment variable or default
+            qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+
+            contextual_retriever = ContextualRetriever(
+                qdrant_url=qdrant_url,
+                environment=environment,
+                connection_id=connection_id,
+                llm_service=self,  # Inject self to eliminate circular dependency
+            )
+
+            logger.info("Contextual retriever initialized successfully")
+            return contextual_retriever
+
+        except Exception as e:
+            logger.error(f"Failed to initialize contextual retriever: {str(e)}")
+            raise
+
+    @observe(name="initialize_response_generator", as_type="span")
+    def _initialize_response_generator(
+        self, llm_manager: LLMManager
+    ) -> ResponseGeneratorAgent:
+        """
+        Initialize Response Generator with the provided LLM manager.
+
+        Args:
+            llm_manager: The LLM manager instance to use for response generation
+
+        Returns:
+            ResponseGeneratorAgent: Initialized response generator instance
+        """
+        logger.info("Initializing response generator")
+
+        try:
+            # Set up DSPy configuration for the response generator
+            with llm_manager.use_task_local():
+                response_generator = ResponseGeneratorAgent()
+
+            logger.info("Response generator initialized successfully")
+            return response_generator
+
+        except Exception as e:
+            logger.error(f"Failed to initialize response generator: {str(e)}")
+            raise
+
+    @staticmethod
+    def _format_chunks_for_test_response(
+        relevant_chunks: Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]],
+    ) -> Optional[List[ChunkInfo]]:
+        """
+        Format retrieved chunks for test response.
+
+        Args:
+            relevant_chunks: List of retrieved chunks with metadata
+
+        Returns:
+            List of ChunkInfo objects with rank and content, or None if no chunks
+        """
+        if not relevant_chunks:
+            return None
+
+        formatted_chunks = []
+        for rank, chunk in enumerate(relevant_chunks, start=1):
+            # Extract text content - prefer "text" key, fallback to "content"
+            chunk_text = chunk.get("text", chunk.get("content", ""))
+            if isinstance(chunk_text, str) and chunk_text.strip():
+                formatted_chunks.append(ChunkInfo(rank=rank, chunkRetrieved=chunk_text))
+
+        return formatted_chunks if formatted_chunks else None
+
+    @staticmethod
+    def _extract_document_references(
+        relevant_chunks: Optional[List[Dict[str, Union[str, float, Dict[str, Any]]]]],
+    ) -> Optional[List[DocumentReference]]:
+        """
+        Extract unique document references from retrieved chunks.
+
+        Args:
+            relevant_chunks: List of retrieved chunks with metadata
+
+        Returns:
+            List of DocumentReference objects, or None if no chunks
+        """
+        if not relevant_chunks:
+            return None
+
+        seen_urls: set[str] = set()
+        references: List[DocumentReference] = []
+
+        for rank, chunk in enumerate(relevant_chunks, start=1):
+            # Extract document_url - try multiple keys for robustness
+            doc_url = chunk.get("document_url")
+            if not doc_url:
+                # Fallback to metadata
+                meta = chunk.get("meta", {})
+                if isinstance(meta, dict):
+                    doc_url = (
+                        meta.get("document_url")
+                        or meta.get("source_file")
+                        or meta.get("source")
+                    )
+
+            if doc_url and isinstance(doc_url, str) and doc_url.strip():
+                # Only include unique URLs (deduplicate)
+                if doc_url not in seen_urls:
+                    seen_urls.add(doc_url)
+
+                    # Extract score - try multiple keys, ensure it's a float
+                    score_value = chunk.get("fused_score") or chunk.get("score", 0.0)
+                    try:
+                        if isinstance(score_value, (int, float)):
+                            score = float(score_value)
+                        else:
+                            score = 0.0
+                    except (ValueError, TypeError):
+                        score = 0.0
+
+                    references.append(
+                        DocumentReference(
+                            document_url=doc_url,
+                            chunk_rank=rank,
+                            relevance_score=round(score, 4),
+                        )
+                    )
+
+        return references if references else None
+
+    @observe(name="generate_rag_response", as_type="generation")
+    def _generate_rag_response(
+        self,
+        llm_manager: LLMManager,
+        request: OrchestrationRequest,
+        refined_output: PromptRefinerOutput,
+        relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
+        response_generator: Optional[ResponseGeneratorAgent] = None,
+        costs_dict: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
+        """
+        Generate response using retrieved chunks and ResponseGeneratorAgent only.
+        No secondary LLM paths; no citations appended.
+        """
+        logger.info("Starting RAG response generation")
+
+        if costs_dict is None:
+            costs_dict = {}
+
+        # If response generator is not available -> standardized technical issue
+        if response_generator is None:
+            logger.warning(
+                "Response generator unavailable – returning technical issue message."
+            )
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                logger.info(
+                    "Test environment detected – returning technical issue message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
+
+        try:
+            with llm_manager.use_task_local():
+                generator_result = response_generator.forward(
+                    question=refined_output.original_question,
+                    chunks=relevant_chunks or [],
+                    max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
+                )
+
+            answer = (generator_result.get("answer") or "").strip()
+            question_out_of_scope = bool(
+                generator_result.get("questionOutOfLLMScope", False)
+            )
+
+            # Extract and store response generator costs
+            generator_usage = generator_result.get(
+                "usage",
+                {
+                    "total_cost": 0.0,
+                    "total_prompt_tokens": 0,
+                    "total_completion_tokens": 0,
+                    "total_tokens": 0,
+                    "num_calls": 0,
+                },
+            )
+            costs_dict["response_generator"] = generator_usage
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    model=llm_manager.get_provider_info().get("model", "unknown"),
+                    usage_details={
+                        "input": generator_usage.get("total_prompt_tokens", 0),
+                        "output": generator_usage.get("total_completion_tokens", 0),
+                        "total": generator_usage.get("total_tokens", 0),
+                    },
+                    cost_details={
+                        "total": generator_usage.get("total_cost", 0.0),
+                    },
+                    metadata={
+                        "num_calls": generator_usage.get("num_calls", 0),
+                        "question_out_of_scope": question_out_of_scope,
+                        "num_chunks_used": len(relevant_chunks)
+                        if relevant_chunks
+                        else 0,
+                    },
+                    output=answer,
+                )
+            if question_out_of_scope:
+                logger.info("Question determined out-of-scope – sending fixed message.")
+
+                # Extract document references even for out-of-scope
+                doc_references = self._extract_document_references(relevant_chunks)
+
+                # Append references to content
+                content_with_refs = OUT_OF_SCOPE_MESSAGE
+                if doc_references:
+                    refs_text = "\n\n**References:**\n" + "\n".join(
+                        f"{i + 1}. {ref.document_url}"
+                        for i, ref in enumerate(doc_references)
+                    )
+                    content_with_refs += refs_text
+
+                if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                    logger.info(
+                        "Test environment detected – returning out-of-scope message."
+                    )
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,  # service OK; insufficient context
+                        questionOutOfLLMScope=True,
+                        inputGuardFailed=False,
+                        content=content_with_refs,
+                        chunks=self._format_chunks_for_test_response(relevant_chunks),
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,  # service OK; insufficient context
+                        questionOutOfLLMScope=True,
+                        inputGuardFailed=False,
+                        content=content_with_refs,
+                    )
+
+            # In-scope: return the answer as-is (NO citations)
+            logger.info("Returning in-scope answer without citations.")
+
+            # Extract document references and append to content
+            doc_references = self._extract_document_references(relevant_chunks)
+            content_with_refs = answer
+            if doc_references:
+                refs_text = "\n\n**References:**\n" + "\n".join(
+                    f"{i + 1}. {ref.document_url}"
+                    for i, ref in enumerate(doc_references)
+                )
+                content_with_refs += refs_text
+
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                logger.info("Test environment detected – returning generated answer.")
+                return TestOrchestrationResponse(
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=content_with_refs,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=content_with_refs,
+                )
+
+        except Exception as e:
+            error_id = generate_error_id()
+            log_error_with_context(
+                logger,
+                error_id,
+                "rag_response_generation",
+                request.chatId,
+                e,
+                {"num_chunks": len(relevant_chunks) if relevant_chunks else 0},
+            )
+            if self.langfuse_config.langfuse_client:
+                langfuse = self.langfuse_config.langfuse_client
+                langfuse.update_current_generation(
+                    metadata={
+                        "error_id": error_id,
+                        "error_type": type(e).__name__,
+                        "response_type": "technical_issue",
+                        "refinement_failed": False,
+                    }
+                )
+            # Standardized technical issue; no second LLM call, no citations
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                logger.info(
+                    "Test environment detected – returning technical issue message."
+                )
+                return TestOrchestrationResponse(
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                    chunks=self._format_chunks_for_test_response(relevant_chunks),
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=False,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=TECHNICAL_ISSUE_MESSAGE,
+                )
+
+    # ========================================================================
+    # Vector Indexer Support Methods (Isolated from RAG Pipeline)
+    # ========================================================================
+    @observe(name="create_embeddings_for_indexer", as_type="span")
+    def create_embeddings_for_indexer(
+        self,
+        texts: List[str],
+        environment: str = "production",
+        connection_id: Optional[str] = None,
+        batch_size: int = 50,
+    ) -> Dict[str, Any]:
+        """Create embeddings for vector indexer using vault-driven model resolution.
+
+        This method is completely isolated from the RAG pipeline and uses lazy
+        initialization to avoid interfering with the main orchestration flow.
+
+        Args:
+            texts: List of texts to embed
+            environment: Environment (production, development, testing)
+            connection_id: Optional connection ID for dev/test environments
+            batch_size: Batch size for processing
+
+        Returns:
+            Dictionary with embeddings and metadata
+        """
+        logger.info(
+            f"Creating embeddings for vector indexer: {len(texts)} texts in {environment} environment"
+        )
+
+        try:
+            # Lazy initialization of embedding manager
+            embedding_manager = self._get_embedding_manager()
+
+            return embedding_manager.create_embeddings(
+                texts=texts,
+                environment=environment,
+                connection_id=connection_id,
+                batch_size=batch_size,
+            )
+        except Exception as e:
+            logger.error(f"Vector indexer embedding creation failed: {e}")
+            raise
+
+    def generate_context_for_chunks(
+        self, request: ContextGenerationRequest
+    ) -> Dict[str, Any]:
+        """Generate context for chunks using Anthropic methodology.
+
+        This method is completely isolated from the RAG pipeline and uses lazy
+        initialization to avoid interfering with the main orchestration flow.
+
+        Args:
+            request: Context generation request with document and chunk prompts
+
+        Returns:
+            Dictionary with generated context and metadata
+        """
+        logger.info("Generating context for chunks using Anthropic methodology")
+
+        try:
+            # Lazy initialization of context manager
+            context_manager = self._get_context_manager()
+
+            return context_manager.generate_context_with_caching(request)
+        except Exception as e:
+            logger.error(f"Vector indexer context generation failed: {e}")
+            raise
+
+    def get_available_embedding_models_for_indexer(
+        self, environment: str = PRODUCTION_DEPLOYMENT_ENVIRONMENT
+    ) -> Dict[str, Any]:
+        """Get available embedding models for vector indexer.
+
+        Args:
+            environment: Environment (production, development, testing)
+
+        Returns:
+            Dictionary with available models and default model info
+        """
+        try:
+            # Lazy initialization of embedding manager
+            embedding_manager = self._get_embedding_manager()
+            config_loader = self._get_config_loader()
+
+            available_models: List[str] = embedding_manager.get_available_models(
+                environment
+            )
+
+            # Get default model by resolving what would be used
+            try:
+                provider_name, model_name = config_loader.resolve_embedding_model(
+                    environment
+                )
+                default_model: str = f"{provider_name}/{model_name}"
+            except Exception as e:
+                logger.warning(f"Could not resolve default embedding model: {e}")
+                default_model = "azure_openai/text-embedding-3-large"  # Fallback
+
+            return {
+                "available_models": available_models,
+                "default_model": default_model,
+                "environment": environment,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get embedding models for vector indexer: {e}")
+            raise
+
+    # ========================================================================
+    # Lazy Initialization Helpers for Vector Indexer (Private Methods)
+    # ========================================================================
+
+    def _get_embedding_manager(self):
+        """Lazy initialization of EmbeddingManager for vector indexer."""
+        if not hasattr(self, "_embedding_manager"):
+            from src.llm_orchestrator_config.embedding_manager import EmbeddingManager
+            from src.llm_orchestrator_config.vault.vault_client import get_vault_client
+
+            vault_client = get_vault_client()
+            config_loader = self._get_config_loader()
+
+            self._embedding_manager = EmbeddingManager(vault_client, config_loader)
+            logger.debug("Lazy initialized EmbeddingManager for vector indexer")
+
+        return self._embedding_manager
+
+    def _get_context_manager(self):
+        """Lazy initialization of ContextGenerationManager for vector indexer."""
+        if not hasattr(self, "_context_manager"):
+            from src.llm_orchestrator_config.context_manager import (
+                ContextGenerationManager,
+            )
+
+            # Use existing LLM manager or create new one for context generation
+            llm_manager = LLMManager()
+            self._context_manager = ContextGenerationManager(llm_manager)
+            logger.debug("Lazy initialized ContextGenerationManager for vector indexer")
+
+        return self._context_manager
+
+    def _get_config_loader(self):
+        """Lazy initialization of ConfigurationLoader for vector indexer."""
+        if not hasattr(self, "_config_loader"):
+            from src.llm_orchestrator_config.config.loader import ConfigurationLoader
+
+            self._config_loader = ConfigurationLoader()
+            logger.debug("Lazy initialized ConfigurationLoader for vector indexer")
+
+        return self._config_loader

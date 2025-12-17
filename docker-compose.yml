@@ -1,10 +1,207 @@
 services:
+  ruuter-public:
+    container_name: ruuter-public
+    image: ruuter
+    environment:
+      - application.cors.allowedOrigins=http://localhost:8086,http://localhost:3001,http://localhost:3003,http://localhost:3004,http://localhost:8080,http://localhost:8000,http://localhost:8090
+      - application.httpCodesAllowList=200,201,202,204,400,401,403,500
+      - application.internalRequests.allowedIPs=127.0.0.1
+      - application.logging.displayRequestContent=true
+      - application.logging.displayResponseContent=true
+      - application.logging.printStackTrace=true
+      - application.internalRequests.disabled=true
+      - server.port=8086
+    volumes:
+      - ./DSL/Ruuter.public:/DSL
+      - ./constants.ini:/app/constants.ini
+    ports:
+      - 8086:8086
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "512M"
+
+  ruuter-private:
+    container_name: ruuter-private
+    image: ruuter
+    environment:
+      - application.cors.allowedOrigins=http://localhost:3001,http://localhost:3003,http://localhost:8088,http://localhost:3002,http://localhost:3004,http://localhost:8000
+      - application.httpCodesAllowList=200,201,202,400,401,403,500
+      - application.internalRequests.allowedIPs=127.0.0.1
+      - application.logging.displayRequestContent=true
+      - application.logging.displayResponseContent=true
+      - application.logging.printStackTrace=true
+      - application.internalRequests.disabled=true
+      - server.port=8088
+    volumes:
+      - ./DSL/Ruuter.private:/DSL
+      - ./constants.ini:/app/constants.ini
+    ports:
+      - 8088:8088
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "512M"
+
+  data-mapper:
+    container_name: data-mapper
+    image: data-mapper
+    environment:
+      - PORT=3000
+      - CONTENT_FOLDER=/data
+    volumes:
+      - ./DSL:/data
+      - ./DSL/DMapper/rag-search/hbs:/workspace/app/views/rag-search
+      - ./DSL/DMapper/rag-search/lib:/workspace/app/lib
+    ports:
+      - 3001:3000
+    networks:
+      - bykstack
+
+  tim:
+    container_name: tim
+    image: tim
+    depends_on:
+      tim-postgresql:
+        condition: service_started
+    environment:
+      - SECURITY_ALLOWLIST_JWT=ruuter-private,ruuter-public,data-mapper,resql,tim,tim-postgresql,chat-widget,authentication-layer,127.0.0.1,::1
+      - KEY_PASS=ppjjpp
+    ports:
+      - 8085:8085
+    networks:
+      - bykstack
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    cpus: "0.5"
+    mem_limit: "512M"
+
+  tim-postgresql:
+    container_name: tim-postgresql
+    image: postgres:14.1
+    environment:
+      - POSTGRES_USER=tim
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_DB=tim
+      # - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - ./tim-db:/var/lib/postgresql/data
+    ports:
+      - 9876:5432
+    networks:
+      - bykstack
+
+  authentication-layer:
+    container_name: authentication-layer
+    image: authentication-layer
+    ports:
+      - 3004:3004
+    networks:
+      - bykstack
+
+  resql:
+    container_name: resql
+    image: resql
+    depends_on:
+      rag_search_db:
+        condition: service_started
+    environment:
+      - sqlms.datasources.[0].name=byk
+      - sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://rag_search_db:5432/rag-search #For LocalDb Use
+      # sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://171.22.247.13:5435/byk?sslmode=require
+      - sqlms.datasources.[0].username=postgres
+      - sqlms.datasources.[0].password=dbadmin
+      - logging.level.org.springframework.boot=INFO
+    ports:
+      - 8082:8082
+    volumes:
+      - ./DSL/Resql:/DSL
+      - ./shared:/shared
+      - ./DSL/DatasetGenerator/output_datasets:/app/output_datasets
+    networks:
+      - bykstack
+
+  gui:
+    container_name: gui
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_RUUTER_API_URL=http://localhost:8086
+      - REACT_APP_RUUTER_PRIVATE_API_URL=http://localhost:8088
+      - REACT_APP_CUSTOMER_SERVICE_LOGIN=http://localhost:3004/et/dev-auth
+      - REACT_APP_CSP=upgrade-insecure-requests; default-src 'self'; font-src 'self' data:; img-src 'self' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; connect-src 'self' http://localhost:8086 http://localhost:8088 http://localhost:3004 http://localhost:3005 ws://localhost;
+      - DEBUG_ENABLED=true
+      - CHOKIDAR_USEPOLLING=true
+      - PORT=3001
+      - REACT_APP_SERVICE_ID=conversations,settings,monitoring
+      - REACT_APP_ENABLE_HIDDEN_FEATURES=TRUE
+      - VITE_HOST=0.0.0.0
+      - VITE_PORT=3001
+      - HOST=0.0.0.0
+      - VITE_ALLOWED_HOSTS=localhost,127.0.0.1
+      - HMR=false
+      - FAST_REFRESH=false
+    build:
+      context: ./GUI
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3003:3001"
+    volumes:
+      - /app/node_modules
+      - ./GUI:/app
+    networks:
+      - bykstack
+    cpus: "0.5"
+    mem_limit: "1G"
+    restart: unless-stopped
+
+  rag-s3-ferry:
+    image: s3-ferry:latest
+    container_name: rag-s3-ferry
+    volumes:
+      - shared-volume:/app/shared
+      - cron_data:/app/data
+      - ./datasets:/app/datasets  # Access to datasets folder for diff identifier operations
+    env_file:
+      - .env
+    ports:
+      - "3006:3000"
+    networks:
+      - bykstack
+    depends_on:
+      minio:
+        condition: service_started
+
+  cron-manager:
+    container_name: cron-manager
+    image: cron-manager-python:latest
+    user: "root"
+    volumes:
+      - ./DSL/CronManager/DSL:/DSL
+      - ./DSL/CronManager/script:/app/scripts
+      - ./src/vector_indexer:/app/src/vector_indexer
+      - cron_data:/app/data
+      - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
+      - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
+      - ./grafana-configs/loki_logger.py:/app/src/vector_indexer/loki_logger.py
+      - ./.env:/app/.env:ro
+      - vault-agent-token:/agent/out:ro  # Mount vault token for accessing vault secrets
+    environment:
+      - server.port=9010
+      - PYTHONPATH=/app:/app/src/vector_indexer
+      - VAULT_ADDR=http://vault:8200
+    ports:
+      - 9010:8080
+    depends_on:
+      - vault-agent-llm
+    networks:
+      - bykstack
+
   qdrant:
     image: qdrant/qdrant:v1.15.1
     restart: always
     container_name: qdrant
     ports:
-      - 6333:6333 # http client 
+      - 6333:6333 # http client
       - 6334:6334 # grpc client
     expose:
       - 6333
@@ -46,7 +243,7 @@ services:
     depends_on:
       - loki
     restart: unless-stopped
-  
+
   langfuse-worker:
     image: docker.io/langfuse/langfuse-worker:3
     restart: always
@@ -60,7 +257,7 @@ services:
       clickhouse:
         condition: service_healthy
     ports:
-      - 127.0.0.1:3030:3030
+      - 3030:3030
     env_file:
       - .env
     environment: &langfuse-worker-env
@@ -120,7 +317,7 @@ services:
       - langfuse-worker
       - rag_search_db
     ports:
-      - 3000:3000
+      - 3005:3000
     env_file:
       - .env
     environment:
@@ -152,8 +349,8 @@ services:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
     ports:
-      - 127.0.0.1:8123:8123
-      - 127.0.0.1:9000:9000
+      - 8123:8123
+      - 9000:9000
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
@@ -183,7 +380,7 @@ services:
       "
     ports:
       - 9090:9000
-      - 127.0.0.1:9091:9001
+      - 9091:9001
     volumes:
       - minio_data:/data
     healthcheck:
@@ -203,7 +400,7 @@ services:
     command: >
       --requirepass ${REDIS_AUTH:-myredissecret}
     ports:
-      - 127.0.0.1:6379:6379
+      - 6379:6379
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -234,11 +431,159 @@ services:
     networks:
       - bykstack
 
+  vault:
+    image: hashicorp/vault:1.20.3
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_SKIP_VERIFY_CONFIG_PERMISSIONS: "true"
+    volumes:
+      - vault-data:/vault/file
+      - ./vault/config:/vault/config:ro
+      - ./vault/logs:/vault/logs
+    expose:
+      - "8200"
+    networks:
+      - bykstack
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8200/v1/sys/health || exit 0"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  vault-init:
+    image: hashicorp/vault:1.20.3
+    container_name: vault-init
+    user: "0"
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - vault-data:/vault/data
+      - vault-agent-creds:/agent/credentials
+      - vault-agent-token:/agent/out
+      - ./vault-init.sh:/vault-init.sh:ro
+    networks:
+      - bykstack
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "apk add --no-cache curl jq && chmod -R 755 /agent/credentials && chmod -R 770 /agent/out && chown -R vault:vault /agent/credentials /agent/out && su vault -s /bin/sh /vault-init.sh"]
+    restart: "no"
+
+  vault-agent-llm:
+    image: hashicorp/vault:1.20.3
+    container_name: vault-agent-llm
+    command: ["vault", "agent", "-config=/agent/config/agent.hcl", "-log-level=info"]
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./vault/agents/llm/agent.hcl:/agent/config/agent.hcl:ro
+      - vault-agent-creds:/agent/credentials:ro
+      - vault-agent-token:/agent/out
+    networks:
+      - bykstack
+    restart: unless-stopped
+
+  # LLM Orchestration Service
+  llm-orchestration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_orchestration_service
+    container_name: llm-orchestration-service
+    restart: always
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=/agent/out/token
+    volumes:
+      - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
+      - ./src/optimization/optimized_modules:/app/src/optimization/optimized_modules
+      - llm_orchestration_logs:/app/logs
+      - vault-agent-token:/agent/out:ro
+    networks:
+      - bykstack
+    depends_on:
+      - vault
+      - vault-agent-llm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  opensearch-node:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: opensearch-node
+    environment:
+      - node.name=opensearch-node
+      - discovery.seed_hosts=opensearch
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - plugins.security.disabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - 9200:9200
+      - 9600:9600
+    networks:
+      - bykstack
+
+  notifications-node:
+    container_name: notifications-node
+    build:
+      context: ./notification-server
+      dockerfile: Dockerfile
+    ports:
+      - 4040:4040
+    depends_on:
+      - opensearch-node
+    environment:
+      OPENSEARCH_PROTOCOL: http
+      OPENSEARCH_HOST: opensearch-node
+      OPENSEARCH_PORT: 9200
+      OPENSEARCH_USERNAME: admin
+      OPENSEARCH_PASSWORD: admin
+      PORT: 4040
+      REFRESH_INTERVAL: 1000
+      QUEUE_REFRESH_INTERVAL: 4000
+      CORS_WHITELIST_ORIGINS: http://localhost:3001,http://localhost:3003,http://localhost:3004,http://localhost:8080
+      RUUTER_URL: http://ruuter-public:8086
+      CHAT_TERMINATION_DELAY: 5000
+    volumes:
+      - /app/node_modules
+      - ./notification-server:/app
+    networks:
+      - bykstack
+
 volumes:
   loki-data:
     name: loki-data
   grafana-data:
     name: grafana-data
+  llm_orchestration_logs:
+    name: llm_orchestration_logs
   qdrant_data:
     name: qdrant_data
   rag-search-db:
@@ -249,6 +594,18 @@ volumes:
     name: langfuse_clickhouse_logs
   minio_data:
     name: minio_data
+  vault-data:
+    name: vault-data
+  shared-volume:
+    name: shared-volume
+  cron_data:
+    name: cron_data
+  vault-agent-creds:
+    name: vault-agent-creds
+  vault-agent-token:
+    name: vault-agent-token
+  opensearch-data:
+    name: opensearch-data
 
 networks:
   bykstack:
