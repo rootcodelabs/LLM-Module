@@ -148,6 +148,9 @@ class OrchestrationResponse(BaseModel):
     inputGuardFailed: bool = Field(
         ..., description="Whether input guard validation failed"
     )
+    retrieval_context: Optional[List[Dict[str, Any]]] = Field(
+        default=None, exclude=True
+    )
     content: str = Field(..., description="Response content with citations")
 
 
@@ -263,3 +266,16 @@ class TestOrchestrationResponse(BaseModel):
     chunks: Optional[List[ChunkInfo]] = Field(
         default=None, description="Retrieved chunks with rank and content"
     )
+
+
+class DeepEvalTestOrchestrationResponse(BaseModel):
+    """Extended response model for testing with additional evaluation data."""
+
+    chatId: str
+    llmServiceActive: bool
+    questionOutOfLLMScope: bool
+    inputGuardFailed: bool
+    content: str
+    retrieval_context: Optional[List[Dict[str, Any]]] = None
+    refined_questions: Optional[List[str]] = None
+    expected_output: Optional[str] = None  # For DeepEval
