@@ -1,4 +1,4 @@
 [allowlist]
 paths = [
-  '''docker-compose-test\.yml'''
+  '''docker-compose-eval\.yml'''
 ]
