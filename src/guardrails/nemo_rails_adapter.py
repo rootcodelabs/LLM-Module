@@ -316,7 +316,6 @@ Is this user message safe according to the policy? Answer with 'safe' or 'unsafe
 
     def _is_input_blocked(self, response: str, original: str) -> bool:
         """Check if input was blocked by guardrails."""
-
         blocked_phrases = GUARDRAILS_BLOCKED_PHRASES
         response_normalized = response.strip().lower()
         # Match if the response is exactly or almost exactly a blocked phrase (allow trailing punctuation/whitespace)
