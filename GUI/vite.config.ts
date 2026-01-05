@@ -33,6 +33,8 @@ export default defineConfig({
         'Content-Security-Policy': process.env.REACT_APP_CSP,
       }),
     },
+    allowedHosts: ['est-rag-rtc.rootcode.software', 'localhost', '127.0.0.1'],
+
   },
   resolve: {
     alias: {

@@ -42,7 +42,7 @@
     "desc": "desc",
     "reset": "Reset",
     "choose": "Choose",
-    "extendSession": "Extend Session",
+    "extendSession": "Extend session",
     "unAuthorized": "Unauthorized",
     "unAuthorizedDesc": "You do not have permission to view this page.",
     "latest": "Latest",
@@ -54,18 +54,18 @@
     "maxFileSize": "File size should not exceed 20 MB.",
     "select": "-Select-",
     "replace": "Replace",
-    "clearFilters": "Clear Filters",
+    "clearFilters": "Clear filters",
     "showEntries": "Show",
     "entries": "records",
-    "deleteSelected": "Delete Selection"
+    "deleteSelected": "Delete selection"
   },
   "menu": {
-    "userManagement": "User Management",
+    "userManagement": "User management",
     "testLLM": "Test LLM",
-    "llmConnections": "LLM Connections"
+    "llmConnections": "LLM connections"
   },
   "userManagement": {
-    "title": "User Management",
+    "title": "User management",
     "addUserButton": " Add a user",
     "addUser": {
       "addUserModalTitle": "Add a new user",
@@ -80,22 +80,22 @@
       "personalIdPlaceholder": "Enter personal ID",
       "title": "Title",
       "titlePlaceholder": "Enter title",
-      "email": "Email",
+      "email": "E-mail",
       "emailPlaceholder": "Enter email",
       "nameRequired": "Name is required",
       "roleRequired": "Role is required",
-      "idCodeRequired": "ID code is required",
+      "idCodeRequired": "Personal ID is required",
       "titleRequired": "Title is required",
       "emailRequired": "Email is required",
-      "invalidIdCode": "Invalid ID code",
-      "invalidEmail": "Invalid Email",
+      "invalidIdCode": "Invalid personal ID",
+      "invalidEmail": "Invalid e-mail",
       "userExists": "User already exists"
     },
     "table": {
-      "fullName": "Full Name",
+      "fullName": "Full name",
       "personalId": "Personal ID",
       "role": "Role",
-      "email": "Email",
+      "email": "E-mail",
       "actions": "Actions",
       "title": "Title"
     }
@@ -103,12 +103,12 @@
 
   "roles": {
     "ROLE_ADMINISTRATOR": "Administrator",
-    "ROLE_MODEL_TRAINER": "Model Trainer"
+    "ROLE_MODEL_TRAINER": "Trainer"
   },
   "toast": {
     "success": {
       "title": "Success",
-      "updateSuccess": "Updated Successfully",
+      "updateSuccess": "Updated successfully",
       "copied": "Copied",
       "userDeleted": "User deleted",
       "newUserAdded": "New user added",
@@ -120,29 +120,29 @@
   },
   "dataModels": {
     "settings": "Settings",
-    "dataModels": "LLM Connections",
+    "dataModels": "LLM connections",
     "noModels": "No LLM connections found",
-    "createModel": "Create LLM Connection",
-    "productionConnections": "Production LLM Connection",
-    "otherConnections": "Other LLM Connections",
+    "createModel": "Create LLM connection",
+    "productionConnections": "Production LLM connection",
+    "otherConnections": "Other LLM connections",
     "sortOptions": {
-      "createdDateNewest": "Created Date (Newest)",
-      "createdDateOldest": "Created Date (Oldest)",
+      "createdDateNewest": "Created date (newest)",
+      "createdDateOldest": "Created date (oldest)",
       "platformAZ": "Platform A-Z",
       "platformZA": "Platform Z-A",
       "modelAZ": "Model A-Z",
       "modelZA": "Model Z-A",
-      "budgetHighToLow": "Budget (High to Low)",
-      "budgetLowToHigh": "Budget (Low to High)"
+      "budgetHighToLow": "Budget (high to low)",
+      "budgetLowToHigh": "Budget (low to high)"
     },
     "filters": {
       "platform": "Platform",
       "model": "Model",
       "environment": "Environment",
-      "sortBy": "Sort By",
-      "allPlatforms": "All Platforms",
-      "allModels": "All Models",
-      "allEnvironments": "All Environments"
+      "sortBy": "Sort by",
+      "allPlatforms": "All platforms",
+      "allModels": "All models",
+      "allEnvironments": "All environments"
     },
     "platforms": {
       "azure": "Azure OpenAI",
@@ -159,29 +159,29 @@
       "production": "Production"
     },
     "budgetStatus": {
-      "withinBudget": "Within Budget",
-      "overBudget": "Over Budget",
-      "closeToExceed": "Close to Exceed Budget"
+      "withinBudget": "Within budget",
+      "overBudget": "Over budget",
+      "closeToExceed": "Close to exceed budget"
     }
   },
   "llmConnectionForm": {
-    "createTitle": "Create LLM Connection",
-    "editTitle": "Edit LLM Connection",
+    "createTitle": "Create LLM connection",
+    "editTitle": "Edit LLM connection",
     "sections": {
-      "llmConfiguration": "LLM Configuration",
-      "embeddingConfiguration": "Embedding Model Configuration",
-      "budgetDeployment": "Budget & Deployment"
+      "llmConfiguration": "LLM configuration",
+      "embeddingConfiguration": "Embedding model configuration",
+      "budgetDeployment": "Budget and deployment"
     },
     "fields": {
       "connectionName": {
-        "label": "Connection Name",
+        "label": "Connection name",
         "description": "A unique name to identify this LLM connection",
         "placeholder": "Enter connection name (e.g., Azure GPT-4 Production)"
       },
       "llmPlatform": {
-        "label": "LLM Platform",
+        "label": "LLM platform",
         "description": "Cloud / local platform in which your model is hosted",
-        "placeholder": "Select LLM Platform"
+        "placeholder": "Select LLM platform"
       },
       "llmModel": {
         "label": "LLM Model",
@@ -189,100 +189,100 @@
         "placeholder": "Select LLM Model"
       },
       "embeddingPlatform": {
-        "label": "Embedding Model Platform",
+        "label": "Embedding model platform",
         "description": "This is the cloud / local platform in which your embedding model is hosted",
-        "placeholder": "Select Embedding Platform"
+        "placeholder": "Select embedding platform"
       },
       "embeddingModel": {
-        "label": "Embedding Model",
+        "label": "Embedding model",
         "description": "The embedding model that will be used for searching your knowledge base",
-        "placeholder": "Select Embedding Model"
+        "placeholder": "Select embedding model"
       },
       "monthlyBudget": {
-        "label": "Monthly Budget",
-        "description": "Total monthly budget including embedding model and LLM model. If the LLM integration usage cost exceeds the below budget, the LLM will respond with an \"inactive\" status",
+        "label": "Monthly budget",
+        "description": "Total monthly budget including embedding model and LLM model. If the LLM usage cost exceeds the below budget, the LLM will respond with an \"inactive\" status",
         "placeholder": "Enter monthly budget"
       },
       "disconnectOnBudgetExceed": {
         "label": "Automatically disconnect LLM connection when stop budget threshold is exceeded"
       },
       "warnBudget": {
-        "label": "Warn Budget Threshold",
+        "label": "Warn budget threshold",
         "description": "You will get a notification when your usage reaches this percentage of your allocated monthly budget.",
         "placeholder": "Enter warn budget threshold"
       },
       "stopBudget": {
-        "label": "Disconnect Budget Threshold",
+        "label": "Disconnect budget threshold",
         "description": "Your LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches this percentage of your monthly budget.",
         "placeholder": "Enter stop budget threshold"
       },
       "deploymentEnvironment": {
-        "label": "Deployment Environment"
+        "label": "Deployment environment"
       }
     },
     "aws": {
       "accessKey": {
         "label": "Access Key",
-        "description": "AWS Access Key for Bedrock service",
-        "placeholder": "Enter AWS Access Key"
+        "description": "AWS access key for Bedrock service",
+        "placeholder": "Enter AWS access key"
       },
       "secretKey": {
-        "label": "Secret Key",
-        "description": "AWS Secret Key for Bedrock service",
-        "placeholder": "Enter AWS Secret Key"
+        "label": "Secret key",
+        "description": "AWS secret key for Bedrock service",
+        "placeholder": "Enter AWS secret key"
       },
       "embeddingAccessKey": {
-        "label": "Embedding Access Key",
-        "description": "AWS Access Key for Bedrock embedding service",
-        "placeholder": "Enter AWS Access Key for embeddings"
+        "label": "Embedding access key",
+        "description": "AWS access key for Bedrock embedding service",
+        "placeholder": "Enter AWS access key for embeddings"
       },
       "embeddingSecretKey": {
-        "label": "Embedding Secret Key",
-        "description": "AWS Secret Key for Bedrock embedding service",
-        "placeholder": "Enter AWS Secret Key for embeddings"
+        "label": "Embedding secret key",
+        "description": "AWS secret key for Bedrock embedding service",
+        "placeholder": "Enter AWS secret key for embeddings"
       }
     },
     "azure": {
       "deploymentName": {
-        "label": "Deployment Name",
+        "label": "Deployment name",
         "description": "Azure OpenAI deployment name",
         "placeholder": "Enter deployment name"
       },
       "targetUri": {
-        "label": "Endpoint / Target URI",
+        "label": "Endpoint / target URI",
         "description": "Azure OpenAI service endpoint URL",
         "placeholder": "https://your-resource.openai.azure.com/"
       },
       "apiKey": {
-        "label": "API Key",
+        "label": "API key",
         "description": "Azure OpenAI API key",
         "placeholder": "Enter Azure OpenAI API key"
       },
       "embeddingDeploymentName": {
-        "label": "Embedding Deployment Name",
+        "label": "Embedding deployment name",
         "description": "Azure OpenAI embedding deployment name",
         "placeholder": "Enter embedding deployment name"
       },
       "embeddingTargetUri": {
-        "label": "Embedding Endpoint / Target URI",
+        "label": "Embedding endpoint / target URI",
         "description": "Azure OpenAI embedding service endpoint URL"
       },
       "embeddingApiKey": {
-        "label": "Embedding API Key",
+        "label": "Embedding API key",
         "description": "Azure OpenAI embedding API key",
         "placeholder": "Enter Azure OpenAI embedding API key"
       }
     },
     "generic": {
       "llmApiKey": {
-        "label": "LLM API Key",
+        "label": "LLM API key",
         "description": "The API key of the LLM model",
         "placeholder": "Enter your LLM API key"
       },
       "embeddingApiKey": {
-        "label": "Embedding Model API Key",
+        "label": "Embedding model API key",
         "description": "API key of your embedding model",
-        "placeholder": "Enter your Embedding API key"
+        "placeholder": "Enter your embedding API key"
       }
     },
     "placeholders": {
@@ -293,97 +293,97 @@
       "selectPlatformFirst": "Select a platform first"
     },
     "validationMessages": {
-      "connectionNameRequired": "Connection Name is required",
-      "llmPlatformRequired": "LLM Platform is required",
-      "llmModelRequired": "LLM Model is required",
-      "embeddingPlatformRequired": "Embedding Model Platform is required",
-      "embeddingModelRequired": "Embedding Model is required",
-      "monthlyBudgetRequired": "Monthly Budget is required",
+      "connectionNameRequired": "Connection name is required",
+      "llmPlatformRequired": "LLM platform is required",
+      "llmModelRequired": "LLM model is required",
+      "embeddingPlatformRequired": "Embedding model platform is required",
+      "embeddingModelRequired": "Embedding model is required",
+      "monthlyBudgetRequired": "Monthly budget is required",
       "monthlyBudgetInvalid": "Please enter a valid budget amount",
-      "monthlyBudgetPositive": "Monthly Budget must be a positive number",
-      "warnBudgetRequired": "Warn Budget Threshold is required",
-      "warnBudgetRange": "Warn Budget Threshold must be between 1-100%",
-      "stopBudgetRequired": "Stop Budget Threshold is required",
-      "stopBudgetRange": "Stop Budget Threshold must be between 1-200%",
-      "stopBudgetGreater": "Stop Budget Threshold must be greater than Warn Budget Threshold",
-      "deploymentEnvironmentRequired": "Deployment Environment is required",
+      "monthlyBudgetPositive": "Monthly budget must be a positive number",
+      "warnBudgetRequired": "Warn budget threshold is required",
+      "warnBudgetRange": "Warn budget threshold must be equal to or between 1-100%",
+      "stopBudgetRequired": "Stop budget threshold is required",
+      "stopBudgetRange": "Stop budget threshold must be equal to or between 1-200%",
+      "stopBudgetGreater": "Stop budget threshold must be greater than warn budget threshold",
+      "deploymentEnvironmentRequired": "Deployment environment is required",
       "numbersOnly": "Please enter numbers only",
-      "accessKeyRequiredAws": "Access Key is required for AWS Bedrock",
-      "secretKeyRequiredAws": "Secret Key is required for AWS Bedrock",
-      "deploymentNameRequiredAzure": "Deployment Name is required for Azure OpenAI",
+      "accessKeyRequiredAws": "Access key is required for AWS Bedrock",
+      "secretKeyRequiredAws": "Secret key is required for AWS Bedrock",
+      "deploymentNameRequiredAzure": "Deployment name is required for Azure OpenAI",
       "endpointRequiredAzure": "Endpoint is required for Azure OpenAI",
-      "apiKeyRequiredAzure": "API Key is required for Azure OpenAI",
-      "llmApiKeyRequired": "LLM API Key is required",
-      "embeddingAccessKeyRequiredAws": "Embedding Access Key is required for AWS Bedrock",
-      "embeddingSecretKeyRequiredAws": "Embedding Secret Key is required for AWS Bedrock",
-      "embeddingDeploymentNameRequiredAzure": "Embedding Deployment Name is required for Azure OpenAI",
-      "embeddingEndpointRequiredAzure": "Embedding Endpoint is required for Azure OpenAI",
-      "embeddingApiKeyRequiredAzure": "Embedding API Key is required for Azure OpenAI",
-      "embeddingApiKeyRequired": "Embedding API Key is required",
+      "apiKeyRequiredAzure": "API key is required for Azure OpenAI",
+      "llmApiKeyRequired": "LLM API key is required",
+      "embeddingAccessKeyRequiredAws": "Embedding access key is required for AWS Bedrock",
+      "embeddingSecretKeyRequiredAws": "Embedding secret key is required for AWS Bedrock",
+      "embeddingDeploymentNameRequiredAzure": "Embedding deployment name is required for Azure OpenAI",
+      "embeddingEndpointRequiredAzure": "Embedding endpoint is required for Azure OpenAI",
+      "embeddingApiKeyRequiredAzure": "Embedding API key is required for Azure OpenAI",
+      "embeddingApiKeyRequired": "Embedding API key is required",
       "invalidUrl": "Please enter a valid URL starting with http:// or https://",
       "failedToLoadPlatforms": "Failed to load platforms",
       "failedToLoadModels": "Failed to load models"
     },
     "buttons": {
-      "deleteConnection": "Delete Connection",
-      "updateConnection": "Update Connection",
-      "createConnection": "Create Connection"
+      "deleteConnection": "Delete connection",
+      "updateConnection": "Update connection",
+      "createConnection": "Create connection"
     },
     "environments": {
       "testing": "Testing",
       "production": "Production"
     },
     "createConnection": {
-      "title": "Create LLM Connection",
-      "successDialogTitle": "Connection Succeeded",
+      "title": "Create LLM connection",
+      "successDialogTitle": "Connection succeeded",
       "successDialogMessage": "The provided LLM configuration is successfully configured",
-      "viewConnectionsButton": "View LLM Connections",
-      "errorDialogTitle": "Connection Failed",
+      "viewConnectionsButton": "View LLM connections",
+      "errorDialogTitle": "Connection failed",
       "errorDialogMessage": "The connection couldn't be established either due to invalid API credentials or misconfiguration in the deployment platform",
-      "goBackButton": "Go Back",
-      "replaceProductionDialogTitle": "Replace Production Connection",
+      "goBackButton": "Go back",
+      "replaceProductionDialogTitle": "Replace production connection",
       "replaceProductionDialogMessage": "A production connection \"{connectionName}\" already exists.",
       "replaceProductionDialogWarning": "Creating this new production connection will replace the current one. Are you sure you want to proceed?",
       "cancelButton": "Cancel",
-      "confirmReplaceButton": "Yes, Replace Production Connection"
+      "confirmReplaceButton": "Yes, replace production connection"
     },
     "viewConnection": {
-      "updateSuccessTitle": "Connection Update Succeeded",
+      "updateSuccessTitle": "Connection update succeeded",
       "updateSuccessMessage": "LLM configuration updated successfully!",
-      "updateErrorTitle": "Connection Update Failed",
+      "updateErrorTitle": "Connection update failed",
       "updateErrorMessage": "Failed to update LLM connection. Please try again.",
-      "deleteSuccessTitle": "Connection Deletion Succeeded",
+      "deleteSuccessTitle": "Connection deletion succeeded",
       "deleteSuccessMessage": "LLM connection deleted successfully!",
       "deleteErrorTitle": "Error",
       "deleteErrorMessage": "Failed to delete LLM connection. Please try again.",
-      "viewConnectionsButton": "View LLM Connections",
-      "goBackButton": "Go Back",
-      "confirmEnvironmentChangeTitle": "Confirm Production Environment Change",
+      "viewConnectionsButton": "View LLM connections",
+      "goBackButton": "Go back",
+      "confirmEnvironmentChangeTitle": "Confirm production environment change",
       "confirmEnvironmentChangeMessage": "You are about to change a production connection to testing environment.",
       "confirmEnvironmentChangeWarning": "This will affect the current production setup. Are you sure you want to proceed?",
       "cancelButton": "Cancel",
-      "confirmChangeButton": "Yes, Change Environment",
-      "cannotDeleteProductionTitle": "Cannot Delete Production Connection",
+      "confirmChangeButton": "Yes, change environment",
+      "cannotDeleteProductionTitle": "Cannot delete production connection",
       "cannotDeleteProductionMessage": "This LLM connection is currently set as the production connection and cannot be deleted.",
       "cannotDeleteProductionInstructions": "To delete this connection, please ensure another connection is set as the production connection.",
-      "confirmDeleteTitle": "Confirm Delete",
+      "confirmDeleteTitle": "Confirm delete",
       "confirmDeleteMessage": "Are you sure you want to delete this LLM connection? This action cannot be undone.",
       "deleteButton": "Delete",
       "okButton": "OK",
-      "connectionNotFoundTitle": "Connection Not Found",
+      "connectionNotFoundTitle": "Connection not found",
       "connectionNotFoundMessage": "The requested LLM connection could not be found."
     }
   },
   "testModels": {
     "title": "Test LLM",
-    "llmConnectionLabel": "LLM Connection",
-    "selectConnectionPlaceholder": "Select LLM Connection",
+    "llmConnectionLabel": "LLM connection",
+    "selectConnectionPlaceholder": "Select LLM connection",
     "connectionNotExist": "Connection does not exist",
     "classifyTextLabel": "Enter text to test",
     "sendButton": "Send",
     "sendingButton": "Sending...",
     "responseLabel": "Response:",
-    "inferenceErrorTitle": "Inference Error",
+    "inferenceErrorTitle": "Inference error",
     "inferenceErrorMessage": "Failed to get inference result. Please try again.",
     "classificationFailed": "Inference failed. Please try again.",
     "closeButton": "Close"
