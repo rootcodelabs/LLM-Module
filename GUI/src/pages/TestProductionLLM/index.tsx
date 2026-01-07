@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, FormTextarea } from 'components';
 import { useToast } from 'hooks/useToast';
 import { useStreamingResponse } from 'hooks/useStreamingResponse';
+import MessageContent from 'components/MessageContent';
 import './TestProductionLLM.scss';
 
 interface Message {
@@ -172,7 +173,8 @@ const TestProductionLLM: FC = () => {
                 }`}
               >
                 <div className="test-production-llm__message-content">
-                  {msg.content}
+                  <MessageContent content={msg.content} />
+                  {/* {msg.content} */}
                 </div>
                 <div className="test-production-llm__message-timestamp">
                   {new Date(msg.timestamp).toLocaleTimeString()}
