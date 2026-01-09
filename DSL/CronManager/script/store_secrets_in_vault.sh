@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Vault Secrets Storage Script (No Decryption)
+# Vault Secrets Storage Script
 # This script stores LLM and embedding credentials in HashiCorp Vault
-# WITHOUT decryption - uses raw values as received
 
 set -e  # Exit on any error
 
@@ -11,12 +10,126 @@ set -e  # Exit on any error
 # The agent automatically injects the authentication token
 VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
 
+# Decryption Configuration
+PRIVATE_KEY_CACHE=""
+PRIVATE_KEY_PATH="secret/data/encryption/private_key"
+
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log "=== Starting Vault Secrets Storage (No Decryption) ==="
+# ============================================================================
+# DECRYPTION FUNCTIONS (RSA-OAEP)
+# ============================================================================
+
+# Fetch private key from Vault
+fetch_private_key() {
+    if [ -n "$PRIVATE_KEY_CACHE" ]; then
+        # Key already cached
+        return 0
+    fi
+    
+    log "Fetching private key from Vault..."
+    
+    # Convert path for KV v2 API
+    local api_path=$(echo "$PRIVATE_KEY_PATH" | sed 's|^secret/|secret/data/|')
+    
+    # Fetch private key from Vault
+    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+        -X GET \
+        "$VAULT_ADDR/v1/$api_path")
+    
+    local http_code=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+    local body=$(echo "$response" | sed -E 's/HTTPSTATUS:[0-9]*$//')
+    
+    if [[ "$http_code" -ne 200 ]]; then
+        log "ERROR: Failed to fetch private key from Vault (HTTP $http_code)"
+        log "Response: $body"
+        exit 1
+    fi
+    
+    # Extract private key from JSON response
+    PRIVATE_KEY_CACHE=$(echo "$body" | grep -o '"key":"[^"]*"' | sed 's/"key":"//; s/"$//' | sed 's/\\n/\n/g')
+    
+    if [ -z "$PRIVATE_KEY_CACHE" ]; then
+        log "ERROR: Private key is empty or could not be extracted"
+        exit 1
+    fi
+    
+    log "Private key fetched and cached successfully"
+}
+
+# Decrypt RSA-OAEP encrypted value
+# Input: Base64-encoded encrypted value
+# Output: Plaintext value
+decrypt_rsa_oaep() {
+    local encrypted_base64="$1"
+    
+    if [ -z "$encrypted_base64" ]; then
+        log "ERROR: decrypt_rsa_oaep called with empty value"
+        exit 1
+    fi
+    
+    # Ensure private key is fetched
+    fetch_private_key
+    
+    # Create temporary files for decryption
+    local temp_dir=$(mktemp -d)
+    local private_key_file="$temp_dir/private_key.pem"
+    local encrypted_file="$temp_dir/encrypted.bin"
+    local decrypted_file="$temp_dir/decrypted.txt"
+    
+    # Cleanup function
+    cleanup_temp_files() {
+        rm -rf "$temp_dir" 2>/dev/null || true
+    }
+    
+    # Set trap to cleanup on exit
+    trap cleanup_temp_files EXIT
+    
+    # Write private key to temp file
+    echo "$PRIVATE_KEY_CACHE" > "$private_key_file"
+    
+    # Decode base64 and write to temp file
+    echo "$encrypted_base64" | base64 -d > "$encrypted_file" 2>/dev/null || {
+        log "ERROR: Failed to decode base64 encrypted value"
+        cleanup_temp_files
+        exit 1
+    }
+    
+    # Decrypt using OpenSSL with RSA-OAEP padding
+    openssl pkeyutl -decrypt \
+        -inkey "$private_key_file" \
+        -in "$encrypted_file" \
+        -out "$decrypted_file" \
+        -pkeyopt rsa_padding_mode:oaep \
+        -pkeyopt rsa_oaep_md:sha256 \
+        -pkeyopt rsa_mgf1_md:sha256 2>/dev/null || {
+        log "ERROR: Decryption failed - invalid ciphertext or wrong key"
+        cleanup_temp_files
+        exit 1
+    }
+    
+    # Read decrypted value
+    local decrypted_value=$(cat "$decrypted_file")
+    
+    # Cleanup
+    cleanup_temp_files
+    
+    if [ -z "$decrypted_value" ]; then
+        log "ERROR: Decrypted value is empty"
+        exit 1
+    fi
+    
+    echo "$decrypted_value"
+}
+
+# ============================================================================
+# END DECRYPTION FUNCTIONS
+# ============================================================================
+
+log "=== Starting Vault Secrets Storage ==="
 
 # Debug: Print received parameters
 log "Received parameters:"
@@ -104,17 +217,19 @@ store_aws_llm_secrets() {
     local vault_path=$1
     local model=$(get_model_name)
     
-    log "Storing AWS LLM secrets (raw values)..."
+    log "Storing AWS LLM secrets..."
     
-    # Use raw values directly (no decryption)
+    # Decrypt sensitive fields
+    local decrypted_access_key=$(decrypt_rsa_oaep "$accessKey")
+    local decrypted_secret_key=$(decrypt_rsa_oaep "$secretKey")
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
 {
     "data": {
         "connection_id": "$connectionId",
-        "access_key": "$accessKey",
-        "secret_key": "$secretKey",
+        "access_key": "$decrypted_access_key",
+        "secret_key": "$decrypted_secret_key",
         "environment": "$deploymentEnvironment",
         "model": "$model",
         "tags": "aws,bedrock,$deploymentEnvironment,$model"
@@ -154,9 +269,10 @@ store_azure_llm_secrets() {
     local vault_path=$1
     local model=$(get_model_name)
     
-    log "Storing Azure LLM secrets (raw values)..."
+    log "Storing Azure LLM secrets..."
     
-    # Use raw values directly (no decryption)
+    # Decrypt sensitive fields
+    local decrypted_api_key=$(decrypt_rsa_oaep "$apiKey")
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -164,7 +280,7 @@ store_azure_llm_secrets() {
     "data": {
         "connection_id": "$connectionId",
         "endpoint": "$targetUrl",
-        "api_key": "$apiKey",
+        "api_key": "$decrypted_api_key",
         "deployment_name": "$deploymentName",
         "environment": "$deploymentEnvironment",
         "model": "$model",
@@ -205,17 +321,19 @@ EOF
 store_aws_embedding_secrets() {
     local vault_path=$1
     
-    log "Storing AWS embedding secrets (raw values)..."
+    log "Storing AWS embedding secrets..."
     
-    # Use raw values directly (no decryption)
+    # Decrypt sensitive fields
+    local decrypted_embedding_access_key=$(decrypt_rsa_oaep "$embeddingAccessKey")
+    local decrypted_embedding_secret_key=$(decrypt_rsa_oaep "$embeddingSecretKey")
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
 {
     "data": {
         "connection_id": "$connectionId",
-        "access_key": "$embeddingAccessKey",
-        "secret_key": "$embeddingSecretKey",
+        "access_key": "$decrypted_embedding_access_key",
+        "secret_key": "$decrypted_embedding_secret_key",
         "environment": "$deploymentEnvironment",
         "model": "$embeddingModel",
         "tags": "aws,bedrock,embedding,$deploymentEnvironment,$embeddingModel"
@@ -254,9 +372,10 @@ EOF
 store_azure_embedding_secrets() {
     local vault_path=$1
     
-    log "Storing Azure embedding secrets (raw values)..."
+    log "Storing Azure embedding secrets..."
     
-    # Use raw values directly (no decryption)
+    # Decrypt sensitive fields
+    local decrypted_embedding_api_key=$(decrypt_rsa_oaep "$embeddingAzureApiKey")
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -264,7 +383,7 @@ store_azure_embedding_secrets() {
     "data": {
         "connection_id": "$connectionId",
         "endpoint": "$embeddingTargetUri",
-        "api_key": "$embeddingAzureApiKey",
+        "api_key": "$decrypted_embedding_api_key",
         "deployment_name": "$embeddingDeploymentName",
         "environment": "$deploymentEnvironment",
         "model": "$embeddingModel",
