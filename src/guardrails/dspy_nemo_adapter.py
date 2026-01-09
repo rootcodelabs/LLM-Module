@@ -14,6 +14,7 @@ from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForLLMRun,
 )
 from langchain_core.language_models.llms import LLM
+from langchain_core.outputs import GenerationChunk
 from src.guardrails.guardrails_llm_configs import TEMPERATURE, MAX_TOKENS, MODEL_NAME
 
 
@@ -191,7 +192,7 @@ class DSPyNeMoLLM(LLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
-    ) -> Iterator[str]:
+    ) -> Iterator[GenerationChunk]:
         """
         Synchronous streaming via DSPy's native streaming support.
 
@@ -199,7 +200,7 @@ class DSPyNeMoLLM(LLM):
         1. DSPy's LM accepts stream=True parameter
         2. DSPy delegates to LiteLLM which handles provider-specific streaming
         3. LiteLLM returns an iterator of chunks
-        4. extract text from each chunk and yield it
+        4. extract text from each chunk and yield it as GenerationChunk
 
         This is the proper low-level streaming approach when not using dspy.streamify(),
         which is designed for higher-level DSPy modules.
@@ -227,7 +228,7 @@ class DSPyNeMoLLM(LLM):
                 if token:
                     if run_manager:
                         run_manager.on_llm_new_token(token)
-                    yield token
+                    yield GenerationChunk(text=token)
 
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._stream: {str(e)}")
@@ -239,7 +240,7 @@ class DSPyNeMoLLM(LLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[GenerationChunk]:
         """
         Async streaming using Threaded Producer / Async Consumer pattern.
 
@@ -316,7 +317,7 @@ class DSPyNeMoLLM(LLM):
                 if token:
                     if run_manager:
                         await run_manager.on_llm_new_token(token)
-                    yield token
+                    yield GenerationChunk(text=token)
 
         except Exception as e:
             logger.error(f"Error in DSPyNeMoLLM._astream: {str(e)}")

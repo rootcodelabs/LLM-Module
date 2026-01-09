@@ -1,5 +1,7 @@
 """Custom exceptions for the LLM Config Module."""
 
+from typing import Optional
+
 
 class LLMConfigError(Exception):
     """Base exception for LLM configuration errors."""
@@ -52,7 +54,7 @@ class ContextualRetrievalFailureError(ContextualRetrievalError):
 class StreamTimeoutException(LLMConfigError):
     """Raised when stream duration exceeds maximum allowed time."""
 
-    def __init__(self, message: str = "Stream timeout", error_id: str = None):
+    def __init__(self, message: str = "Stream timeout", error_id: Optional[str] = None):
         """
         Initialize StreamTimeoutException with error tracking.
 
@@ -76,7 +78,7 @@ class StreamSizeLimitException(LLMConfigError):
 class StreamException(LLMConfigError):
     """Base exception for streaming operations with error tracking."""
 
-    def __init__(self, message: str, error_id: str = None):
+    def __init__(self, message: str, error_id: Optional[str] = None):
         """
         Initialize StreamException with error tracking.
 

@@ -54,7 +54,7 @@ class ScopeChecker(dspy.Signature):
 
 
 def build_context_and_citations(
-    chunks: List[Dict[str, Any]], use_top_k: int = None
+    chunks: List[Dict[str, Any]], use_top_k: Optional[int] = None
 ) -> Tuple[List[str], List[str], bool]:
     """
     Turn retriever chunks -> numbered context blocks and source labels.

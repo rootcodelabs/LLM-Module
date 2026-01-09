@@ -907,7 +907,7 @@ class LLMOrchestrationService:
         components: Dict[str, Any],
         costs_dict: Dict[str, Dict[str, Any]],
         timing_dict: Dict[str, float],
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components."""
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
@@ -1152,10 +1152,10 @@ class LLMOrchestrationService:
     def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
-        generated_response: OrchestrationResponse,
+        generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
         request: OrchestrationRequest,
         costs_dict: Dict[str, Dict[str, Any]],
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Check output guardrails and handle blocked responses."""
         if (
             guardrails_adapter is not None
@@ -1172,13 +1172,23 @@ class LLMOrchestrationService:
                 logger.warning(
                     f"Output blocked by guardrails: {output_check_result.reason}"
                 )
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
-                )
+                # Return the same type as the input
+                if isinstance(generated_response, TestOrchestrationResponse):
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                        chunks=generated_response.chunks,
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    )
 
             logger.info("Output guardrails check passed")
         else:
@@ -1216,7 +1226,7 @@ class LLMOrchestrationService:
         request: OrchestrationRequest,
         refined_output: PromptRefinerOutput,
         relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
-        final_response: OrchestrationResponse,
+        final_response: Union[OrchestrationResponse, TestOrchestrationResponse],
     ) -> None:
         """
         Store production inference data to Resql endpoint for analytics.

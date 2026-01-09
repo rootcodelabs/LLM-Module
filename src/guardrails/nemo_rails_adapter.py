@@ -61,13 +61,11 @@ class NeMoRailsAdapter:
     def _register_custom_provider(self) -> None:
         """Register DSPy custom LLM provider with NeMo Guardrails."""
         try:
-            from src.guardrails.dspy_nemo_adapter import DSPyLLMProviderFactory
+            from src.guardrails.dspy_nemo_adapter import DSPyNeMoLLM
 
             logger.info("Registering DSPy custom LLM provider with NeMo Guardrails")
 
-            provider_factory = DSPyLLMProviderFactory()
-
-            register_llm_provider("dspy-custom", provider_factory)
+            register_llm_provider("dspy-custom", DSPyNeMoLLM)
             logger.info("DSPy custom LLM provider registered successfully")
 
         except Exception as e:
@@ -260,12 +258,16 @@ class NeMoRailsAdapter:
                 raise RuntimeError("Rails config not available")
 
             # Find the self_check_input prompt
-            for prompt in self._rails.config.prompts:
-                if prompt.task == "self_check_input":
-                    # Replace the template variable with actual content
-                    prompt_text = prompt.content.replace("{{ user_input }}", user_input)
-                    logger.debug("Found self_check_input prompt in NeMo config")
-                    return prompt_text
+            if self._rails.config.prompts:
+                for prompt in self._rails.config.prompts:
+                    if prompt.task == "self_check_input":
+                        # Replace the template variable with actual content
+                        if prompt.content:
+                            prompt_text = prompt.content.replace(
+                                "{{ user_input }}", user_input
+                            )
+                            logger.debug("Found self_check_input prompt in NeMo config")
+                            return prompt_text
 
             # Fallback if prompt not found in config
             logger.warning(
@@ -503,14 +505,18 @@ Is this user message safe according to the policy? Answer with 'safe' or 'unsafe
                 raise RuntimeError("Rails config not available")
 
             # Find the self_check_output prompt
-            for prompt in self._rails.config.prompts:
-                if prompt.task == "self_check_output":
-                    # Replace the template variable with actual content
-                    prompt_text = prompt.content.replace(
-                        "{{ bot_response }}", bot_response
-                    )
-                    logger.debug("Found self_check_output prompt in NeMo config")
-                    return prompt_text
+            if self._rails.config.prompts:
+                for prompt in self._rails.config.prompts:
+                    if prompt.task == "self_check_output":
+                        # Replace the template variable with actual content
+                        if prompt.content:
+                            prompt_text = prompt.content.replace(
+                                "{{ bot_response }}", bot_response
+                            )
+                            logger.debug(
+                                "Found self_check_output prompt in NeMo config"
+                            )
+                            return prompt_text
 
             # Fallback if prompt not found in config
             logger.warning(
