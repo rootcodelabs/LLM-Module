@@ -1,20 +1,22 @@
 #!/bin/bash
 
-# Vault Secrets Storage Script
+# Vault Secrets Storage Script (No Decryption)
 # This script stores LLM and embedding credentials in HashiCorp Vault
+# WITHOUT decryption - uses raw values as received
 
 set -e  # Exit on any error
 
 # Configuration
-VAULT_ADDR="${VAULT_ADDR:-http://vault:8200}"
-VAULT_TOKEN_FILE="/agent/out/token"
+# Use VAULT_AGENT_URL which points to vault-agent-cron proxy
+# The agent automatically injects the authentication token
+VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
 
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log "=== Starting Vault Secrets Storage ==="
+log "=== Starting Vault Secrets Storage (No Decryption) ==="
 
 # Debug: Print received parameters
 log "Received parameters:"
@@ -22,20 +24,9 @@ log "  connectionId: $connectionId"
 log "  llmPlatform: $llmPlatform"
 log "  llmModel: $llmModel"
 log "  deploymentEnvironment: $deploymentEnvironment"
+log "  Vault Address: $VAULT_ADDR"
 
-# Read vault token
-if [ ! -f "$VAULT_TOKEN_FILE" ]; then
-    log "ERROR: Vault token file not found at $VAULT_TOKEN_FILE"
-    exit 1
-fi
-
-VAULT_TOKEN=$(cat "$VAULT_TOKEN_FILE")
-if [ -z "$VAULT_TOKEN" ]; then
-    log "ERROR: Vault token is empty"
-    exit 1
-fi
-
-log "Vault token loaded successfully"
+# Note: No token required - vault agent proxy automatically injects authentication
 
 # Function to determine platform name
 get_platform_name() {
@@ -113,7 +104,9 @@ store_aws_llm_secrets() {
     local vault_path=$1
     local model=$(get_model_name)
     
-    log "Storing AWS LLM secrets..."
+    log "Storing AWS LLM secrets (raw values)..."
+    
+    # Use raw values directly (no decryption)
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -137,9 +130,9 @@ EOF
     log "API URL: $VAULT_ADDR/v1/$api_path"
     
     # Execute HTTP API call
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
         "$VAULT_ADDR/v1/$api_path")
@@ -161,7 +154,9 @@ store_azure_llm_secrets() {
     local vault_path=$1
     local model=$(get_model_name)
     
-    log "Storing Azure LLM secrets..."
+    log "Storing Azure LLM secrets (raw values)..."
+    
+    # Use raw values directly (no decryption)
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -187,9 +182,9 @@ EOF
     log "API URL: $VAULT_ADDR/v1/$api_path"
     
     # Execute HTTP API call
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
         "$VAULT_ADDR/v1/$api_path")
@@ -210,7 +205,9 @@ EOF
 store_aws_embedding_secrets() {
     local vault_path=$1
     
-    log "Storing AWS embedding secrets..."
+    log "Storing AWS embedding secrets (raw values)..."
+    
+    # Use raw values directly (no decryption)
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -234,9 +231,9 @@ EOF
     log "API URL: $VAULT_ADDR/v1/$api_path"
     
     # Execute HTTP API call
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
         "$VAULT_ADDR/v1/$api_path")
@@ -257,7 +254,9 @@ EOF
 store_azure_embedding_secrets() {
     local vault_path=$1
     
-    log "Storing Azure embedding secrets..."
+    log "Storing Azure embedding secrets (raw values)..."
+    
+    # Use raw values directly (no decryption)
     
     # Build JSON payload
     local json_payload=$(cat <<EOF
@@ -283,9 +282,9 @@ EOF
     log "API URL: $VAULT_ADDR/v1/$api_path"
     
     # Execute HTTP API call
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
         "$VAULT_ADDR/v1/$api_path")
@@ -317,4 +316,3 @@ else
 fi
 
 log "=== Vault secrets storage completed successfully ==="
-
