@@ -263,6 +263,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
   });
 
   const connection = data?.response;
+  console.log('Created LLM Connection:', connection);
 
   // After successful database creation, store secrets in vault
   if (connection && connection.id) {

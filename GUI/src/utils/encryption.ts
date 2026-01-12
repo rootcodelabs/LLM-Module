@@ -59,11 +59,11 @@ async function fetchPublicKey() {
 
 // Helper: Convert PEM string to CryptoKey
 async function importPublicKey(pemString: string) {
-    // Remove PEM headers and decode base64
+    // Remove PEM headers and whitespace, keep standard base64 encoding
     const pemContents = pemString
         .replace('-----BEGIN PUBLIC KEY-----', '')
         .replace('-----END PUBLIC KEY-----', '')
-        .replace(/\s/g, '');
+        .replace(/\s/g, '');  // Remove whitespace and newlines only
 
     const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
 
@@ -112,8 +112,12 @@ export async function encryptValue(value: string): Promise<string> {
             data
         );
 
-        // Convert to base64 for transmission
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(encryptedData)));
+        // Convert to URL-safe base64 (base64url) for transmission
+        // Replace + with -, / with _, and remove trailing =
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(encryptedData)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
         return base64;
     } catch (error) {
         console.error('Error encrypting value:', error);

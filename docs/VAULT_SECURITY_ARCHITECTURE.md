@@ -79,11 +79,11 @@ The system uses two isolated Docker networks to create a security boundary:
 ### Why This Matters
 
 ```
-❌ Without Network Isolation:
+ Without Network Isolation:
    App → Vault (direct access with token)
    Risk: Token compromise = full Vault access
 
-✅ With Network Isolation:
+ With Network Isolation:
    App → Vault Agent → Vault
    Benefit: Agent handles auth, app never sees token
 ```
@@ -92,10 +92,10 @@ The system uses two isolated Docker networks to create a security boundary:
 
 | Service | Port | Network | Exposed to Host | Purpose |
 |---------|------|---------|-----------------|---------|
-| Vault Server | 8200 | vault-network | ❌ No | Core secrets storage |
-| vault-agent-gui | 8202 | bykstack | ❌ No | GUI proxy |
-| vault-agent-cron | 8203 | bykstack | ❌ No | CronManager proxy |
-| vault-agent-llm | 8201 | bykstack | ❌ No | LLM service proxy |
+| Vault Server | 8200 | vault-network |  No | Core secrets storage |
+| vault-agent-gui | 8202 | bykstack |  No | GUI proxy |
+| vault-agent-cron | 8203 | bykstack |  No | CronManager proxy |
+| vault-agent-llm | 8201 | bykstack |  No | LLM service proxy |
 
 **Security Principle**: No Vault-related ports are exposed to the host machine, preventing external attacks.
 
@@ -226,10 +226,10 @@ Token (issued to vault-agent-gui)
    ├─► Associated Policy: "gui-policy"
    │
    └─► Allowed Paths:
-        ✅ secret/data/encryption/public_key     (read, list)
-        ❌ secret/data/encryption/private_key    (denied)
-        ❌ secret/data/llm/connections/*         (denied)
-        ❌ secret/data/embeddings/connections/*  (denied)
+         secret/data/encryption/public_key     (read, list)
+         secret/data/encryption/private_key    (denied)
+         secret/data/llm/connections/*         (denied)
+         secret/data/embeddings/connections/*  (denied)
 
 
 Token (issued to vault-agent-cron)
@@ -237,10 +237,10 @@ Token (issued to vault-agent-cron)
    ├─► Associated Policy: "cron-manager-policy"
    │
    └─► Allowed Paths:
-        ✅ secret/data/llm/connections/*           (create, read, update, delete, list)
-        ✅ secret/data/embeddings/connections/*    (create, read, update, delete, list)
-        ✅ secret/data/encryption/public_key       (read, list)
-        ✅ secret/data/encryption/private_key      (read, list)
+         secret/data/llm/connections/*           (create, read, update, delete, list)
+         secret/data/embeddings/connections/*    (create, read, update, delete, list)
+         secret/data/encryption/public_key       (read, list)
+         secret/data/encryption/private_key      (read, list)
 
 
 Token (issued to vault-agent-llm)
@@ -248,9 +248,9 @@ Token (issued to vault-agent-llm)
    ├─► Associated Policy: "llm-orchestration-policy"
    │
    └─► Allowed Paths:
-        ✅ secret/data/llm/connections/*           (read, list)
-        ✅ secret/data/embeddings/connections/*    (read, list)
-        ❌ secret/data/encryption/*                (explicitly denied)
+         secret/data/llm/connections/*           (read, list)
+         secret/data/embeddings/connections/*    (read, list)
+         secret/data/encryption/*                (explicitly denied)
 ```
 
 ### Three-Tier Policy Structure
@@ -259,11 +259,11 @@ Token (issued to vault-agent-llm)
 **Purpose**: Allow frontend to encrypt user input
 
 **Permissions**:
-- ✅ Read: `secret/data/encryption/public_key`
-- ✅ List: `secret/metadata/encryption/public_key`
+-  Read: `secret/data/encryption/public_key`
+-  List: `secret/metadata/encryption/public_key`
 
 **Denied**:
-- ❌ All other paths (deny-by-default)
+-  All other paths (deny-by-default)
 
 **Use Case**: Frontend fetches public key to encrypt sensitive credentials (API keys, access keys) before sending to backend.
 
@@ -273,12 +273,12 @@ Token (issued to vault-agent-llm)
 **Purpose**: Write secrets to Vault and decrypt sensitive data
 
 **Permissions**:
-- ✅ Create/Read/Update/Delete: `secret/data/llm/connections/*`
-- ✅ Create/Read/Update/Delete: `secret/data/embeddings/connections/*`
-- ✅ List: `secret/metadata/llm/connections/*`
-- ✅ List: `secret/metadata/embeddings/connections/*`
-- ✅ Read: `secret/data/encryption/public_key` (for verification)
-- ✅ Read: `secret/data/encryption/private_key` (for decryption)
+-  Create/Read/Update/Delete: `secret/data/llm/connections/*`
+-  Create/Read/Update/Delete: `secret/data/embeddings/connections/*`
+-  List: `secret/metadata/llm/connections/*`
+-  List: `secret/metadata/embeddings/connections/*`
+-  Read: `secret/data/encryption/public_key` (for verification)
+-  Read: `secret/data/encryption/private_key` (for decryption)
 
 **Use Case**: Receives encrypted credentials from GUI, decrypts them using private key, stores plaintext in Vault.
 
@@ -288,13 +288,13 @@ Token (issued to vault-agent-llm)
 **Purpose**: Retrieve credentials to make LLM API calls
 
 **Permissions**:
-- ✅ Read: `secret/data/llm/connections/*`
-- ✅ Read: `secret/data/embeddings/connections/*`
-- ✅ List: `secret/metadata/llm/connections/*`
-- ✅ List: `secret/metadata/embeddings/connections/*`
+-  Read: `secret/data/llm/connections/*`
+-  Read: `secret/data/embeddings/connections/*`
+-  List: `secret/metadata/llm/connections/*`
+-  List: `secret/metadata/embeddings/connections/*`
 
 **Explicitly Denied**:
-- ❌ Deny: `secret/data/encryption/*` (no access to encryption keys)
+-  Deny: `secret/data/encryption/*` (no access to encryption keys)
 
 **Use Case**: Fetch AWS/Azure credentials to authenticate with LLM providers.
 
@@ -308,14 +308,14 @@ Policies use **glob-style wildcards** (`*`) to match nested paths:
 Pattern: secret/data/llm/connections/*
 
 Matches:
-  ✅ secret/data/llm/connections/azure_openai/testing/14
-  ✅ secret/data/llm/connections/azure_openai/production/gpt-4o
-  ✅ secret/data/llm/connections/aws_bedrock/testing/42
-  ✅ secret/data/llm/connections/aws_bedrock/production/claude-3-sonnet
+   secret/data/llm/connections/azure_openai/testing/14
+   secret/data/llm/connections/azure_openai/production/gpt-4o
+   secret/data/llm/connections/aws_bedrock/testing/42
+   secret/data/llm/connections/aws_bedrock/production/claude-3-sonnet
 
 Does NOT match:
-  ❌ secret/data/embeddings/connections/...
-  ❌ secret/data/encryption/...
+   secret/data/embeddings/connections/...
+   secret/data/encryption/...
 ```
 
 **Security Benefit**: One policy rule covers all current and future connection secrets without requiring policy updates.
@@ -333,7 +333,7 @@ Vault Policy Engine:
   2. Evaluate rules in policy:
      - Path: secret/data/encryption/*
      - Capability: deny
-  3. Decision: ❌ DENIED
+  3. Decision:  DENIED
 
 Response: HTTP 403 Forbidden
 
@@ -346,7 +346,7 @@ Vault Policy Engine:
   2. Evaluate rules in policy:
      - Path: secret/data/encryption/*
      - Capability: read
-  3. Decision: ✅ ALLOWED
+  3. Decision:  ALLOWED
 
 Response: HTTP 200 OK + secret data
 ```
@@ -360,7 +360,7 @@ Response: HTTP 200 OK + secret data
 Traditional approach has security risks:
 
 ```
-❌ Direct Vault Access (Insecure):
+ Direct Vault Access (Insecure):
 
 App Container
   │ env: VAULT_TOKEN=test_token_hvs.abc123xyz...
@@ -376,7 +376,7 @@ App Container
 Vault Agent proxy pattern solves these issues:
 
 ```
-✅ Vault Agent Proxy (Secure):
+ Vault Agent Proxy (Secure):
 
 App Container
   │ env: VAULT_ADDR=http://vault-agent-llm:8201
@@ -545,8 +545,7 @@ vault-agent-llm returns to application:
 
 Application receives response:
   - Thinks it talked directly to Vault
-  - Never handled or saw the token
-  - Transparent proxy magic! ✨
+  - Never handled or saw the token 
 ```
 
 ---
@@ -676,20 +675,20 @@ Accessing Versions:
 
 | Service | LLM Connections | Embedding Connections | Public Key | Private Key | Token Lookup |
 |---------|-----------------|----------------------|------------|-------------|--------------|
-| **GUI (Frontend)** | ❌ Denied | ❌ Denied | ✅ Read | ❌ Denied | ✅ Read |
-| **CronManager** | ✅ Full CRUD | ✅ Full CRUD | ✅ Read | ✅ Read | ✅ Read |
-| **LLM Service** | ✅ Read | ✅ Read | ❌ Denied | ❌ Denied | ✅ Read |
+| **GUI (Frontend)** |  Denied |  Denied |  Read |  Denied |  Read |
+| **CronManager** |  Full CRUD |  Full CRUD |  Read |  Read |  Read |
+| **LLM Service** |  Read |  Read |  Denied |  Denied |  Read |
 
 ### Permission Boundaries
 
 #### GUI Service
 ```
-✅ Allowed Actions:
+ Allowed Actions:
    - GET secret/data/encryption/public_key
    - LIST secret/metadata/encryption/public_key
    - GET auth/token/lookup-self (verify own token)
 
-❌ Denied Actions:
+ Denied Actions:
    - Any operation on secret/data/llm/*
    - Any operation on secret/data/embeddings/*
    - GET secret/data/encryption/private_key
@@ -704,7 +703,7 @@ Use Case Flow:
 
 #### CronManager Service
 ```
-✅ Allowed Actions:
+ Allowed Actions:
    - CREATE/READ/UPDATE/DELETE secret/data/llm/connections/*
    - CREATE/READ/UPDATE/DELETE secret/data/embeddings/connections/*
    - LIST secret/metadata/llm/connections/*
@@ -713,7 +712,7 @@ Use Case Flow:
    - GET secret/data/encryption/private_key
    - GET auth/token/lookup-self
 
-❌ Denied Actions:
+ Denied Actions:
    - Modify encryption keys (read-only)
    - Access secrets outside defined paths
 
@@ -727,14 +726,14 @@ Use Case Flow:
 
 #### LLM Orchestration Service
 ```
-✅ Allowed Actions:
+ Allowed Actions:
    - GET secret/data/llm/connections/*
    - GET secret/data/embeddings/connections/*
    - LIST secret/metadata/llm/connections/*
    - LIST secret/metadata/embeddings/connections/*
    - GET auth/token/lookup-self
 
-❌ Denied Actions (Explicit Deny):
+ Denied Actions (Explicit Deny):
    - Any operation on secret/data/encryption/* (cannot access keys)
    - Any write operations on secrets
    - Any access to secrets outside defined paths
@@ -763,7 +762,7 @@ Vault Decision Chain:
      path "secret/data/encryption/*" {
        capabilities = ["deny"]
      }
-  5. Decision: ❌ DENY
+  5. Decision:  DENY
 
 Response:
   Status: 403 Forbidden
@@ -897,9 +896,9 @@ Unsealing Process:
   - Each unseal key submitted separately
 
 Security Model:
-  ✅ No single person can unseal Vault alone
-  ✅ Compromise of 2 keys is insufficient
-  ✅ Distributed trust across operators
+   No single person can unseal Vault alone
+   Compromise of 2 keys is insufficient
+   Distributed trust across operators
 
 Current Implementation:
   - All 5 unseal keys stored in vault-data volume
@@ -953,15 +952,11 @@ Owner: vault:vault (UID 100, GID 1000)
 Container Access: Read-only mounts in agent containers
 
 Security Considerations:
-  ✅ Files isolated within Docker volumes (not host filesystem)
-  ✅ Agent containers mount as read-only
-  ✅ Only vault-init has write access
-  ❌ All agents can read all credentials (volume-level isolation only)
+   Files isolated within Docker volumes (not host filesystem)
+   Agent containers mount as read-only
+   Only vault-init has write access
+   All agents can read all credentials (volume-level isolation only)
 
-Improvement Opportunity:
-  - Use separate volumes per agent
-  - Mount only relevant credentials to each agent
-  - Reduces blast radius of container compromise
 ```
 
 ---
@@ -971,7 +966,7 @@ Improvement Opportunity:
 ### 1. No Direct Vault Access from Applications
 
 ```
-✅ Implemented Pattern:
+ Implemented Pattern:
 
 Application Container
   └─► Vault Agent Proxy (same network)
@@ -987,24 +982,19 @@ Benefits:
 ### 2. Token Environment Variable Isolation
 
 ```
-✅ Implemented Pattern:
+ Implemented Pattern:
 
 docker-compose.yml (LLM Service):
   environment:
     - VAULT_ADDR=http://vault-agent-llm:8201
     # NO VAULT_TOKEN variable
 
-Why This Matters:
-  - Tokens not visible in `docker inspect`
-  - Not logged in container startup
-  - Not passed to child processes
-  - Prevents accidental leaks
 ```
 
 ### 3. Credential File Permissions
 
 ```
-✅ Implemented Pattern:
+ Implemented Pattern:
 
 vault-init sets permissions:
   chown vault:vault /agent/credentials/*
@@ -1022,7 +1012,7 @@ Why This Matters:
 ### 4. Container User Restrictions
 
 ```
-✅ Implemented Pattern:
+ Implemented Pattern:
 
 cron-manager:
   user: "1000:1000"  # Non-root user
@@ -1039,7 +1029,7 @@ Benefits:
 ### 5. Health Check Strategies
 
 ```
-✅ Implemented Pattern:
+ Implemented Pattern:
 
 Vault Server Health Check:
   test: wget -q -O- http://127.0.0.1:8200/v1/sys/health
@@ -1072,10 +1062,10 @@ Benefits:
 Event: docker-compose restart vault
 
 Impact:
-  ✅ Vault data persists (vault-data volume)
-  ✅ Vault automatically unseals (unseal keys in volume)
-  ✅ Policies and secrets intact
-  ✅ AppRole configurations intact
+   Vault data persists (vault-data volume)
+   Vault automatically unseals (unseal keys in volume)
+   Policies and secrets intact
+   AppRole configurations intact
 
 Agent Behavior:
   - Existing tokens remain valid
@@ -1092,9 +1082,9 @@ Downtime:
 Event: docker-compose restart vault-agent-llm
 
 Impact:
-  ✅ Credentials still available (vault-agent-creds volume)
-  ✅ Agent re-authenticates automatically
-  ✅ New token issued and cached
+   Credentials still available (vault-agent-creds volume)
+   Agent re-authenticates automatically
+   New token issued and cached
 
 Application Behavior:
   - Brief connection failure during restart
@@ -1111,9 +1101,9 @@ Downtime:
 Event: docker-compose restart llm-orchestration-service
 
 Impact:
-  ✅ No Vault changes needed
-  ✅ Vault agent still running
-  ✅ Tokens still valid
+   No Vault changes needed
+   Vault agent still running
+   Tokens still valid
 
 Application Behavior:
   - Reconnects to vault-agent-llm:8201
@@ -1142,9 +1132,9 @@ vault-init Behavior:
   - Updates credential files
 
 Result:
-  ✅ All services start with fresh credentials
-  ✅ Existing secrets preserved
-  ✅ No manual intervention needed
+   All services start with fresh credentials
+   Existing secrets preserved
+   No manual intervention needed
 ```
 
 ### Token Regeneration Strategy
@@ -1165,10 +1155,10 @@ Current Implementation:
    └─► Re-issue: vault-agent re-authenticates
 
 3. Security Benefits:
-   ✅ Short-lived tokens (1 hour for LLM, 32 days for others)
-   ✅ Automatic rotation on agent restart
-   ✅ No manual token management
-   ✅ Compromised tokens have limited lifetime
+    Short-lived tokens (1 hour for LLM, 32 days for others)
+    Automatic rotation on agent restart
+    No manual token management
+    Compromised tokens have limited lifetime
 ```
 
 ### Audit Logging Capabilities
@@ -1295,10 +1285,10 @@ Integration with Grafana:
 Attack Scenario: Compromised LLM Service Container
 
 Attacker Capabilities:
-  ❌ Cannot access Vault directly (network isolation)
-  ❌ Cannot read other service tokens (volume isolation)
-  ❌ Cannot access encryption keys (policy denial)
-  ✅ Can read LLM connection credentials (authorized)
+   Cannot access Vault directly (network isolation)
+   Cannot read other service tokens (volume isolation)
+   Cannot access encryption keys (policy denial)
+   Can read LLM connection credentials (authorized)
 
 Blast Radius:
   - Limited to LLM/embedding connection secrets
@@ -1319,12 +1309,12 @@ Mitigation:
 
 The Vault security architecture implements industry best practices for secrets management:
 
-✅ **Network Segmentation**: Vault isolated on internal network
-✅ **Strong Authentication**: AppRole with renewable tokens
-✅ **Granular Authorization**: Path-based policies with least privilege
-✅ **Proxy Pattern**: Applications never handle tokens directly
-✅ **Automated Operations**: Self-healing agents and token renewal
-✅ **Audit Capability**: Full request logging available
-✅ **Defense in Depth**: Multiple security layers prevent single point of failure
+ **Network Segmentation**: Vault isolated on internal network
+ **Strong Authentication**: AppRole with renewable tokens
+ **Granular Authorization**: Path-based policies with least privilege
+ **Proxy Pattern**: Applications never handle tokens directly
+ **Automated Operations**: Self-healing agents and token renewal
+ **Audit Capability**: Full request logging available
+ **Defense in Depth**: Multiple security layers prevent single point of failure
 
 This architecture provides a secure foundation for managing sensitive credentials in the RAG-Module while maintaining operational simplicity and developer productivity.

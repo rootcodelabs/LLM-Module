@@ -12,16 +12,12 @@ VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
 
 # Decryption Configuration
 PRIVATE_KEY_CACHE=""
-PRIVATE_KEY_PATH="secret/data/encryption/private_key"
+PRIVATE_KEY_PATH="secret/encryption/private_key"
 
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
-
-# ============================================================================
-# DECRYPTION FUNCTIONS (RSA-OAEP)
-# ============================================================================
 
 # Fetch private key from Vault
 fetch_private_key() {
@@ -30,7 +26,7 @@ fetch_private_key() {
         return 0
     fi
     
-    log "Fetching private key from Vault..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching private key from Vault..." >&2
     
     # Convert path for KV v2 API
     local api_path=$(echo "$PRIVATE_KEY_PATH" | sed 's|^secret/|secret/data/|')
@@ -44,35 +40,46 @@ fetch_private_key() {
     local body=$(echo "$response" | sed -E 's/HTTPSTATUS:[0-9]*$//')
     
     if [[ "$http_code" -ne 200 ]]; then
-        log "ERROR: Failed to fetch private key from Vault (HTTP $http_code)"
-        log "Response: $body"
-        exit 1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to fetch private key from Vault (HTTP $http_code)" >&2
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Response: $body" >&2
+        return 1
     fi
     
-    # Extract private key from JSON response
-    PRIVATE_KEY_CACHE=$(echo "$body" | grep -o '"key":"[^"]*"' | sed 's/"key":"//; s/"$//' | sed 's/\\n/\n/g')
+    # Extract private key from JSON response using jq for proper JSON parsing
+    if command -v jq >/dev/null 2>&1; then
+        PRIVATE_KEY_CACHE=$(echo "$body" | jq -r '.data.data.key // empty')
+    else
+        # Fallback to grep/sed if jq not available
+        PRIVATE_KEY_CACHE=$(echo "$body" | grep -o '"key":"[^"]*"' | sed 's/"key":"//; s/"$//' | sed 's/\\n/\n/g')
+    fi
     
     if [ -z "$PRIVATE_KEY_CACHE" ]; then
-        log "ERROR: Private key is empty or could not be extracted"
-        exit 1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Private key is empty or could not be extracted" >&2
+        return 1
     fi
     
-    log "Private key fetched and cached successfully"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Private key fetched and cached successfully" >&2
 }
 
 # Decrypt RSA-OAEP encrypted value
 # Input: Base64-encoded encrypted value
-# Output: Plaintext value
+# Output: Plaintext value (stdout only)
 decrypt_rsa_oaep() {
     local encrypted_base64="$1"
     
     if [ -z "$encrypted_base64" ]; then
-        log "ERROR: decrypt_rsa_oaep called with empty value"
-        exit 1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: decrypt_rsa_oaep called with empty value" >&2
+        return 1
     fi
     
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting decryption..." >&2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Encrypted value length: ${#encrypted_base64}" >&2
+    
     # Ensure private key is fetched
-    fetch_private_key
+    if ! fetch_private_key; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to fetch private key" >&2
+        return 1
+    fi
     
     # Create temporary files for decryption
     local temp_dir=$(mktemp -d)
@@ -90,26 +97,55 @@ decrypt_rsa_oaep() {
     
     # Write private key to temp file
     echo "$PRIVATE_KEY_CACHE" > "$private_key_file"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Private key written to temp file" >&2
     
-    # Decode base64 and write to temp file
-    echo "$encrypted_base64" | base64 -d > "$encrypted_file" 2>/dev/null || {
-        log "ERROR: Failed to decode base64 encrypted value"
+    # Validate private key format
+    if ! grep -q "BEGIN PRIVATE KEY" "$private_key_file" 2>/dev/null && ! grep -q "BEGIN RSA PRIVATE KEY" "$private_key_file" 2>/dev/null; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Private key file doesn't contain valid PEM header" >&2
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] First 100 chars of key: ${PRIVATE_KEY_CACHE:0:100}" >&2
         cleanup_temp_files
-        exit 1
-    }
+        return 1
+    fi
+    
+    # Decode URL-safe base64 (base64url) and write to temp file
+    # Convert base64url to standard base64: replace - with +, _ with /
+    # Add padding if needed (base64 requires length to be multiple of 4)
+    local standard_base64=$(echo "$encrypted_base64" | tr '_-' '/+')
+    local padding_needed=$((4 - ${#standard_base64} % 4))
+    if [ $padding_needed -lt 4 ]; then
+        standard_base64="${standard_base64}$(printf '=%.0s' $(seq 1 $padding_needed))"
+    fi
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Base64 string length: ${#standard_base64} (with padding)" >&2
+    
+    if ! echo "$standard_base64" | base64 -d > "$encrypted_file" 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to decode base64 encrypted value" >&2
+        cleanup_temp_files
+        return 1
+    fi
+    
+    local encrypted_size=$(stat -c%s "$encrypted_file" 2>/dev/null || stat -f%z "$encrypted_file" 2>/dev/null)
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Base64 decoded, encrypted size: $encrypted_size bytes" >&2
     
     # Decrypt using OpenSSL with RSA-OAEP padding
-    openssl pkeyutl -decrypt \
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running OpenSSL decryption..." >&2
+    local openssl_error
+    openssl_error=$(openssl pkeyutl -decrypt \
         -inkey "$private_key_file" \
         -in "$encrypted_file" \
         -out "$decrypted_file" \
         -pkeyopt rsa_padding_mode:oaep \
         -pkeyopt rsa_oaep_md:sha256 \
-        -pkeyopt rsa_mgf1_md:sha256 2>/dev/null || {
-        log "ERROR: Decryption failed - invalid ciphertext or wrong key"
+        -pkeyopt rsa_mgf1_md:sha256 2>&1)
+    
+    if [ $? -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Decryption failed" >&2
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] OpenSSL error: $openssl_error" >&2
         cleanup_temp_files
-        exit 1
-    }
+        return 1
+    fi
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Decryption successful" >&2
     
     # Read decrypted value
     local decrypted_value=$(cat "$decrypted_file")
@@ -118,16 +154,15 @@ decrypt_rsa_oaep() {
     cleanup_temp_files
     
     if [ -z "$decrypted_value" ]; then
-        log "ERROR: Decrypted value is empty"
-        exit 1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Decrypted value is empty" >&2
+        return 1
     fi
     
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Decrypted value length: ${#decrypted_value}" >&2
+    
+    # Only output the decrypted value to stdout
     echo "$decrypted_value"
 }
-
-# ============================================================================
-# END DECRYPTION FUNCTIONS
-# ============================================================================
 
 log "=== Starting Vault Secrets Storage ==="
 
@@ -138,6 +173,7 @@ log "  llmPlatform: $llmPlatform"
 log "  llmModel: $llmModel"
 log "  deploymentEnvironment: $deploymentEnvironment"
 log "  Vault Address: $VAULT_ADDR"
+log "  Embedding apiKey Provided: $embeddingAzureApiKey"
 
 # Note: No token required - vault agent proxy automatically injects authentication
 
@@ -221,22 +257,32 @@ store_aws_llm_secrets() {
     
     # Decrypt sensitive fields
     local decrypted_access_key=$(decrypt_rsa_oaep "$accessKey")
-    local decrypted_secret_key=$(decrypt_rsa_oaep "$secretKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_access_key" ]; then
+        log "ERROR: Failed to decrypt access key"
+        exit 1
+    fi
     
-    # Build JSON payload
-    local json_payload=$(cat <<EOF
-{
-    "data": {
-        "connection_id": "$connectionId",
-        "access_key": "$decrypted_access_key",
-        "secret_key": "$decrypted_secret_key",
-        "environment": "$deploymentEnvironment",
-        "model": "$model",
-        "tags": "aws,bedrock,$deploymentEnvironment,$model"
-    }
-}
-EOF
-)
+    local decrypted_secret_key=$(decrypt_rsa_oaep "$secretKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_secret_key" ]; then
+        log "ERROR: Failed to decrypt secret key"
+        exit 1
+    fi
+    
+    # Build JSON payload using jq for proper escaping
+    local json_payload=$(jq -n \
+        --arg conn_id "$connectionId" \
+        --arg access_key "$decrypted_access_key" \
+        --arg secret_key "$decrypted_secret_key" \
+        --arg env "$deploymentEnvironment" \
+        --arg model "$model" \
+        '{data: {
+            connection_id: $conn_id,
+            access_key: $access_key,
+            secret_key: $secret_key,
+            environment: $env,
+            model: $model,
+            tags: "aws,bedrock,\($env),\($model)"
+        }}')
     
     log "Storing secrets at path: $vault_path"
     
@@ -273,23 +319,29 @@ store_azure_llm_secrets() {
     
     # Decrypt sensitive fields
     local decrypted_api_key=$(decrypt_rsa_oaep "$apiKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_api_key" ]; then
+        log "ERROR: Failed to decrypt API key"
+        exit 1
+    fi
     
-    # Build JSON payload
-    local json_payload=$(cat <<EOF
-{
-    "data": {
-        "connection_id": "$connectionId",
-        "endpoint": "$targetUrl",
-        "api_key": "$decrypted_api_key",
-        "deployment_name": "$deploymentName",
-        "environment": "$deploymentEnvironment",
-        "model": "$model",
-        "api_version": "2024-05-01-preview",
-        "tags": "azure,$deploymentEnvironment,$model"
-    }
-}
-EOF
-)
+    # Build JSON payload using jq for proper escaping
+    local json_payload=$(jq -n \
+        --arg conn_id "$connectionId" \
+        --arg endpoint "$targetUrl" \
+        --arg api_key "$decrypted_api_key" \
+        --arg deploy_name "$deploymentName" \
+        --arg env "$deploymentEnvironment" \
+        --arg model "$model" \
+        '{data: {
+            connection_id: $conn_id,
+            endpoint: $endpoint,
+            api_key: $api_key,
+            deployment_name: $deploy_name,
+            environment: $env,
+            model: $model,
+            api_version: "2024-05-01-preview",
+            tags: "azure,\($env),\($model)"
+        }}')
     
     log "Storing secrets at path: $vault_path"
     
@@ -325,22 +377,32 @@ store_aws_embedding_secrets() {
     
     # Decrypt sensitive fields
     local decrypted_embedding_access_key=$(decrypt_rsa_oaep "$embeddingAccessKey")
-    local decrypted_embedding_secret_key=$(decrypt_rsa_oaep "$embeddingSecretKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_embedding_access_key" ]; then
+        log "ERROR: Failed to decrypt embedding access key"
+        exit 1
+    fi
     
-    # Build JSON payload
-    local json_payload=$(cat <<EOF
-{
-    "data": {
-        "connection_id": "$connectionId",
-        "access_key": "$decrypted_embedding_access_key",
-        "secret_key": "$decrypted_embedding_secret_key",
-        "environment": "$deploymentEnvironment",
-        "model": "$embeddingModel",
-        "tags": "aws,bedrock,embedding,$deploymentEnvironment,$embeddingModel"
-    }
-}
-EOF
-)
+    local decrypted_embedding_secret_key=$(decrypt_rsa_oaep "$embeddingSecretKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_embedding_secret_key" ]; then
+        log "ERROR: Failed to decrypt embedding secret key"
+        exit 1
+    fi
+    
+    # Build JSON payload using jq for proper escaping
+    local json_payload=$(jq -n \
+        --arg conn_id "$connectionId" \
+        --arg access_key "$decrypted_embedding_access_key" \
+        --arg secret_key "$decrypted_embedding_secret_key" \
+        --arg env "$deploymentEnvironment" \
+        --arg model "$embeddingModel" \
+        '{data: {
+            connection_id: $conn_id,
+            access_key: $access_key,
+            secret_key: $secret_key,
+            environment: $env,
+            model: $model,
+            tags: "aws,bedrock,embedding,\($env),\($model)"
+        }}')
     
     log "Storing secrets at path: $vault_path"
     
@@ -376,23 +438,29 @@ store_azure_embedding_secrets() {
     
     # Decrypt sensitive fields
     local decrypted_embedding_api_key=$(decrypt_rsa_oaep "$embeddingAzureApiKey")
+    if [ $? -ne 0 ] || [ -z "$decrypted_embedding_api_key" ]; then
+        log "ERROR: Failed to decrypt embedding API key"
+        exit 1
+    fi
     
-    # Build JSON payload
-    local json_payload=$(cat <<EOF
-{
-    "data": {
-        "connection_id": "$connectionId",
-        "endpoint": "$embeddingTargetUri",
-        "api_key": "$decrypted_embedding_api_key",
-        "deployment_name": "$embeddingDeploymentName",
-        "environment": "$deploymentEnvironment",
-        "model": "$embeddingModel",
-        "api_version": "2024-12-01-preview",
-        "tags": "azure,embedding,$deploymentEnvironment,$embeddingModel"
-    }
-}
-EOF
-)
+    # Build JSON payload using jq for proper escaping
+    local json_payload=$(jq -n \
+        --arg conn_id "$connectionId" \
+        --arg endpoint "$embeddingTargetUri" \
+        --arg api_key "$decrypted_embedding_api_key" \
+        --arg deploy_name "$embeddingDeploymentName" \
+        --arg env "$deploymentEnvironment" \
+        --arg model "$embeddingModel" \
+        '{data: {
+            connection_id: $conn_id,
+            endpoint: $endpoint,
+            api_key: $api_key,
+            deployment_name: $deploy_name,
+            environment: $env,
+            model: $model,
+            api_version: "2024-12-01-preview",
+            tags: "azure,embedding,\($env),\($model)"
+        }}')
     
     log "Storing secrets at path: $vault_path"
     
