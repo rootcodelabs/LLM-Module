@@ -14,9 +14,16 @@ VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
 PRIVATE_KEY_CACHE=""
 PRIVATE_KEY_PATH="secret/encryption/private_key"
 
-# Logging function
+# Python decryption script path
+DECRYPT_SCRIPT="/app/src/utils/decrypt_vault_secrets.py"
+
+# Virtual environment setup
+VENV_PATH="/app/python_virtual_env"
+UV_BIN="/root/.local/bin/uv"
+
+# Logging function (writes to stderr to avoid command substitution capture)
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >&2
 }
 
 # Fetch private key from Vault
@@ -32,7 +39,7 @@ fetch_private_key() {
     local api_path=$(echo "$PRIVATE_KEY_PATH" | sed 's|^secret/|secret/data/|')
     
     # Fetch private key from Vault
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+    local response=$(curl -s --max-time 10 -w "HTTPSTATUS:%{http_code}" \
         -X GET \
         "$VAULT_ADDR/v1/$api_path")
     
@@ -61,9 +68,7 @@ fetch_private_key() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Private key fetched and cached successfully" >&2
 }
 
-# Decrypt RSA-OAEP encrypted value
-# Input: Base64-encoded encrypted value
-# Output: Plaintext value (stdout only)
+# Decrypt RSA-OAEP encrypted value using Python
 decrypt_rsa_oaep() {
     local encrypted_base64="$1"
     
@@ -72,110 +77,107 @@ decrypt_rsa_oaep() {
         return 1
     fi
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting decryption..." >&2
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Encrypted value length: ${#encrypted_base64}" >&2
-    
     # Ensure private key is fetched
     if ! fetch_private_key; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to fetch private key" >&2
         return 1
     fi
     
-    # Create temporary files for decryption
-    local temp_dir=$(mktemp -d)
-    local private_key_file="$temp_dir/private_key.pem"
-    local encrypted_file="$temp_dir/encrypted.bin"
-    local decrypted_file="$temp_dir/decrypted.txt"
+    # Call Python script for in-memory decryption
+    # Private key passed as argument
+    local decrypted_value
+    local python_stderr
+    python_stderr=$(mktemp)
+    decrypted_value=$("$VENV_PATH/bin/python3" "$DECRYPT_SCRIPT" "$encrypted_base64" "$PRIVATE_KEY_CACHE" 2>"$python_stderr")
+    local exit_code=$?
     
-    # Cleanup function
-    cleanup_temp_files() {
-        rm -rf "$temp_dir" 2>/dev/null || true
-    }
+    # Show Python errors if any
+    if [ -s "$python_stderr" ]; then
+        cat "$python_stderr" >&2
+    fi
+    rm -f "$python_stderr"
     
-    # Set trap to cleanup on exit
-    trap cleanup_temp_files EXIT
-    
-    # Write private key to temp file
-    echo "$PRIVATE_KEY_CACHE" > "$private_key_file"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Private key written to temp file" >&2
-    
-    # Validate private key format
-    if ! grep -q "BEGIN PRIVATE KEY" "$private_key_file" 2>/dev/null && ! grep -q "BEGIN RSA PRIVATE KEY" "$private_key_file" 2>/dev/null; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Private key file doesn't contain valid PEM header" >&2
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] First 100 chars of key: ${PRIVATE_KEY_CACHE:0:100}" >&2
-        cleanup_temp_files
+    if [ $exit_code -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Python decryption failed with exit code: $exit_code" >&2
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Output: $decrypted_value" >&2
         return 1
     fi
-    
-    # Decode URL-safe base64 (base64url) and write to temp file
-    # Convert base64url to standard base64: replace - with +, _ with /
-    # Add padding if needed (base64 requires length to be multiple of 4)
-    local standard_base64=$(echo "$encrypted_base64" | tr '_-' '/+')
-    local padding_needed=$((4 - ${#standard_base64} % 4))
-    if [ $padding_needed -lt 4 ]; then
-        standard_base64="${standard_base64}$(printf '=%.0s' $(seq 1 $padding_needed))"
-    fi
-    
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Base64 string length: ${#standard_base64} (with padding)" >&2
-    
-    if ! echo "$standard_base64" | base64 -d > "$encrypted_file" 2>&1; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to decode base64 encrypted value" >&2
-        cleanup_temp_files
-        return 1
-    fi
-    
-    local encrypted_size=$(stat -c%s "$encrypted_file" 2>/dev/null || stat -f%z "$encrypted_file" 2>/dev/null)
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Base64 decoded, encrypted size: $encrypted_size bytes" >&2
-    
-    # Decrypt using OpenSSL with RSA-OAEP padding
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running OpenSSL decryption..." >&2
-    local openssl_error
-    openssl_error=$(openssl pkeyutl -decrypt \
-        -inkey "$private_key_file" \
-        -in "$encrypted_file" \
-        -out "$decrypted_file" \
-        -pkeyopt rsa_padding_mode:oaep \
-        -pkeyopt rsa_oaep_md:sha256 \
-        -pkeyopt rsa_mgf1_md:sha256 2>&1)
-    
-    if [ $? -ne 0 ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Decryption failed" >&2
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] OpenSSL error: $openssl_error" >&2
-        cleanup_temp_files
-        return 1
-    fi
-    
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Decryption successful" >&2
-    
-    # Read decrypted value
-    local decrypted_value=$(cat "$decrypted_file")
-    
-    # Cleanup
-    cleanup_temp_files
     
     if [ -z "$decrypted_value" ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Decrypted value is empty" >&2
         return 1
     fi
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Decrypted value length: ${#decrypted_value}" >&2
-    
-    # Only output the decrypted value to stdout
+    # Output decrypted value to stdout only
     echo "$decrypted_value"
 }
 
-log "=== Starting Vault Secrets Storage ==="
+# Setup Python environment and install dependencies
+setup_python_environment() {
+    # Check if already setup
+    if [ -f "$VENV_PATH/.setup_complete" ]; then
+        return 0
+    fi
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up Python environment..."
+    
+    # Install uv if not found
+    if [ ! -f "$UV_BIN" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing uv package manager..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh || {
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to install uv" >&2
+            return 1
+        }
+    fi
+    
+    # Activate virtual environment
+    if [ ! -d "$VENV_PATH" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Virtual environment not found at $VENV_PATH" >&2
+        return 1
+    fi
+    
+    source "$VENV_PATH/bin/activate" || {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to activate virtual environment" >&2
+        return 1
+    }
+    
+    # Install cryptography library for RSA-OAEP decryption
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing cryptography library..."
+    "$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "cryptography>=46.0.3" 2>&1 || {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to install cryptography" >&2
+        return 1
+    }
+    
+    # Install loguru for structured logging
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing loguru library..."
+    "$UV_BIN" pip install --python "$VENV_PATH/bin/python3" "loguru>=0.7.3" 2>&1 || {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to install loguru" >&2
+        return 1
+    }
+    
+    # Mark setup as complete
+    touch "$VENV_PATH/.setup_complete"
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Python environment setup complete"
+    return 0
+}
 
-# Debug: Print received parameters
+log "=== Starting Vault Secrets Storage ==="
 log "Received parameters:"
 log "  connectionId: $connectionId"
 log "  llmPlatform: $llmPlatform"
 log "  llmModel: $llmModel"
 log "  deploymentEnvironment: $deploymentEnvironment"
 log "  Vault Address: $VAULT_ADDR"
-log "  Embedding apiKey Provided: $embeddingAzureApiKey"
 
-# Note: No token required - vault agent proxy automatically injects authentication
+# Redirect stderr to stdout so cron-manager can capture all logs
+exec 2>&1
+
+# Setup Python environment once at startup (before any decryption)
+if ! setup_python_environment; then
+    log "ERROR: Failed to setup Python environment"
+    exit 1
+fi
 
 # Function to determine platform name
 get_platform_name() {
@@ -292,7 +294,7 @@ store_aws_llm_secrets() {
     
     # Execute HTTP API call
     # No X-Vault-Token header needed - vault agent proxy auto-injects it
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+    local response=$(curl -s --max-time 10 -w "HTTPSTATUS:%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
@@ -306,8 +308,13 @@ store_aws_llm_secrets() {
     else
         log "ERROR: Failed to store AWS LLM secrets (HTTP $http_code)"
         log "Response: $body"
+        # Clear sensitive variables before exit
+        unset decrypted_access_key decrypted_secret_key json_payload
         exit 1
     fi
+    
+    # Clear sensitive variables after successful storage
+    unset decrypted_access_key decrypted_secret_key json_payload
 }
 
 # Function to store Azure LLM secrets
@@ -351,7 +358,7 @@ store_azure_llm_secrets() {
     
     # Execute HTTP API call
     # No X-Vault-Token header needed - vault agent proxy auto-injects it
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+    local response=$(curl -s --max-time 10 -w "HTTPSTATUS:%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
@@ -365,8 +372,13 @@ store_azure_llm_secrets() {
     else
         log "ERROR: Failed to store Azure LLM secrets (HTTP $http_code)"
         log "Response: $body"
+        # Clear sensitive variables before exit
+        unset decrypted_api_key json_payload
         exit 1
     fi
+    
+    # Clear sensitive variables after successful storage
+    unset decrypted_api_key json_payload
 }
 
 # Function to store AWS embedding secrets
@@ -412,7 +424,7 @@ store_aws_embedding_secrets() {
     
     # Execute HTTP API call
     # No X-Vault-Token header needed - vault agent proxy auto-injects it
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+    local response=$(curl -s --max-time 10 -w "HTTPSTATUS:%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
@@ -426,8 +438,13 @@ store_aws_embedding_secrets() {
     else
         log "ERROR: Failed to store AWS embedding secrets (HTTP $http_code)"
         log "Response: $body"
+        # Clear sensitive variables before exit
+        unset decrypted_embedding_access_key decrypted_embedding_secret_key json_payload
         exit 1
     fi
+    
+    # Clear sensitive variables after successful storage
+    unset decrypted_embedding_access_key decrypted_embedding_secret_key json_payload
 }
 
 # Function to store Azure embedding secrets
@@ -470,7 +487,7 @@ store_azure_embedding_secrets() {
     
     # Execute HTTP API call
     # No X-Vault-Token header needed - vault agent proxy auto-injects it
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+    local response=$(curl -s --max-time 10 -w "HTTPSTATUS:%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d "$json_payload" \
@@ -484,8 +501,13 @@ store_azure_embedding_secrets() {
     else
         log "ERROR: Failed to store Azure embedding secrets (HTTP $http_code)"
         log "Response: $body"
+        # Clear sensitive variables before exit
+        unset decrypted_embedding_api_key json_payload
         exit 1
     fi
+    
+    # Clear sensitive variables after successful storage
+    unset decrypted_embedding_api_key json_payload
 }
 
 # Main execution
@@ -501,5 +523,8 @@ if [ -n "$embeddingPlatform" ]; then
 else
     log "No embedding platform specified, skipping embedding secrets"
 fi
+
+# Clear private key from memory
+unset PRIVATE_KEY_CACHE
 
 log "=== Vault secrets storage completed successfully ==="

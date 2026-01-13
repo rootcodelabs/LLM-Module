@@ -173,11 +173,12 @@ services:
   cron-manager:
     container_name: cron-manager
     image: cron-manager-python:latest
-    user: "1000:1000"
+    user: root
     volumes:
       - ./DSL/CronManager/DSL:/DSL
       - ./DSL/CronManager/script:/app/scripts
       - ./src/vector_indexer:/app/src/vector_indexer
+      - ./src/utils/decrypt_vault_secrets.py:/app/src/utils/decrypt_vault_secrets.py:ro  # Decryption utility (read-only)
       - cron_data:/app/data
       - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
       - ./datasets:/app/datasets   # Direct access to datasets folder for diff identifier operations
