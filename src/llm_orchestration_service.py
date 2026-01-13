@@ -535,21 +535,12 @@ class LLMOrchestrationService:
                             logger.info(
                                 f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
                             )
-                            references_data = [
-                                ref.model_dump() for ref in doc_references
-                            ]
-                            references_message = {
-                                "chatId": request.chatId,
-                                "payload": {
-                                    "type": "references",
-                                    "references": references_data,
-                                },
-                                "timestamp": str(
-                                    int(datetime.now().timestamp() * 1000)
-                                ),
-                                "sentTo": [],
-                            }
-                            yield f"data: {json_module.dumps(references_message)}\n\n"
+                            # Format references as markdown text
+                            refs_text = "\n\n**References:**\n" + "\n".join(
+                                f"{i + 1}. [{ref.document_url}]({ref.document_url})"
+                                for i, ref in enumerate(doc_references)
+                            )
+                            yield self._format_sse(request.chatId, refs_text)
 
                         yield self._format_sse(request.chatId, "END")
 
@@ -594,21 +585,12 @@ class LLMOrchestrationService:
                             logger.info(
                                 f"[{request.chatId}] [{stream_ctx.stream_id}] Sending {len(doc_references)} document references before END"
                             )
-                            references_data = [
-                                ref.model_dump() for ref in doc_references
-                            ]
-                            references_message = {
-                                "chatId": request.chatId,
-                                "payload": {
-                                    "type": "references",
-                                    "references": references_data,
-                                },
-                                "timestamp": str(
-                                    int(datetime.now().timestamp() * 1000)
-                                ),
-                                "sentTo": [],
-                            }
-                            yield f"data: {json_module.dumps(references_message)}\n\n"
+                            # Format references as markdown text
+                            refs_text = "\n\n**References:**\n" + "\n".join(
+                                f"{i + 1}. [{ref.document_url}]({ref.document_url})"
+                                for i, ref in enumerate(doc_references)
+                            )
+                            yield self._format_sse(request.chatId, refs_text)
 
                         yield self._format_sse(request.chatId, "END")
 
