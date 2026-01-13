@@ -11,11 +11,16 @@ The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide *
   - Admins can create "connections" and switch providers/models without downtime.  
   - Models searchable via dropdown with cache-enabled indicators.
 
+- **Enhanced Security with RSA Encryption**  
+  - LLM credentials encrypted with RSA-4096 asymmetric encryption before storage.  
+  - GUI encrypts using public key; CronManager decrypts with private key.  
+  - Additional security layer beyond HashiCorp Vault's encryption.  
+
 - **Knowledge Base Integration**  
   - Continuous sync with central knowledge base (CKB).  
   - Last sync timestamp displayed in UI.  
   - LLMs restricted to answering only from CKB content.  
-  - “I don’t know” payload returned when confidence is low.  
+  - "I don't know" payload returned when confidence is low.  
 
 - **Citations & Transparency**  
   - All responses are accompanied with **clear citations**.  
@@ -23,7 +28,7 @@ The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide *
 - **Analytics & Monitoring**  
   - External **Langfuse dashboard** for API usage, inference trends, cost analysis, and performance logs.  
   - Agencies can configure cost alerts and view alerts via LLM Alerts UI.  
-  - Logs integrated with **Grafana Loki**.  
+  - Logs integrated with **Grafana Loki**.
 
 ### Storing Langfuse Secrets
 

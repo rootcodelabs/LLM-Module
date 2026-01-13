@@ -34,7 +34,13 @@ export default defineConfig({
       }),
     },
     allowedHosts: ['est-rag-rtc.rootcode.software', 'localhost', '127.0.0.1'],
-
+    proxy: {
+      '/vault-agent-gui': {
+        target: 'http://vault-agent-gui:8202',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/vault-agent-gui/, ''),
+      },
+    },
   },
   resolve: {
     alias: {
