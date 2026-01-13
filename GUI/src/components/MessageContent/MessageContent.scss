@@ -1,0 +1,61 @@
+.message-content-wrapper {
+  width: 100%;
+
+  .message-text {
+    margin-bottom: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .message-references {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+
+    .references-title {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .references-list {
+      margin: 0;
+      padding-left: 20px;
+      list-style-type: decimal;
+
+      li {
+        margin-bottom: 6px;
+        line-height: 1.5;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      .reference-link {
+        color: #0066cc;
+        text-decoration: none;
+        word-break: break-all;
+        transition: color 0.2s ease;
+
+        &:hover {
+          color: #0052a3;
+          text-decoration: underline;
+        }
+
+        &:visited {
+          color: #551a8b;
+        }
+      }
+    }
+  }
+}
+
+// Dark mode support
+.test-production-llm__message--bot {
+  .message-references {
+    border-top-color: rgba(255, 255, 255, 0.1);
+  }
+}
