@@ -22,16 +22,27 @@ logger = logging.getLogger(__name__)
 class ResponseGenerator(dspy.Signature):
     """Produce a grounded answer from the provided context ONLY.
 
+    CRITICAL LANGUAGE RULE:
+    - The answer MUST be in the SAME language as the input question
+    - Estonian question → Estonian answer
+    - Russian question → Russian answer
+    - English question → English answer
+    - Maintain the natural language flow and grammar of the detected language
+
     Rules:
     - Use ONLY the provided context blocks; do not invent facts.
     - If the context is insufficient, set questionOutOfLLMScope=true and say so briefly.
     - Do not include citations in the 'answer' field.
     """
 
-    question: str = dspy.InputField()
+    question: str = dspy.InputField(
+        desc="User's question. Answer in the SAME language as this question."
+    )
     context_blocks: List[str] = dspy.InputField()
     citations: List[str] = dspy.InputField()
-    answer: str = dspy.OutputField(desc="Human-friendly answer without citations")
+    answer: str = dspy.OutputField(
+        desc="Human-friendly answer in THE SAME LANGUAGE as the question, without citations"
+    )
     questionOutOfLLMScope: bool = dspy.OutputField(
         desc="True if context is insufficient to answer"
     )
@@ -39,6 +50,8 @@ class ResponseGenerator(dspy.Signature):
 
 class ScopeChecker(dspy.Signature):
     """Quick check if question can be answered from context.
+
+    LANGUAGE NOTE: This is an internal check, language doesn't matter for scope determination.
 
     Rules:
     - Return True ONLY if context is completely insufficient

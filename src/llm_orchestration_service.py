@@ -27,9 +27,14 @@ from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.response_generator.response_generate import stream_response_native
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     OUT_OF_SCOPE_MESSAGE,
+    OUT_OF_SCOPE_MESSAGES,
     TECHNICAL_ISSUE_MESSAGE,
+    TECHNICAL_ISSUE_MESSAGES,
     INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    INPUT_GUARDRAIL_VIOLATION_MESSAGES,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    OUTPUT_GUARDRAIL_VIOLATION_MESSAGES,
+    get_localized_message,
     GUARDRAILS_BLOCKED_PHRASES,
     TEST_DEPLOYMENT_ENVIRONMENT,
     STREAM_TOKEN_LIMIT_MESSAGE,
@@ -43,6 +48,7 @@ from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
 from src.utils.time_tracker import log_step_timings
 from src.utils.budget_tracker import get_budget_tracker
 from src.utils.production_store import get_production_store
+from src.utils.language_detector import detect_language, get_language_name
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.llm_orchestrator_config.exceptions import (
@@ -126,6 +132,16 @@ class LLMOrchestrationService:
                 f"Processing orchestration request for chatId: {request.chatId}, "
                 f"authorId: {request.authorId}, environment: {request.environment}"
             )
+
+            # STEP 0: Detect language from user message
+            detected_language = detect_language(request.message)
+            language_name = get_language_name(detected_language)
+            logger.info(
+                f"[{request.chatId}] Detected language: {language_name} ({detected_language})"
+            )
+
+            # Store detected language in request for use throughout pipeline
+            request._detected_language = detected_language
 
             # Initialize all service components
             components = self._initialize_service_components(request)
@@ -245,6 +261,16 @@ class LLMOrchestrationService:
         timing_dict: Dict[str, float] = {}
         streaming_start_time = datetime.now()
 
+        # STEP 0: Detect language from user message
+        detected_language = detect_language(request.message)
+        language_name = get_language_name(detected_language)
+        logger.info(
+            f"[{request.chatId}] Streaming request - Detected language: {language_name} ({detected_language})"
+        )
+
+        # Store detected language in request for use throughout pipeline
+        request._detected_language = detected_language
+
         # Use StreamManager for centralized tracking and guaranteed cleanup
         async with stream_manager.managed_stream(
             chat_id=request.chatId, author_id=request.authorId
@@ -339,7 +365,11 @@ class LLMOrchestrationService:
                     logger.info(
                         f"[{request.chatId}] [{stream_ctx.stream_id}] No relevant chunks - out of scope"
                     )
-                    yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                    detected_lang = getattr(request, "_detected_language", "en")
+                    localized_msg = get_localized_message(
+                        OUT_OF_SCOPE_MESSAGES, detected_lang
+                    )
+                    yield self._format_sse(request.chatId, localized_msg)
                     yield self._format_sse(request.chatId, "END")
                     self._log_costs(costs_dict)
                     log_step_timings(timing_dict, request.chatId)
@@ -369,7 +399,11 @@ class LLMOrchestrationService:
                     logger.info(
                         f"[{request.chatId}] [{stream_ctx.stream_id}] Question out of scope"
                     )
-                    yield self._format_sse(request.chatId, OUT_OF_SCOPE_MESSAGE)
+                    detected_lang = getattr(request, "_detected_language", "en")
+                    localized_msg = get_localized_message(
+                        OUT_OF_SCOPE_MESSAGES, detected_lang
+                    )
+                    yield self._format_sse(request.chatId, localized_msg)
                     yield self._format_sse(request.chatId, "END")
                     self._log_costs(costs_dict)
                     log_step_timings(timing_dict, request.chatId)
@@ -1030,6 +1064,13 @@ class LLMOrchestrationService:
 
         if not input_check_result.allowed:
             logger.warning(f"Input blocked by guardrails: {input_check_result.reason}")
+
+            # Get localized message based on detected language
+            detected_lang = getattr(request, "_detected_language", "en")
+            localized_msg = get_localized_message(
+                INPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_lang
+            )
+
             if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning input guardrail violation message."
@@ -1038,7 +1079,7 @@ class LLMOrchestrationService:
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=True,
-                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    content=localized_msg,
                     chunks=None,
                 )
             else:
@@ -1047,7 +1088,7 @@ class LLMOrchestrationService:
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=True,
-                    content=INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    content=localized_msg,
                 )
 
         logger.info("Input guardrails check passed")
@@ -1154,12 +1195,18 @@ class LLMOrchestrationService:
                 logger.warning(
                     f"Output blocked by guardrails: {output_check_result.reason}"
                 )
+                # Get localized message based on detected language
+                detected_lang = getattr(request, "_detected_language", "en")
+                localized_msg = get_localized_message(
+                    OUTPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_lang
+                )
+
                 return OrchestrationResponse(
                     chatId=request.chatId,
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+                    content=localized_msg,
                 )
 
             logger.info("Output guardrails check passed")
@@ -1172,25 +1219,35 @@ class LLMOrchestrationService:
     def _create_error_response(
         self, request: OrchestrationRequest
     ) -> OrchestrationResponse:
-        """Create standardized error response."""
+        """Create standardized error response with localized message."""
+        # Get language from request (set during language detection)
+        detected_lang = getattr(request, "_detected_language", "en")
+        localized_message = get_localized_message(
+            TECHNICAL_ISSUE_MESSAGES, detected_lang
+        )
+
         return OrchestrationResponse(
             chatId=request.chatId,
             llmServiceActive=False,
             questionOutOfLLMScope=False,
             inputGuardFailed=False,
-            content=TECHNICAL_ISSUE_MESSAGE,
+            content=localized_message,
         )
 
     def _create_out_of_scope_response(
         self, request: OrchestrationRequest
     ) -> OrchestrationResponse:
-        """Create standardized out-of-scope response."""
+        """Create standardized out-of-scope response with localized message."""
+        # Get language from request (set during language detection)
+        detected_lang = getattr(request, "_detected_language", "en")
+        localized_message = get_localized_message(OUT_OF_SCOPE_MESSAGES, detected_lang)
+
         return OrchestrationResponse(
             chatId=request.chatId,
             llmServiceActive=True,
             questionOutOfLLMScope=True,
             inputGuardFailed=False,
-            content=OUT_OF_SCOPE_MESSAGE,
+            content=localized_message,
         )
 
     def _store_production_inference_data(
@@ -2062,6 +2119,13 @@ class LLMOrchestrationService:
             logger.warning(
                 "Response generator unavailable – returning technical issue message."
             )
+
+            # Get localized message based on detected language
+            detected_lang = getattr(request, "_detected_language", "en")
+            localized_msg = get_localized_message(
+                TECHNICAL_ISSUE_MESSAGES, detected_lang
+            )
+
             if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning technical issue message."
@@ -2070,8 +2134,8 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=TECHNICAL_ISSUE_MESSAGE,
-                    chunks=self._format_chunks_for_test_response(relevant_chunks),
+                    content=localized_msg,
+                    chunks=None,  # No chunks for technical failures
                 )
             else:
                 return OrchestrationResponse(
@@ -2129,20 +2193,18 @@ class LLMOrchestrationService:
                     output=answer,
                 )
             if question_out_of_scope:
-                logger.info("Question determined out-of-scope – sending fixed message.")
+                logger.info(
+                    "Question determined out-of-scope – sending fixed message without references."
+                )
 
-                # Extract document references even for out-of-scope
-                doc_references = self._extract_document_references(relevant_chunks)
+                # Get localized message based on detected language
+                detected_lang = getattr(request, "_detected_language", "en")
+                localized_msg = get_localized_message(
+                    OUT_OF_SCOPE_MESSAGES, detected_lang
+                )
 
-                # Append references to content
-                content_with_refs = OUT_OF_SCOPE_MESSAGE
-                if doc_references:
-                    refs_text = "\n\n**References:**\n" + "\n".join(
-                        f"{i + 1}. {ref.document_url}"
-                        for i, ref in enumerate(doc_references)
-                    )
-                    content_with_refs += refs_text
-
+                # Do NOT include references when question is out of scope
+                # (data did not provide sufficient context to answer)
                 if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                     logger.info(
                         "Test environment detected – returning out-of-scope message."
@@ -2151,8 +2213,8 @@ class LLMOrchestrationService:
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
-                        content=content_with_refs,
-                        chunks=self._format_chunks_for_test_response(relevant_chunks),
+                        content=localized_msg,
+                        chunks=None,  # No chunks when question is out of scope
                     )
                 else:
                     return OrchestrationResponse(
@@ -2160,7 +2222,7 @@ class LLMOrchestrationService:
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
-                        content=content_with_refs,
+                        content=localized_msg,
                     )
 
             # In-scope: return the answer as-is (NO citations)
@@ -2215,6 +2277,12 @@ class LLMOrchestrationService:
                     }
                 )
             # Standardized technical issue; no second LLM call, no citations
+            # Get localized message based on detected language
+            detected_lang = getattr(request, "_detected_language", "en")
+            localized_msg = get_localized_message(
+                TECHNICAL_ISSUE_MESSAGES, detected_lang
+            )
+
             if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
                 logger.info(
                     "Test environment detected – returning technical issue message."
@@ -2223,8 +2291,8 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=TECHNICAL_ISSUE_MESSAGE,
-                    chunks=self._format_chunks_for_test_response(relevant_chunks),
+                    content=localized_msg,
+                    chunks=None,  # No chunks for technical failures
                 )
             else:
                 return OrchestrationResponse(
