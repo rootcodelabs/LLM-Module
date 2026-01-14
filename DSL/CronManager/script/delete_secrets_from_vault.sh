@@ -6,8 +6,9 @@
 set -e  # Exit on any error
 
 # Configuration
-VAULT_ADDR="${VAULT_ADDR:-http://vault:8200}"
-VAULT_TOKEN_FILE="/agent/out/token"
+# Use VAULT_AGENT_URL which points to vault-agent-cron proxy
+# The agent automatically injects the authentication token
+VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
 
 # Logging function
 log() {
@@ -24,20 +25,9 @@ log "  llmModel: $llmModel"
 log "  embeddingModel: $embeddingModel"
 log "  embeddingPlatform: $embeddingPlatform"
 log "  deploymentEnvironment: $deploymentEnvironment"
+log "  Vault Address: $VAULT_ADDR"
 
-# Read vault token
-if [ ! -f "$VAULT_TOKEN_FILE" ]; then
-    log "ERROR: Vault token file not found at $VAULT_TOKEN_FILE"
-    exit 1
-fi
-
-VAULT_TOKEN=$(cat "$VAULT_TOKEN_FILE")
-if [ -z "$VAULT_TOKEN" ]; then
-    log "ERROR: Vault token is empty"
-    exit 1
-fi
-
-log "Vault token loaded successfully"
+# Note: No token required - vault agent proxy automatically injects authentication
 
 # Function to determine platform name
 get_platform_name() {
@@ -65,7 +55,7 @@ build_vault_path() {
     local platform_name=$2
     local model_name=$3
     
-    if [ "$deploymentEnvironment" = "test" ]; then
+    if [ "$deploymentEnvironment" = "testing" ]; then
         echo "secret/$secret_type/connections/$platform_name/$deploymentEnvironment/$connectionId"
     else
         echo "secret/$secret_type/connections/$platform_name/$deploymentEnvironment/$model_name"
@@ -90,9 +80,9 @@ delete_vault_secret() {
     
     # Delete secret data
     log "Deleting secret data..."
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local data_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X DELETE \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         "$VAULT_ADDR/v1/$data_path")
     
     local data_http_code=$(echo "$data_response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
@@ -108,9 +98,9 @@ delete_vault_secret() {
     
     # Delete secret metadata
     log "Deleting secret metadata..."
+    # No X-Vault-Token header needed - vault agent proxy auto-injects it
     local metadata_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
         -X DELETE \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
         "$VAULT_ADDR/v1/$metadata_path")
     
     local metadata_http_code=$(echo "$metadata_response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)

@@ -2,6 +2,7 @@ import apiDev from './api-dev';
 import { llmConnectionsEndpoints, vaultEndpoints } from 'utils/endpoints';
 import { removeCommasFromNumber } from 'utils/commonUtils';
 import { maskSensitiveKey } from 'utils/llmConnectionsUtils';
+import { encryptLLMCredentials } from 'utils/encryption';
 
 export interface LLMConnection {
   id: number;
@@ -127,6 +128,20 @@ export interface LLMConnectionFormData {
 // Vault secret service functions
 async function createVaultSecret(connectionId: string, connectionData: LLMConnectionFormData): Promise<void> {
 
+  // Encrypt sensitive credentials before sending to vault
+  const encryptedCredentials = await encryptLLMCredentials({
+    // AWS credentials
+    secretKey: connectionData.secretKey,
+    accessKey: connectionData.accessKey,
+    // Azure credentials
+    apiKey: connectionData.apiKey,
+    // Embedding AWS credentials
+    embeddingAccessKey: connectionData.embeddingAccessKey,
+    embeddingSecretKey: connectionData.embeddingSecretKey,
+    // Embedding Azure credentials
+    embeddingAzureApiKey: connectionData.embeddingAzureApiKey,
+  });
+
   const payload = {
     connectionId,
     llmPlatform: connectionData.llmPlatform,
@@ -134,27 +149,27 @@ async function createVaultSecret(connectionId: string, connectionData: LLMConnec
     embeddingModel: connectionData.embeddingModel,
     embeddingPlatform: connectionData.embeddingModelPlatform,
     deploymentEnvironment: connectionData.deploymentEnvironment.toLowerCase(),
-    // AWS credentials
+    // AWS credentials (encrypted)
     ...(connectionData.llmPlatform === 'aws' && {
-      secretKey: connectionData.secretKey || '',
-      accessKey: connectionData.accessKey || '',
+      secretKey: encryptedCredentials.secretKey || '',
+      accessKey: encryptedCredentials.accessKey || '',
     }),
-    // Azure credentials  
+    // Azure credentials (encrypted)
     ...(connectionData.llmPlatform === 'azure' && {
       deploymentName: connectionData.deploymentName || '',
       targetUrl: connectionData.targetUri || '',
-      apiKey: connectionData.apiKey || '',
+      apiKey: encryptedCredentials.apiKey || '',
     }),
-    // Embedding AWS Bedrock credentials
+    // Embedding AWS Bedrock credentials (encrypted)
     ...(connectionData.embeddingModelPlatform === 'aws' && {
-      embeddingAccessKey: connectionData.embeddingAccessKey || '',
-      embeddingSecretKey: connectionData.embeddingSecretKey || '',
+      embeddingAccessKey: encryptedCredentials.embeddingAccessKey || '',
+      embeddingSecretKey: encryptedCredentials.embeddingSecretKey || '',
     }),
-    // Embedding Azure credentials
+    // Embedding Azure credentials (encrypted)
     ...(connectionData.embeddingModelPlatform === 'azure' && {
       embeddingDeploymentName: connectionData.embeddingDeploymentName || '',
       embeddingTargetUri: connectionData.embeddingTargetUri || '',
-      embeddingAzureApiKey: connectionData.embeddingAzureApiKey || '',
+      embeddingAzureApiKey: encryptedCredentials.embeddingAzureApiKey || '',
     }),
   };
 
@@ -248,16 +263,11 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
   });
 
   const connection = data?.response;
+  console.log('Created LLM Connection:', connection);
 
   // After successful database creation, store secrets in vault
   if (connection && connection.id) {
-    try {
-      await createVaultSecret(connection.id.toString(), connectionData);
-    } catch (vaultError) {
-      console.error('Failed to store secrets in vault:', vaultError);
-      // Note: We don't throw here to avoid breaking the connection creation flow
-      // The connection is already created in the database
-    }
+    await createVaultSecret(connection.id.toString(), connectionData);
   }
 
   return connection;
@@ -298,11 +308,11 @@ export async function updateLLMConnection(
 
   const connection = data?.response;
 
-  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*') 
-    || connectionData.accessKey && !connectionData.accessKey?.includes('*') 
-    || connectionData.apiKey && !connectionData.apiKey?.includes('*') 
-    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*') 
-    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*') 
+  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*')
+    || connectionData.accessKey && !connectionData.accessKey?.includes('*')
+    || connectionData.apiKey && !connectionData.apiKey?.includes('*')
+    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*')
+    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*')
     || connectionData.embeddingAzureApiKey && !connectionData.embeddingAzureApiKey?.includes('*'))) {
     try {
       await createVaultSecret(id.toString(), connectionData);
