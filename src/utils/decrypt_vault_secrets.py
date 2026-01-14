@@ -67,11 +67,11 @@ def decrypt_rsa_oaep(encrypted_base64url: str, private_key_pem: str) -> str:
         loaded_key = serialization.load_pem_private_key(
             private_key_pem.encode("utf-8"), password=None, backend=default_backend()
         )
-        
+
         # Type check and cast to RSA private key
         if not isinstance(loaded_key, rsa.RSAPrivateKey):
             raise TypeError("Private key must be an RSA key")
-        
+
         private_key: rsa.RSAPrivateKey = loaded_key
 
         # Decode Base64URL to bytes (in memory)
