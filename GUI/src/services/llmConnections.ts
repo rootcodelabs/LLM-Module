@@ -267,13 +267,7 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
 
   // After successful database creation, store secrets in vault
   if (connection && connection.id) {
-    try {
-      await createVaultSecret(connection.id.toString(), connectionData);
-    } catch (vaultError) {
-      console.error('Failed to store secrets in vault:', vaultError);
-      // Note: We don't throw here to avoid breaking the connection creation flow
-      // The connection is already created in the database
-    }
+    await createVaultSecret(connection.id.toString(), connectionData);
   }
 
   return connection;
@@ -314,11 +308,11 @@ export async function updateLLMConnection(
 
   const connection = data?.response;
 
-  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*') 
-    || connectionData.accessKey && !connectionData.accessKey?.includes('*') 
-    || connectionData.apiKey && !connectionData.apiKey?.includes('*') 
-    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*') 
-    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*') 
+  if (connection && (connectionData.secretKey && !connectionData.secretKey?.includes('*')
+    || connectionData.accessKey && !connectionData.accessKey?.includes('*')
+    || connectionData.apiKey && !connectionData.apiKey?.includes('*')
+    || connectionData.embeddingAccessKey && !connectionData.embeddingAccessKey?.includes('*')
+    || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*')
     || connectionData.embeddingAzureApiKey && !connectionData.embeddingAzureApiKey?.includes('*'))) {
     try {
       await createVaultSecret(id.toString(), connectionData);
