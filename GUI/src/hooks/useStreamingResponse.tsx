@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
+const notificationNodeUrl = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
+
 interface StreamingOptions {
   authorId: string;
   conversationHistory: Array<{ authorRole: string; message: string; timestamp: string }>;
@@ -50,7 +52,7 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
 
       try {
         // Step 1: Open SSE connection FIRST
-        const sseUrl = `https://est-rag-rtc.rootcode.software/notifications-server/sse/stream/${channelId}`;
+        const sseUrl = `${notificationNodeUrl}/sse/stream/${channelId}`;
         console.log('[SSE] Connecting to:', sseUrl);
 
         const eventSource = new EventSource(sseUrl);
