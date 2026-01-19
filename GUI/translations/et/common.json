@@ -158,6 +158,7 @@
       "testing": "Testimine",
       "production": "Toodang"
     },
+    "budgetUsage": "Eelarve kasutamine",
     "budgetStatus": {
       "withinBudget": "Eelarve piires",
       "overBudget": "Eelarve ületatud",

@@ -257,7 +257,11 @@ const LLMConnections: FC = () => {
                       deploymentEnv={productionConnection.environment}
                       budgetStatus={productionConnection.budgetStatus}
                       platform={productionConnection.llmPlatform}
-                      model={productionConnection.llmModel}
+                      model={productionConnection.llmModel}                     
+                      usedBudget={productionConnection.usedBudget}
+                      monthlyBudget={productionConnection.monthlyBudget}
+                      stopBudgetThreshold={productionConnection.stopBudgetThreshold}
+                      disconnectOnBudgetExceed={productionConnection.disconnectOnBudgetExceed}
                     />
                   </div>
                 </div>
@@ -278,6 +282,10 @@ const LLMConnections: FC = () => {
                           budgetStatus={llmConnection.budgetStatus}
                           platform={llmConnection.llmPlatform}
                           model={llmConnection.llmModel}
+                          usedBudget={llmConnection.usedBudget}
+                          monthlyBudget={llmConnection.monthlyBudget}
+                          stopBudgetThreshold={llmConnection.stopBudgetThreshold}
+                          disconnectOnBudgetExceed={llmConnection.disconnectOnBudgetExceed}
                         />
                       );
                     })}
