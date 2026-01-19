@@ -12,7 +12,7 @@ The **BYK-RAG Module** is part of the Burokratt ecosystem, designed to provide *
   - Models searchable via dropdown with cache-enabled indicators.
 
 - **Enhanced Security with RSA Encryption**  
-  - LLM credentials encrypted with RSA-2048 asymmetric encryption before storage.
+  - LLM credentials encrypted with RSA-2048 asymmetric encryption before storage.  
   - GUI encrypts using public key; CronManager decrypts with private key.  
   - Additional security layer beyond HashiCorp Vault's encryption.  
 

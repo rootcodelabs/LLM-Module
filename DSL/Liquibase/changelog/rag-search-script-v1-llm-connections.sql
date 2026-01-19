@@ -102,6 +102,7 @@ INSERT INTO llm_models (platform_id, model_key, model_name) VALUES
 -- Azure models
 ((SELECT id FROM llm_platforms WHERE platform_key = 'azure'), 'gpt-4o-mini', 'GPT-4o-mini'),
 ((SELECT id FROM llm_platforms WHERE platform_key = 'azure'), 'gpt-4o', 'GPT-4o'),
+((SELECT id FROM llm_platforms WHERE platform_key = 'azure'), 'gpt-4.1', 'GPT-4.1'),
 -- AWS models
 ((SELECT id FROM llm_platforms WHERE platform_key = 'aws'), 'anthropic-claude-3.5-sonnet', 'Anthropic Claude 3.5 Sonnet'),
 ((SELECT id FROM llm_platforms WHERE platform_key = 'aws'), 'anthropic-claude-3.7-sonnet', 'Anthropic Claude 3.7 Sonnet');
