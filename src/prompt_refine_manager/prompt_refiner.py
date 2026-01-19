@@ -27,6 +27,13 @@ HistoryLike = Union[HistoryList, ConversationHistory]
 class PromptRefiner(dspy.Signature):
     """Produce N distinct, concise rewrites of the user's question using chat history.
 
+    CRITICAL LANGUAGE RULE:
+    - The rewrites MUST be in the SAME language as the input question
+    - Estonian question → Estonian rewrites
+    - Russian question → Russian rewrites
+    - English question → English rewrites
+    - Preserve the natural language of the original question
+
     Constraints:
     - Preserve the original intent; don't inject unsupported constraints.
     - Resolve pronouns with context when safe; avoid changing semantics.
@@ -36,11 +43,13 @@ class PromptRefiner(dspy.Signature):
     """
 
     history: str = dspy.InputField(desc="Recent conversation history (turns).")
-    question: str = dspy.InputField(desc="The user's latest question to refine.")
+    question: str = dspy.InputField(
+        desc="The user's latest question to refine. Preserve its language in rewrites."
+    )
     n: int = dspy.InputField(desc="Number of rewrites to produce (N).")
 
     rewrites: list[str] = dspy.OutputField(
-        desc="Exactly N refined variations of the question, each a single sentence."
+        desc="Exactly N refined variations of the question in THE SAME LANGUAGE as input, each a single sentence."
     )
 
 

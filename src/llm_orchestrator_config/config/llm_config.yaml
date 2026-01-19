@@ -32,6 +32,13 @@ llm:
           temperature: 0.5
           deployment_name: "gpt-4o-deployment"
 
+        gpt-4.1:
+          model_type: "chat"
+          max_tokens: 13107
+          temperature: 0.6
+          deployment_name: "gpt-4.1"
+
+
     # AWS Bedrock Configuration
     aws_bedrock:
       cache: true  # Keep caching enabled (DSPY default)
