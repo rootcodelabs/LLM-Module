@@ -104,7 +104,7 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Step 3: POST to trigger streaming
-        const postUrl = `https://est-rag-rtc.rootcode.software/notifications-server/channels/${channelId}/orchestrate/stream`;
+        const postUrl = `${notificationNodeUrl}/channels/${channelId}/orchestrate/stream`;
         console.log('[API] Triggering stream:', postUrl);
 
         await axios.post(postUrl, {
