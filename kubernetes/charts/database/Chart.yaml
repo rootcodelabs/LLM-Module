@@ -1,0 +1,12 @@
+apiVersion: v2
+name: database
+description: PostgreSQL databases for RAG
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: postgresql
+    version: 12.2.6
+    repository: https://charts.bitnami.com/bitnami
+    alias: rag-search-db
+ 

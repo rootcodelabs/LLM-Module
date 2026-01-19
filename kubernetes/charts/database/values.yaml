@@ -1,0 +1,14 @@
+rag-search-db:
+  fullnameOverride: rag-search-db
+  image:
+    tag: latest
+  auth:
+    postgresPassword: dbadmin
+    username: postgres
+    password: dbadmin
+    database: rag-search
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+

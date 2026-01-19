@@ -1,0 +1,80 @@
+apiVersion: v2
+name: rag-module
+description: Umbrella chart for RAG Module
+version: 0.1.0
+type: application
+
+dependencies:
+  - name: database
+    version: 0.1.0
+    repository: "file://./charts/database"
+  - name: TIM-database
+    version: 0.1.0
+    repository: "file://./charts/TIM-database"
+  - name: resql
+    version: 0.1.0
+    repository: "file://./charts/Resql"
+  - name: ruuter-public
+    version: 0.1.0
+    repository: "file://./charts/Ruuter-Public"
+  - name: ruuter-private
+    version: 0.1.0
+    repository: "file://./charts/Ruuter-Private"
+  - name: data-mapper
+    version: 0.1.0
+    repository: "file://./charts/DataMapper"
+  - name: TIM
+    version: 0.1.0
+    repository: "file://./charts/TIM"
+  - name: Authentication-Layer
+    version: 0.1.0
+    repository: "file://./charts/Authentication-Layer"
+  - name: CronManager
+    version: 0.1.0
+    repository: "file://./charts/CronManager"
+  - name: GUI
+    version: 0.1.0
+    repository: "file://./charts/GUI"
+  - name: Loki
+    version: 0.1.0
+    repository: "file://./charts/Loki"
+  - name: Grafana
+    version: 0.1.0
+    repository: "file://./charts/Grafana"
+  - name: S3-Ferry
+    version: 0.1.0
+    repository: "file://./charts/S3-Ferry"
+  - name: minio
+    version: 0.1.0
+    repository: "file://./charts/minio"
+  - name: Redis
+    version: 0.1.0
+    repository: "file://./charts/Redis"
+  - name: Qdrant
+    version: 0.1.0
+    repository: "file://./charts/Qdrant"
+  - name: ClickHouse
+    version: 0.1.0
+    repository: "file://./charts/ClickHouse"
+  - name: Langfuse-Web
+    version: 0.1.0
+    repository: "file://./charts/Langfuse-Web"
+  - name: Langfuse-Worker
+    version: 0.1.0
+    repository: "file://./charts/Langfuse-Worker"
+  - name: Vault
+    version: 0.1.0
+    repository: "file://./charts/Vault"
+  - name: Vault-Init
+    version: 0.1.0
+    repository: "file://./charts/Vault-Init"
+  - name: Vault-Agent-LLM
+    version: 0.1.0
+    repository: "file://./charts/Vault-Agent-LLM"
+  - name: LLM-Orchestration-Service
+    version: 0.1.0
+    repository: "file://./charts/LLM-Orchestration-Service"
+  - name: Liquibase
+    version: 0.1.0
+    repository: "file://./charts/Liquibase"
+
