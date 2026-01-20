@@ -6,8 +6,9 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'mocks/**'
       - 'data/**'
+      - 'docker-compose-eval.yml'
+      - 'Dockerfile.llm_orchestration_service'
       - '.github/workflows/deepeval-red-team-tests.yml'
   workflow_dispatch:
     inputs:
@@ -24,32 +25,188 @@ on:
 jobs:
   security-assessment:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        id: validate_secrets
+        run: |
+          echo "Validating required environment variables..."
+          MISSING_SECRETS=()
+          
+          # Check Azure OpenAI secrets
+          if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_ENDPOINT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_API_KEY }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_API_KEY")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_DEPLOYMENT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_OPENAI_DEEPEVAL_DEPLOYMENT }}" ]; then
+            MISSING_SECRETS+=("AZURE_OPENAI_DEEPEVAL_DEPLOYMENT")
+          fi
+          
+          if [ -z "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" ]; then
+            MISSING_SECRETS+=("AZURE_STORAGE_CONNECTION_STRING")
+          fi
+
+          if [ -z "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}" ]; then
+            MISSING_SECRETS+=("AZURE_STORAGE_CONTAINER_NAME")
+          fi
+
+          if [ -z "${{ secrets.AZURE_STORAGE_BLOB_NAME }}" ]; then
+            MISSING_SECRETS+=("AZURE_STORAGE_BLOB_NAME")
+          fi
+          # If any secrets are missing, fail
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "missing=true" >> $GITHUB_OUTPUT
+            echo "secrets_list=${MISSING_SECRETS[*]}" >> $GITHUB_OUTPUT
+            echo " Missing required secrets: ${MISSING_SECRETS[*]}"
+            exit 1
+          else
+            echo "missing=false" >> $GITHUB_OUTPUT
+            echo " All required secrets are configured"
+          fi
+      
+      - name: Comment PR with missing secrets error
+        if: failure() && steps.validate_secrets.outputs.missing == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const missingSecrets = '${{ steps.validate_secrets.outputs.secrets_list }}'.split(' ');
+            const secretsList = missingSecrets.map(s => `- \`${s}\``).join('\n');
+            
+            const comment = `##  Red Team Security Tests: Missing Required Secrets
+            
+            The Red Team security assessment cannot run because the following GitHub secrets are not configured:
+            
+            ${secretsList}
+            
+            ### How to Fix
+            
+            1. Go to **Settings** → **Secrets and variables** → **Actions**
+            2. Add the missing secrets with the appropriate values:
+            
+            **Azure OpenAI Configuration:**
+            - \`AZURE_OPENAI_ENDPOINT\` - Your Azure OpenAI resource endpoint (e.g., \`https://your-resource.openai.azure.com/\`)
+            - \`AZURE_OPENAI_API_KEY\` - Your Azure OpenAI API key
+            - \`AZURE_OPENAI_DEPLOYMENT\` - Chat model deployment name (e.g., \`gpt-4o-mini\`)
+            - \`AZURE_OPENAI_EMBEDDING_DEPLOYMENT\` - Embedding model deployment name (e.g., \`text-embedding-3-large\`)
+            - \`AZURE_STORAGE_CONNECTION_STRING\` - Connection string for Azure Blob Storage
+            - \`AZURE_STORAGE_CONTAINER_NAME\` - Container name in Azure Blob Storage
+            - \`AZURE_STORAGE_BLOB_NAME\` - Blob name for dataset in Azure
+            - \`AZURE_OPENAI_DEEPEVAL_DEPLOYMENT\` - DeepEval model deployment name (e.g., \`gpt-4.1\`)
+            
+            3. Re-run the workflow after adding the secrets
+            
+            ###  Security Note
+            Without proper API credentials, we cannot assess the system's security posture against adversarial attacks.
+            
+            ---
+            *Workflow: ${context.workflow} | Run: [#${context.runNumber}](${context.payload.repository.html_url}/actions/runs/${context.runId})*`;
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existingComment = comments.data.find(
+              comment => comment.user.login === 'github-actions[bot]' &&
+                comment.body.includes('Red Team Security Tests: Missing Required Secrets')
+            );
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
       - name: Set up Python
+        if: success()
         uses: actions/setup-python@v5
         with:
           python-version-file: '.python-version'
 
       - name: Set up uv
+        if: success()
         uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies (locked)
+        if: success()
         run: uv sync --frozen
 
-      - name: Run Complete Security Assessment
+      - name: Create test directories with proper permissions
+        if: success()
+        run: |
+          mkdir -p test-vault/agents/llm
+          mkdir -p test-vault/agent-out
+          # Set ownership to current user and make writable
+          sudo chown -R $(id -u):$(id -g) test-vault
+          chmod -R 777 test-vault
+          # Ensure the agent-out directory is world-readable after writes
+          sudo chmod -R a+rwX test-vault/agent-out
+
+      - name: Set up Deepeval with azure 
+        if: success()
+        run: |
+          uv run deepeval set-azure-openai \
+          --openai-endpoint "${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+          --openai-api-key "${{ secrets.AZURE_OPENAI_API_KEY }}" \
+          --deployment-name "${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+          --openai-model-name "${{ secrets.AZURE_OPENAI_DEEPEVAL_DEPLOYMENT }}" \
+          --openai-api-version="2024-12-01-preview"
+
+
+      - name: Run Red Team Security Tests with testcontainers
+        if: success()
         id: run_tests
         continue-on-error: true
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # LLM API Keys
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          AZURE_OPENAI_DEEPEVAL_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEEPEVAL_DEPLOYMENT }}
+          # Azure OpenAI - Embedding Model
+          AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+          AZURE_STORAGE_BLOB_NAME: ${{ secrets.AZURE_STORAGE_BLOB_NAME }}
+          # Evaluation mode
+          EVAL_MODE: "true"
         run: |
-          # Run all security tests in one comprehensive session
-          uv run python -m pytest tests/deepeval_tests/red_team_tests.py::TestRAGSystemRedTeaming -v --tb=short
+          # Run tests with testcontainers managing Docker Compose
+          uv run python -m pytest tests/deepeval_tests/red_team_tests.py::TestRAGSystemRedTeaming -v --tb=short --log-cli-level=INFO
+
+      - name: Fix permissions on test artifacts
+        if: always()
+        run: |
+          sudo chown -R $(id -u):$(id -g) test-vault || true
+          sudo chmod -R a+rX test-vault || true
 
       - name: Generate Security Report
         if: always()
@@ -57,6 +214,16 @@ jobs:
           if [ -f tests/deepeval_tests/red_team_report_generator.py ]; then
             uv run python tests/deepeval_tests/red_team_report_generator.py || true
           fi
+
+      - name: Save test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-results
+          path: |
+            pytest_captured_results.json
+            security_report.md
+          retention-days: 30
 
       - name: Comment PR with Security Results
         if: always() && github.event_name == 'pull_request'
@@ -165,3 +332,9 @@ jobs:
             echo "ERROR: No test results file found"
             exit 1
           fi
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          docker compose -f docker-compose-eval.yml down -v --remove-orphans || true
+          docker system prune -f || true

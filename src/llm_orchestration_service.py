@@ -2110,7 +2110,7 @@ class LLMOrchestrationService:
         No secondary LLM paths; no citations appended.
         """
         logger.info("Starting RAG response generation")
-
+        eval_mode = os.getenv("EVAL_MODE", "false").lower() == "true"
         if costs_dict is None:
             costs_dict = {}
 
@@ -2192,6 +2192,19 @@ class LLMOrchestrationService:
                     },
                     output=answer,
                 )
+            
+            retrieval_context: List[Dict[str, Any]] | None = None
+            if eval_mode and relevant_chunks:
+                max_blocks_used = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
+                chunks_used = relevant_chunks[:max_blocks_used]
+                retrieval_context = [
+                    {
+                        "content": chunk.get("text", ""),
+                        "score": chunk.get("score", 0.0),
+                        "metadata": chunk.get("meta", {}),
+                    }
+                    for chunk in chunks_used
+                ]
             if question_out_of_scope:
                 logger.info(
                     "Question determined out-of-scope – sending fixed message without references."
@@ -2217,13 +2230,16 @@ class LLMOrchestrationService:
                         chunks=None,  # No chunks when question is out of scope
                     )
                 else:
-                    return OrchestrationResponse(
+                    response =  OrchestrationResponse(
                         chatId=request.chatId,
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
                         content=localized_msg,
                     )
+                    if eval_mode: 
+                        response.retrieval_context = retrieval_context
+                    return response                    
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
@@ -2248,13 +2264,16 @@ class LLMOrchestrationService:
                     chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
-                return OrchestrationResponse(
+                response =  OrchestrationResponse(
                     chatId=request.chatId,
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=content_with_refs,
                 )
+                if eval_mode: 
+                    response.retrieval_context = retrieval_context
+                return response
 
         except Exception as e:
             error_id = generate_error_id()

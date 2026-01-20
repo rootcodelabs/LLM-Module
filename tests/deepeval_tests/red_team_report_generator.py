@@ -208,8 +208,7 @@ def generate_failed_attacks_analysis(results: Dict[str, Any]) -> str:
         )
         error = failure.get("error", "Test failed")
 
-        # Truncate long error messages
-        error_preview = error[:60] + "..." if len(error) > 60 else error
+        error_preview = error
 
         analysis += f"| {short_test_name} | {attack_type} | {vulnerability} | {language} | FAILED | {error_preview} |\n"
 
