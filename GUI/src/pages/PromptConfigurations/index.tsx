@@ -83,9 +83,9 @@ const PromptConfigurations: FC = () => {
                         <Button
                             appearance={ButtonAppearanceTypes.PRIMARY}
                             onClick={handleSubmit}
-                            disabled={saveMutation.isPending || !promptText.trim()}
+                            disabled={saveMutation.isLoading || !promptText.trim()}
                         >
-                            {saveMutation.isPending 
+                            {saveMutation.isLoading 
                                 ? (isUpdating ? t('promptConfigurations.updating') : t('promptConfigurations.saving'))
                                 : (isUpdating ? t('promptConfigurations.updateButton') : t('promptConfigurations.submitButton'))
                             }
