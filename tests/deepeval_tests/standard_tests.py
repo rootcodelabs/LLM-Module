@@ -249,12 +249,15 @@ class TestRAGSystem:
                     "reason": f"Error: {str(e)}",
                 }
 
-        # Run metrics sequentially to avoid rate limiting
+        # Run metrics sequentially with delays to avoid rate limiting
         metrics_results = {}
-        for name, metric in metrics:
+        for i, (name, metric) in enumerate(metrics):
             print(f"  Running {name} metric...")
             result_name, result_data = await run_metric(name, metric)
             metrics_results[result_name] = result_data
+            # Add delay between metrics to respect rate limits (except after last metric)
+            if i < len(metrics) - 1:
+                await asyncio.sleep(10)  # 10 second delay for Azure S0 tier rate limits
 
         # --- Collect results ---
         try:

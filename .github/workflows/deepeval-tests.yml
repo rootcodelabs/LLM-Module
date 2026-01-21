@@ -193,8 +193,8 @@ jobs:
           AZURE_STORAGE_BLOB_NAME: ${{ secrets.AZURE_STORAGE_BLOB_NAME }}
           EVAL_MODE: "true"
         run: |
-          # Run tests with testcontainers managing Docker Compose
-          uv run python -m pytest tests/deepeval_tests/standard_tests.py -v --tb=short --log-cli-level=INFO
+          # Run tests sequentially (one at a time) to avoid rate limiting
+          uv run python -m pytest tests/deepeval_tests/standard_tests.py -v --tb=short --log-cli-level=INFO -n 0
       
       - name: Fix permissions on test artifacts
         if: always()
