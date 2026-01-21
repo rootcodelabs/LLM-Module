@@ -257,7 +257,7 @@ class TestRAGSystem:
             metrics_results[result_name] = result_data
             # Add delay between metrics to respect rate limits (except after last metric)
             if i < len(metrics) - 1:
-                await asyncio.sleep(10)  # 10 second delay for Azure S0 tier rate limits
+                await asyncio.sleep(15)  # 15 second delay for Azure S0 tier rate limits
 
         # --- Collect results ---
         try:
