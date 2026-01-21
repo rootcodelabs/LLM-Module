@@ -192,7 +192,7 @@ class TestRAGSystem:
         for key, value in result.items():
             print(key, value)
         print(f"Content length: {len(result.get('content', ''))}")
-        print(f"Retrieval context: {len(result.get('retrieval_context', []))} chunks")
+        print(f"Retrieval context: {len(result.get('retrieval_context') or [])} chunks")
 
         if result.get("retrieval_context"):
             for chunk in result["retrieval_context"]:
