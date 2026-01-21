@@ -16,14 +16,11 @@ from azure.storage.blob import BlobServiceClient
 
 
 def download_embeddings_from_azure(
-    connection_string: str,
-    container_name: str,
-    blob_name: str,
-    local_path: Path
+    connection_string: str, container_name: str, blob_name: str, local_path: Path
 ) -> None:
     """
     Download pre-computed embeddings from Azure Blob Storage.
-    
+
     Args:
         connection_string: Azure Storage connection string
         container_name: Name of the blob container
@@ -34,28 +31,29 @@ def download_embeddings_from_azure(
     logger.info(f"  Container: {container_name}")
     logger.info(f"  Blob: {blob_name}")
     logger.info(f"  Local path: {local_path}")
-    
+
     try:
         # Create BlobServiceClient
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        
+        blob_service_client = BlobServiceClient.from_connection_string(
+            connection_string
+        )
+
         # Get blob client
         blob_client = blob_service_client.get_blob_client(
-            container=container_name,
-            blob=blob_name
+            container=container_name, blob=blob_name
         )
-        
+
         # Ensure parent directory exists
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Download the blob
         with open(local_path, "wb") as download_file:
             download_stream = blob_client.download_blob()
             download_file.write(download_stream.readall())
-        
+
         file_size_kb = local_path.stat().st_size / 1024
         logger.info(f"✓ Downloaded embeddings successfully ({file_size_kb:.2f} KB)")
-        
+
     except Exception as e:
         logger.error(f"Failed to download embeddings from Azure: {e}")
         raise
@@ -144,10 +142,10 @@ class RAGStackTestContainers:
         """Start all test containers and bootstrap Vault"""
         logger.info("Starting RAG Stack testcontainers...")
         os.environ["EVAL_MODE"] = "true"
-        
+
         # Download embeddings from Azure before starting containers
         self._download_embeddings_from_azure()
-        
+
         # Prepare Vault Agent directories
         agent_in = self.project_root / "test-vault" / "agents" / "llm"
         agent_out = self.project_root / "test-vault" / "agent-out"
@@ -212,15 +210,15 @@ class RAGStackTestContainers:
         connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
         container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "test-embeddings")
         blob_name = os.getenv("AZURE_STORAGE_BLOB_NAME", "test_embeddings.json")
-        
+
         # Local path where embeddings should be saved
         embeddings_file = self.project_root / "tests" / "data" / "test_embeddings.json"
-        
+
         # Skip if embeddings already exist locally (for local development)
-        #if embeddings_file.exists():
+        # if embeddings_file.exists():
         #    logger.info("Embeddings file already exists locally, skipping Azure download")
         #    return
-        
+
         # Require Azure configuration for CI/CD
         if not connection_string:
             raise ValueError(
@@ -228,17 +226,17 @@ class RAGStackTestContainers:
                 "Either set this environment variable or ensure test_embeddings.json "
                 f"exists at {embeddings_file}"
             )
-        
+
         logger.info("=" * 80)
         logger.info("DOWNLOADING EMBEDDINGS FROM AZURE BLOB STORAGE")
         logger.info("=" * 80)
-        
+
         try:
             download_embeddings_from_azure(
                 connection_string=connection_string,
                 container_name=container_name,
                 blob_name=blob_name,
-                local_path=embeddings_file
+                local_path=embeddings_file,
             )
             logger.info("Embeddings download complete")
         except Exception as e:
@@ -797,8 +795,9 @@ def orchestration_client(rag_stack: RAGStackTestContainers):
     Function-scoped fixture that provides the orchestration service URL.
     Tests can use either requests (sync) or httpx (async).
     """
+
     class OrchestrationClient:
         def __init__(self, base_url: str):
             self.base_url = base_url
-    
+
     return OrchestrationClient(rag_stack.get_orchestration_service_url())

@@ -113,6 +113,7 @@ def save_results_fixture():
 import httpx  # Replace requests with httpx
 import asyncio
 
+
 class TestRAGSystem:
     """Test suite for RAG system evaluation using DeepEval metrics via API."""
 
@@ -177,7 +178,10 @@ class TestRAGSystem:
             except httpx.RequestError as e:
                 result = {"content": f"API Error: {str(e)}", "retrieval_context": []}
             except Exception as e:
-                result = {"content": f"Unexpected error: {str(e)}", "retrieval_context": []}
+                result = {
+                    "content": f"Unexpected error: {str(e)}",
+                    "retrieval_context": [],
+                }
         if result is None:
             result = {"content": "No response received", "retrieval_context": []}
         # --- DEBUG LOGGING ---
@@ -186,20 +190,23 @@ class TestRAGSystem:
         print("=" * 80)
         print(f"Response keys: {list(result.keys())}")
         for key, value in result.items():
-            
             print(key, value)
         print(f"Content length: {len(result.get('content', ''))}")
         print(f"Retrieval context: {len(result.get('retrieval_context', []))} chunks")
-        
-        if result.get('retrieval_context'):
-            for chunk in result['retrieval_context']:
+
+        if result.get("retrieval_context"):
+            for chunk in result["retrieval_context"]:
                 print(chunk.keys())
-                context = chunk.get('content', '') if isinstance(chunk, dict) else str(chunk)
-                meta = chunk.get('metadata', {}) if isinstance(chunk, dict) else {}
-                fused_score = meta.get('fused_score', 'N/A')
-                bm25_score = meta.get('bm25_score', 'N/A')
-                semantic_score = meta.get('semantic_score', 'N/A')
-                print(f"Chunk (fused: {fused_score}, bm25: {bm25_score}, semantic: {semantic_score}):\n {context}\n\n")
+                context = (
+                    chunk.get("content", "") if isinstance(chunk, dict) else str(chunk)
+                )
+                meta = chunk.get("metadata", {}) if isinstance(chunk, dict) else {}
+                fused_score = meta.get("fused_score", "N/A")
+                bm25_score = meta.get("bm25_score", "N/A")
+                semantic_score = meta.get("semantic_score", "N/A")
+                print(
+                    f"Chunk (fused: {fused_score}, bm25: {bm25_score}, semantic: {semantic_score}):\n {context}\n\n"
+                )
         else:
             print("WARNING: No retrieval context returned!")
         print("=" * 80)
@@ -262,4 +269,6 @@ class TestRAGSystem:
         # --- Assert ---
         failed = [name for name, res in metrics_results.items() if not res["passed"]]
         if failed:
-            pytest.fail(f"Metrics failed: {', '.join(failed)} for input: {test_item['input'][:50]}")
+            pytest.fail(
+                f"Metrics failed: {', '.join(failed)} for input: {test_item['input'][:50]}"
+            )

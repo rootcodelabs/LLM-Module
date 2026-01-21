@@ -2192,7 +2192,7 @@ class LLMOrchestrationService:
                     },
                     output=answer,
                 )
-            
+
             retrieval_context: List[Dict[str, Any]] | None = None
             if eval_mode and relevant_chunks:
                 max_blocks_used = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
@@ -2230,16 +2230,16 @@ class LLMOrchestrationService:
                         chunks=None,  # No chunks when question is out of scope
                     )
                 else:
-                    response =  OrchestrationResponse(
+                    response = OrchestrationResponse(
                         chatId=request.chatId,
                         llmServiceActive=True,  # service OK; insufficient context
                         questionOutOfLLMScope=True,
                         inputGuardFailed=False,
                         content=localized_msg,
                     )
-                    if eval_mode: 
+                    if eval_mode:
                         response.retrieval_context = retrieval_context
-                    return response                    
+                    return response
 
             # In-scope: return the answer as-is (NO citations)
             logger.info("Returning in-scope answer without citations.")
@@ -2264,14 +2264,14 @@ class LLMOrchestrationService:
                     chunks=self._format_chunks_for_test_response(relevant_chunks),
                 )
             else:
-                response =  OrchestrationResponse(
+                response = OrchestrationResponse(
                     chatId=request.chatId,
                     llmServiceActive=True,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
                     content=content_with_refs,
                 )
-                if eval_mode: 
+                if eval_mode:
                     response.retrieval_context = retrieval_context
                 return response
 

@@ -161,12 +161,9 @@ def generate_failure_analysis(results: Dict[str, Any]) -> str:
             if len(failure["input"]) > 50
             else failure["input"]
         )
-        reason_preview = (
-            failure["reason"] )
+        reason_preview = failure["reason"]
 
         analysis += f"| {failure['test_case']} | {query_preview} | {failure['metric']} | {failure['score']:.2f} | {reason_preview} |\n"
-
-
 
     analysis += "\n"
     return analysis
