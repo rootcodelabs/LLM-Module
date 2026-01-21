@@ -3,7 +3,7 @@ name: DeepEval RAG System Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: ["rag-33-debug", "RAG-33-31okt", "wip_3_12"]
+    branches: ["RAG-217-debug"]
     paths:
       - 'src/**'
       - 'tests/**'
@@ -94,7 +94,7 @@ jobs:
             2. Add the missing secrets with the appropriate values:
             
             **Azure OpenAI Configuration:**
-            - \`AZURE_OPENAI_ENDPOINT\` - Your Azure OpenAI resource endpoint (e.g., \`https://your-resource.openai.azure.com/\`)
+            - \`AZURE_OPENAI_ENDPOINT\` - Your Azure OpenAI  endpoint (e.g., \`https://your-resource.openai.azure.com/\`)
             - \`AZURE_OPENAI_API_KEY\` - Your Azure OpenAI API key
             - \`AZURE_OPENAI_DEPLOYMENT\` - Chat model deployment name (e.g., \`gpt-4o-mini\`)
             - \`AZURE_OPENAI_EMBEDDING_DEPLOYMENT\` - Embedding model deployment name (e.g., \`text-embedding-3-large\`)
