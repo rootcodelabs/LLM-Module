@@ -249,10 +249,12 @@ class TestRAGSystem:
                     "reason": f"Error: {str(e)}",
                 }
 
-        metric_results_list = await asyncio.gather(
-            *(run_metric(name, metric) for name, metric in metrics)
-        )
-        metrics_results = dict(metric_results_list)
+        # Run metrics sequentially to avoid rate limiting
+        metrics_results = {}
+        for name, metric in metrics:
+            print(f"  Running {name} metric...")
+            result_name, result_data = await run_metric(name, metric)
+            metrics_results[result_name] = result_data
 
         # --- Collect results ---
         try:
