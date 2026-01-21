@@ -592,7 +592,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
                         "vault-agent-llm",
                         "chmod",
                         "644",
-                        "/agent/out/token",
+                        "/agent/llm-token/token",
                     ],
                     capture_output=True,
                     text=True,
