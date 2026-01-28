@@ -48,6 +48,12 @@
         "language": "en"
     },
     {
+        "input": "How long is the e-residency digi-ID valid for?",
+        "expected_output": "The e-residency digi-ID is valid for 5 years",
+        "category": "digital_identity",
+        "language": "en"
+    },
+    {
         "input": "Предоставляет ли электронное резидентство эстонское гражданство или налоговое резидентство?",
         "expected_output": "Нет, электронное резидентство не предоставляет эстонское гражданство или налоговое резидентство.",
         "category": "digital_identity",
