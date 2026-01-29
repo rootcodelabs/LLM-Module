@@ -62,7 +62,12 @@
   "menu": {
     "userManagement": "User management",
     "testLLM": "Test LLM",
-    "llmConnections": "LLM connections"
+    "testProductionLLM": "Test Production LLM",
+    "llmConnections": {
+      "_self": "LLM connections",
+      "overview": "Overview",
+      "promptConfigurations": "Prompt Configurations"
+    }
   },
   "userManagement": {
     "title": "User management",
@@ -399,5 +404,17 @@
       "aws": "AWS Bedrock",
       "azure": "Azure OpenAI"
     }
+  },
+  "promptConfigurations": {
+    "title": "Prompt Configurations",
+    "subtitle": "Configure and manage your prompt templates",
+    "promptLabel": "Prompt Template",
+    "promptPlaceholder": "Enter your prompt template here...",
+    "submitButton": "Save",
+    "updateButton": "Update",
+    "saving": "Saving...",
+    "updating": "Updating...",
+    "submitSuccess": "Prompt configuration saved successfully",
+    "submitError": "Failed to save prompt configuration. Please try again."
   }
 }

@@ -62,7 +62,12 @@
   "menu": {
     "userManagement": "Kasutajate haldus",
     "testLLM": "Testi mudelit",
-    "llmConnections": "Mudelite ühendused"
+    "testProductionLLM": "Testi toodangu mudelit",
+    "llmConnections": {
+      "_self": "Mudelite ühendused",
+      "overview": "Ülevaade",
+      "promptConfigurations": "Viiba Seaded"
+    }
   },
   "userManagement": {
     "title": "Kasutajate haldus",
@@ -399,5 +404,17 @@
       "aws": "AWS Bedrock",
       "azure": "Azure OpenAI"
     }
+  },
+  "promptConfigurations": {
+    "title": "Viiba Seaded",
+    "subtitle": "Seadista ja halda oma viiba malle",
+    "promptLabel": "Viiba Mall",
+    "promptPlaceholder": "Sisesta siia oma viiba mall...",
+    "submitButton": "Salvesta",
+    "updateButton": "Uuenda",
+    "saving": "Salvestan...",
+    "updating": "Uuendan...",
+    "submitSuccess": "Viiba seadistus salvestati edukalt",
+    "submitError": "Viiba seadistuse salvestamine ebaõnnestus. Palun proovi uuesti."
   }
 }
