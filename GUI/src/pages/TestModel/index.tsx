@@ -75,6 +75,10 @@ const TestLLM: FC = () => {
   };
 
   const handleChange = (key: string, value: string | number) => {
+    // Prevent changes while inference is loading
+    if (inferenceMutation.isLoading) {
+      return;
+    }
     setTestLLM((prev) => ({
       ...prev,
       [key]: value,
@@ -104,6 +108,7 @@ const TestLLM: FC = () => {
                 }}
                 value={testLLM?.connectionId === null ? t('testModels.connectionNotExist') || 'Connection does not exist' : undefined}
                 defaultValue={testLLM?.connectionId ?? undefined}
+                disabled={inferenceMutation.isLoading}
               />
             </div>
           </div>

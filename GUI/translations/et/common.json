@@ -122,6 +122,7 @@
     "settings": "Seaded",
     "dataModels": "Mudelite ühendused",
     "noModels": "Mudelite ühendusi ei leitud",
+    "errorLoadingConnections": "Viga mudeli ühenduste laadimisel",
     "createModel": "Loo mudeli ühendus",
     "productionConnections": "Mudel toodangukeskkonnas",
     "otherConnections": "Muud mudeli ühendused",
@@ -294,6 +295,7 @@
     },
     "validationMessages": {
       "connectionNameRequired": "Ühenduse nimi on kohustuslik",
+      "connectionNameMaxLength": "Ühenduse nimi ei tohi ületada 100 märki",
       "llmPlatformRequired": "LLM platvorm on kohustuslik",
       "llmModelRequired": "LLM mudel on kohustuslik",
       "embeddingPlatformRequired": "Vektor-teisendusmudeli platvorm on kohustuslik",
@@ -322,7 +324,13 @@
       "embeddingApiKeyRequired": "Vektor-teisenduse API võti on kohustuslik",
       "invalidUrl": "Palun sisesta kehtiv URL, mis algab http:// või https://",
       "failedToLoadPlatforms": "Platvormide laadimine ebaõnnestus",
-      "failedToLoadModels": "Mudelite laadimine ebaõnnestus"
+      "failedToLoadModels": "Mudelite laadimine ebaõnnestus",
+      "invalidAccessKey": "Juurdepääsuvõti ei tohi sisaldada tühikuid",
+      "invalidSecretKey": "Salavõti ei tohi sisaldada tühikuid",
+      "invalidApiKey": "API võti ei tohi sisaldada tühikuid",
+      "invalidEmbeddingAccessKey": "Vektor-teisenduse juurdepääsuvõti ei tohi sisaldada tühikuid",
+      "invalidEmbeddingSecretKey": "Vektor-teisenduse salavõti ei tohi sisaldada tühikuid",
+      "invalidEmbeddingApiKey": "Vektor-teisenduse API võti ei tohi sisaldada tühikuid"
     },
     "buttons": {
       "deleteConnection": "Kustuta ühendus",
@@ -360,6 +368,7 @@
       "goBackButton": "Mine tagasi",
       "confirmEnvironmentChangeTitle": "Kinnita toodangukeskkonna muutus",
       "confirmEnvironmentChangeMessage": "Oled toodanguühendust muutmas testimiskeskkonnaks.",
+      "confirmTestingToProductionEnvironmentChangeMessage": "Oled testimiskeskkonna ühendust muutmas toodangukeskkonnaks.",
       "confirmEnvironmentChangeWarning": "See mõjutab praegust toodanguseadistust. Kas oled kindel, et soovid jätkata?",
       "cancelButton": "Tühista",
       "confirmChangeButton": "Jah, muuda keskkonda",

@@ -200,7 +200,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="accessKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.accessKeyRequiredAws') || 'Access Key is required for AWS Bedrock' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.accessKeyRequiredAws') || 'Access Key is required for AWS Bedrock',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidAccessKey') || 'Access Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -225,7 +231,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="secretKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.secretKeyRequiredAws') || 'Secret Key is required for AWS Bedrock' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.secretKeyRequiredAws') || 'Secret Key is required for AWS Bedrock',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidSecretKey') || 'Secret Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -296,7 +308,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="apiKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.apiKeyRequiredAzure') || 'API Key is required for Azure OpenAI' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.apiKeyRequiredAzure') || 'API Key is required for Azure OpenAI',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidApiKey') || 'API Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -319,26 +337,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         );
 
       default:
-        return (
-          <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.generic.llmApiKey.label') || 'LLM API Key'}</p>
-            <p className='form-description'>{t('llmConnectionForm.generic.llmApiKey.description') || 'The API key of the LLM model'}</p>
-            <Controller
-              name="apiKey"
-              control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.llmApiKeyRequired') || 'LLM API Key is required' }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  type={isEditing ? 'text' : 'password'}
-                  placeholder={t('llmConnectionForm.generic.llmApiKey.placeholder') || "Enter your LLM API key"}
-                  error={errors.apiKey?.message}
-                  {...field}
-                />
-              )}
-            />
-          </div>
-        );
+        return null;
     }
   };
 
@@ -353,7 +352,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="embeddingAccessKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.embeddingAccessKeyRequiredAws') || 'Embedding Access Key is required for AWS Bedrock' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.embeddingAccessKeyRequiredAws') || 'Embedding Access Key is required for AWS Bedrock',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingAccessKey') || 'Embedding Access Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -378,7 +383,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="embeddingSecretKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.embeddingSecretKeyRequiredAws') || 'Embedding Secret Key is required for AWS Bedrock' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.embeddingSecretKeyRequiredAws') || 'Embedding Secret Key is required for AWS Bedrock',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingSecretKey') || 'Embedding Secret Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -448,7 +459,13 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               <Controller
                 name="embeddingAzureApiKey"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.embeddingApiKeyRequiredAzure') || 'Embedding API Key is required for Azure OpenAI' }}
+                rules={{ 
+                  required: t('llmConnectionForm.validationMessages.embeddingApiKeyRequiredAzure') || 'Embedding API Key is required for Azure OpenAI',
+                  pattern: {
+                    value: /^\S+$/,
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingApiKey') || 'Embedding API Key cannot contain spaces'
+                  }
+                }}
                 render={({ field }) => (
                   <FormInput
                     label=""
@@ -471,33 +488,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         );
 
       default:
-        return (
-          <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.generic.embeddingApiKey.label') || 'Embedding Model API Key'}</p>
-            <p className='form-description'>{t('llmConnectionForm.generic.embeddingApiKey.description') || 'API key of your embedding model'}</p>
-            <Controller
-              name="embeddingModelApiKey"
-              control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.embeddingApiKeyRequired') || 'Embedding API Key is required' }}
-              render={({ field }) => (
-                <FormInput
-                  label=""
-                  type={isEditing ? 'text' : 'password'}
-                  placeholder={t('llmConnectionForm.generic.embeddingApiKey.placeholder') || "Enter your Embedding API key"}
-                  error={errors.embeddingModelApiKey?.message}
-                  readOnly={embeddingApiKeyReplaceMode}
-                  showEndButton={embeddingApiKeyReplaceMode}
-                  onEndButtonClick={() => {
-                    setEmbeddingApiKeyReplaceMode(false);
-                    setValue('embeddingModelApiKey', '');
-                  }}
-                  endButtonText={t('global.change') || "Change"}
-                  {...field}
-                />
-              )}
-            />
-          </div>
-        );
+        return null;
     }
   };
 
@@ -523,13 +514,20 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
             <Controller
               name="connectionName"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.connectionNameRequired') || 'Connection Name is required' }}
+              rules={{ 
+                required: t('llmConnectionForm.validationMessages.connectionNameRequired') || 'Connection Name is required',
+                maxLength: {
+                  value: 100,
+                  message: t('llmConnectionForm.validationMessages.connectionNameMaxLength') || 'Connection Name must not exceed 100 characters'
+                }
+              }}
               render={({ field }) => (
                 <FormInput
                   label=""
                   placeholder={t('llmConnectionForm.fields.connectionName.placeholder') || "Enter connection name (e.g., Azure GPT-4 Production)"}
                   error={errors.connectionName?.message}
                   disabled={readOnly}
+                  //maxLength={100}
                   {...field}
                 />
               )}

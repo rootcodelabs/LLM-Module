@@ -15,19 +15,26 @@ import { platforms, trainingStatuses } from 'config/dataModelsConfig';
 import LLMConnectionCard from 'components/molecules/LLMConnectionCard';
 import { fetchLLMConnectionsPaginated, LLMConnectionFilters, LLMConnection, getProductionConnection, ProductionConnectionFilters } from 'services/llmConnections';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
+import { useToast } from 'hooks/useToast';
+import { ToastTypes } from 'enums/commonEnums';
+import useStore from 'store';
 
 const LLMConnections: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const toast = useToast();
 
-  const [pageIndex, setPageIndex] = useState<number>(1);
-  const [filters, setFilters] = useState<LLMConnectionFilters>({
-    pageNumber: 1,
-    pageSize: 10,
-    sortBy: 'created_at',
-    sortOrder: 'desc',
-  });
+  // Use Zustand store for persistent filters
+  const {
+    llmConnectionFilters: filters,
+    llmConnectionPageIndex: pageIndex,
+    productionConnectionFilters,
+    setLLMConnectionFilters: setFilters,
+    setLLMConnectionPageIndex: setPageIndex,
+    setProductionConnectionFilters,
+    resetLLMConnectionFilters,
+  } = useStore();
 
   // Fetch LLM connections using TanStack Query with new paginated endpoint
   const { data: connectionsResponse, isLoading: isModelDataLoading, error } = useQuery({
@@ -35,17 +42,10 @@ const LLMConnections: FC = () => {
     queryFn: () => fetchLLMConnectionsPaginated(filters),
   });
 
-  // Fetch production connection separately with potential filters
-  const [productionFilters, setProductionFilters] = useState<ProductionConnectionFilters>({
-    sortBy: 'created_at',
-    sortOrder: 'desc',
-    llmPlatform: '',
-    llmModel: '',
-  });
-  
+  // Fetch production connection separately with filters from store
   const { data: productionConnection, isLoading: isProductionLoading } = useQuery({
-    queryKey: llmConnectionsQueryKeys.production(productionFilters),
-    queryFn: () => getProductionConnection(productionFilters),
+    queryKey: llmConnectionsQueryKeys.production(productionConnectionFilters),
+    queryFn: () => getProductionConnection(productionConnectionFilters),
   });
 
 
@@ -54,26 +54,35 @@ const LLMConnections: FC = () => {
 
   // Update filters when pageIndex changes
   useEffect(() => {
-    setFilters(prev => ({ ...prev, pageNumber: pageIndex }));
-  }, [pageIndex]);
+    setFilters({ ...filters, pageNumber: pageIndex });
+  }, [pageIndex, setFilters]);
 
-  // Sync production filters with main filters on component mount
+  // Sync production filters with main filters
   useEffect(() => {
-    setProductionFilters(prev => ({
-      ...prev,
+    setProductionConnectionFilters({
       llmPlatform: filters.llmPlatform || '',
       llmModel: filters.llmModel || '',
       sortBy: filters.sortBy || 'created_at',
       sortOrder: filters.sortOrder || 'desc',
-    }));
-  }, [filters.llmPlatform, filters.llmModel, filters.sortBy, filters.sortOrder]);
+    });
+  }, [filters.llmPlatform, filters.llmModel, filters.sortBy, filters.sortOrder, setProductionConnectionFilters]);
+
+  // Show toast on error
+  useEffect(() => {
+    if (error) {
+      toast.open({
+        type: ToastTypes.ERROR,
+        title: t('toast.error.title') || 'Error',
+        message: t('dataModels.errorLoadingConnections') || 'Error loading LLM connections',
+      });
+    }
+  }, [error, toast, t]);
 
   const handleFilterChange = (
     name: string,
     value: string | number | undefined | { name: string; id: string }
   ) => {
     let filterUpdate: Partial<LLMConnectionFilters> = {};
-    let productionFilterUpdate: Partial<ProductionConnectionFilters> = {};
 
     if (name === 'sorting') {
       // Handle sorting format - no conversion needed, use snake_case directly
@@ -84,32 +93,14 @@ const LLMConnections: FC = () => {
         sortBy: sortBy,
         sortOrder: sortOrder as 'asc' | 'desc' 
       };
-
-      productionFilterUpdate = {
-        sortBy: sortBy,
-        sortOrder: sortOrder as 'asc' | 'desc'
-      };
     } else {
       filterUpdate = { [name]: value };
-
-      // Update production filters for relevant fields
-      if (name === 'llmPlatform' || name === 'llmModel') {
-        productionFilterUpdate = { [name]: value as string };
-      }
     }
 
-    setFilters((prevFilters) => ({
-      ...prevFilters,
+    setFilters({
+      ...filters,
       ...filterUpdate,
-    }));
-
-    // Update production filters if relevant
-    if (Object.keys(productionFilterUpdate).length > 0) {
-      setProductionFilters((prevFilters) => ({
-        ...prevFilters,
-        ...productionFilterUpdate,
-      }));
-    }
+    });
 
     // Reset to first page when filters change
     if (name !== 'pageNumber') {
@@ -219,24 +210,7 @@ const LLMConnections: FC = () => {
 
                   <div className="filter-reset-button">
                     <Button
-                      onClick={() => {
-                        setFilters({
-                          pageNumber: 1,
-                          pageSize: 10,
-                          sortBy: 'created_at',
-                          sortOrder: 'desc',
-                          llmPlatform: '',
-                          llmModel: '',
-                          environment: '',
-                        });
-                        setProductionFilters({
-                          sortBy: 'created_at',
-                          sortOrder: 'desc',
-                          llmPlatform: '',
-                          llmModel: '',
-                        });
-                        setPageIndex(1);
-                      }}
+                      onClick={resetLLMConnectionFilters}
                       appearance={ButtonAppearanceTypes.SECONDARY}
                     >
                       {t('global.reset') ?? 'Reset'}
@@ -286,12 +260,7 @@ const LLMConnections: FC = () => {
               ) : !productionConnection ? (
                 <NoDataView text={t('dataModels.noModels') ?? 'No LLM connections found'} />
               ) : null}
-
-              {(error as any) && (
-                <div className="error-message" style={{ color: 'red', padding: '20px' }}>
-                  <p>Error loading LLM connections. Please try again.</p>
-                </div>
-              )}
+              
             </div>
             <Pagination
               pageCount={totalPages}
