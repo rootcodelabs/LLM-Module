@@ -163,6 +163,7 @@
       "testing": "Testing",
       "production": "Production"
     },
+    "budgetUsage": "Budget usage",
     "budgetStatus": {
       "withinBudget": "Within budget",
       "overBudget": "Over budget",
