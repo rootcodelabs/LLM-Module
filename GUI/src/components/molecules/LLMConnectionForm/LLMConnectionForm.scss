@@ -115,18 +115,16 @@
     }
 
     .flex-grid {
-
       flex-wrap: wrap;
       gap: 8px;
       justify-content: flex-end;
 
       button {
-        flex: 0 1 auto;
-
-        min-width: 60px;
-        max-width: calc(50% - 4px);
-        padding: 8px 12px;
-        font-size: 13px;
+        flex: 1 1 auto;
+        padding: 6px 8px;
+        font-size: 12px;
+        display: inline-flex;
+        justify-content: center;
       }
     }
   }
@@ -154,12 +152,14 @@
     }
 
     .flex-grid {
-      flex-direction: column-reverse;
+      flex-direction: column;
       gap: 12px;
 
       button {
-        width: 100%;
-        min-width: unset;
+        flex: 0 1 auto;
+        display: inline-flex;
+        justify-content: center;  
+        padding: 8px 20px;
       }
     }
   }
@@ -172,9 +172,7 @@
       button {
         flex: 1 1 auto;
         min-width: 70px;
-        max-width: 200px;
-        font-size: 14px;
-        padding: 8px 12px;
+        padding: 8px 16px;
       }
     }
   }

@@ -62,7 +62,12 @@
   "menu": {
     "userManagement": "User management",
     "testLLM": "Test LLM",
-    "llmConnections": "LLM connections"
+    "testProductionLLM": "Test Production LLM",
+    "llmConnections": {
+      "_self": "LLM connections",
+      "overview": "Overview",
+      "promptConfigurations": "Prompt Configurations"
+    }
   },
   "userManagement": {
     "title": "User management",
@@ -122,6 +127,7 @@
     "settings": "Settings",
     "dataModels": "LLM connections",
     "noModels": "No LLM connections found",
+    "errorLoadingConnections": "Error loading LLM connections",
     "createModel": "Create LLM connection",
     "productionConnections": "Production LLM connection",
     "otherConnections": "Other LLM connections",
@@ -158,6 +164,7 @@
       "testing": "Testing",
       "production": "Production"
     },
+    "budgetUsage": "Budget usage",
     "budgetStatus": {
       "withinBudget": "Within budget",
       "overBudget": "Over budget",
@@ -294,6 +301,7 @@
     },
     "validationMessages": {
       "connectionNameRequired": "Connection name is required",
+      "connectionNameMaxLength": "Connection name must not exceed 100 characters",
       "llmPlatformRequired": "LLM platform is required",
       "llmModelRequired": "LLM model is required",
       "embeddingPlatformRequired": "Embedding model platform is required",
@@ -322,7 +330,13 @@
       "embeddingApiKeyRequired": "Embedding API key is required",
       "invalidUrl": "Please enter a valid URL starting with http:// or https://",
       "failedToLoadPlatforms": "Failed to load platforms",
-      "failedToLoadModels": "Failed to load models"
+      "failedToLoadModels": "Failed to load models",
+      "invalidAccessKey": "Access Key cannot contain spaces",
+      "invalidSecretKey": "Secret Key cannot contain spaces",
+      "invalidApiKey": "API Key cannot contain spaces",
+      "invalidEmbeddingAccessKey": "Embedding Access Key cannot contain spaces",
+      "invalidEmbeddingSecretKey": "Embedding Secret Key cannot contain spaces",
+      "invalidEmbeddingApiKey": "Embedding API Key cannot contain spaces"
     },
     "buttons": {
       "deleteConnection": "Delete connection",
@@ -342,7 +356,7 @@
       "errorDialogMessage": "The connection couldn't be established either due to invalid API credentials or misconfiguration in the deployment platform",
       "goBackButton": "Go back",
       "replaceProductionDialogTitle": "Replace production connection",
-      "replaceProductionDialogMessage": "A production connection \"{connectionName}\" already exists.",
+      "replaceProductionDialogMessage": "A production connection \"{{connectionName}}\" already exists.",
       "replaceProductionDialogWarning": "Creating this new production connection will replace the current one. Are you sure you want to proceed?",
       "cancelButton": "Cancel",
       "confirmReplaceButton": "Yes, replace production connection"
@@ -360,7 +374,7 @@
       "goBackButton": "Go back",
       "confirmEnvironmentChangeTitle": "Confirm production environment change",
       "confirmEnvironmentChangeMessage": "You are about to change a production connection to testing environment.",
-      "confirmEnvironmentChangeWarning": "This will affect the current production setup. Are you sure you want to proceed?",
+      "confirmTestingToProductionEnvironmentChangeMessage": "You are about to change a testing connection to production environment.",
       "cancelButton": "Cancel",
       "confirmChangeButton": "Yes, change environment",
       "cannotDeleteProductionTitle": "Cannot delete production connection",
@@ -414,5 +428,17 @@
     "streamingErrorTitle": "Streaming Error",
     "chatClearedTitle": "Chat Cleared",
     "chatClearedMessage": "All messages have been cleared."
+  },
+  "promptConfigurations": {
+    "title": "Prompt Configurations",
+    "subtitle": "Configure and manage your prompt templates",
+    "promptLabel": "Prompt Template",
+    "promptPlaceholder": "Enter your prompt template here...",
+    "submitButton": "Save",
+    "updateButton": "Update",
+    "saving": "Saving...",
+    "updating": "Updating...",
+    "submitSuccess": "Prompt configuration saved successfully",
+    "submitError": "Failed to save prompt configuration. Please try again."
   }
 }

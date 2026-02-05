@@ -38,3 +38,8 @@ export const inferenceQueryKeys = {
   results: () => [...inferenceQueryKeys.all(), 'results'] as const,
   result: (request: InferenceRequest) => [...inferenceQueryKeys.results(), request] as const,
 };
+
+export const promptConfigurationQueryKeys = {
+  all: () => ['prompt-configuration'] as const,
+  current: () => [...promptConfigurationQueryKeys.all(), 'current'] as const,
+};
