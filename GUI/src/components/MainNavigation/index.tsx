@@ -25,9 +25,19 @@ const MainNavigation: FC = () => {
     },
      {
       id: 'llmConnections',
-      label: t('menu.llmConnections'),
-      path: '/llm-connections',
+      label: t('menu.llmConnections._self'),
+      path: '',
       icon: <MdOutlineDataset />,
+      children: [
+        {
+          label: t('menu.llmConnections.overview'),
+          path: '/llm-connections',
+        },
+        {
+          label: t('menu.llmConnections.promptConfigurations'),
+          path: '/prompt-configurations',
+        }
+      ],
     },
     {
       id: 'testLLM',
@@ -37,7 +47,7 @@ const MainNavigation: FC = () => {
     },
     {
       id: 'testProductionLLM',
-      label: 'Test Production LLM',
+      label: t('menu.testProductionLLM'),
       path: '/test-production-llm',
       icon: <MdSearch />
     }

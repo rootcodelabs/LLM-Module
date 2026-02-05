@@ -34,3 +34,8 @@ export const vaultEndpoints = {
   CREATE_VAULT_SECRET: (): string => `/rag-search/vault/secret/create`,
   DELETE_VAULT_SECRET: (): string => `/rag-search/vault/secret/delete`,
 }
+
+export const promptConfigurationEndpoints = {
+  GET_PROMPT_CONFIGURATION: (): string => `/rag-search/prompt-configuration/get`,
+  SAVE_PROMPT_CONFIGURATION: (): string => `/rag-search/prompt-configuration/save`,
+}
