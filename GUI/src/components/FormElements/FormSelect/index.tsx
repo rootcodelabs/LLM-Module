@@ -87,8 +87,10 @@ const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
       itemToString,
       selectedItem,
       onSelectedItemChange: ({ selectedItem: newSelectedItem }) => {
-        setSelectedItem(newSelectedItem ?? null);
-        if (onSelectionChange) onSelectionChange(newSelectedItem ?? null);
+        if (!disabled) {
+          setSelectedItem(newSelectedItem ?? null);
+          if (onSelectionChange) onSelectionChange(newSelectedItem ?? null);
+        }
       },
     });
 
@@ -109,7 +111,7 @@ const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
             className={`select__trigger ${
               error ? `select__error` : `select__default`
             }`}
-            {...getToggleButtonProps()}
+            {...getToggleButtonProps({ disabled })}
           >
             {selectedItem?.label ?? placeholderValue}
             <Icon
