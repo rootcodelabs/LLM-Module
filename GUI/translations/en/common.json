@@ -399,5 +399,20 @@
       "aws": "AWS Bedrock",
       "azure": "Azure OpenAI"
     }
+  },
+  "testProductionLLM": {
+    "title": "Test Production LLM",
+    "clearChat": "Clear Chat",
+    "welcomeTitle": "Welcome to Production LLM Testing",
+    "welcomeSubtitle": "Start a conversation by typing a message below.",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Type your message here... (Press Enter to send, Shift+Enter for new line)",
+    "sendButton": "Send",
+    "sendingButton": "Sending...",
+    "warningTitle": "Warning",
+    "emptyMessageWarning": "Please enter a message",
+    "streamingErrorTitle": "Streaming Error",
+    "chatClearedTitle": "Chat Cleared",
+    "chatClearedMessage": "All messages have been cleared."
   }
 }

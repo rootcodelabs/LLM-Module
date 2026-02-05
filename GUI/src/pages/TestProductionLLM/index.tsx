@@ -33,8 +33,8 @@ const TestProductionLLM: FC = () => {
     if (!inputMessage.trim()) {
       toast.open({
         type: 'warning',
-        title: 'Warning',
-        message: 'Please enter a message',
+        title: t('testProductionLLM.warningTitle'),
+        message: t('testProductionLLM.emptyMessageWarning'),
       });
       return;
     }
@@ -114,7 +114,7 @@ const TestProductionLLM: FC = () => {
       
       toast.open({
         type: 'error',
-        title: 'Streaming Error',
+        title: t('testProductionLLM.streamingErrorTitle'),
         message: error,
       });
     };
@@ -140,8 +140,8 @@ const TestProductionLLM: FC = () => {
     stopStreaming();
     toast.open({
       type: 'info',
-      title: 'Chat Cleared',
-      message: 'All messages have been cleared.',
+      title: t('testProductionLLM.chatClearedTitle'),
+      message: t('testProductionLLM.chatClearedMessage'),
     });
   };
 
@@ -149,9 +149,9 @@ const TestProductionLLM: FC = () => {
     <div>
       <div className="test-production-llm">
         <div className="test-production-llm__header">
-          <h1>{t('Test Production LLM')}</h1>
+          <h1>{t('testProductionLLM.title')}</h1>
           <Button onClick={clearChat} appearance="secondary">
-            {t('Clear Chat')}
+            {t('testProductionLLM.clearChat')}
           </Button>
         </div>
 
@@ -159,8 +159,8 @@ const TestProductionLLM: FC = () => {
           <div className="test-production-llm__messages">
             {messages.length === 0 && (
               <div className="test-production-llm__welcome">
-                <p>Welcome to Production LLM Testing</p>
-                <p>Start a conversation by typing a message below.</p>
+                <p>{t('testProductionLLM.welcomeTitle')}</p>
+                <p>{t('testProductionLLM.welcomeSubtitle')}</p>
               </div>
             )}
             
@@ -197,12 +197,12 @@ const TestProductionLLM: FC = () => {
 
           <div className="test-production-llm__input-area">
             <FormTextarea
-              label="Message"
+              label={t('testProductionLLM.messageLabel')}
               name="message"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
+              placeholder={t('testProductionLLM.messagePlaceholder')??""}
               hideLabel
               maxRows={4}
               disabled={isLoading || isStreaming}
@@ -212,7 +212,7 @@ const TestProductionLLM: FC = () => {
               disabled={isLoading || isStreaming || !inputMessage.trim()}
               className="test-production-llm__send-button"
             >
-              {isLoading || isStreaming ? 'Sending...' : 'Send'}
+              {isLoading || isStreaming ? t('testProductionLLM.sendingButton') : t('testProductionLLM.sendButton')}
             </Button>
           </div>
         </div>
