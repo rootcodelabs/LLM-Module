@@ -718,6 +718,33 @@ async def get_available_embedding_models(
         )
 
 
+@app.get("/prompt-config/stats")
+def get_prompt_config_stats(http_request: Request) -> Dict[str, Any]:
+    """
+    Get prompt configuration cache statistics.
+    
+    Returns cache performance metrics and current configuration preview.
+    Useful for monitoring custom prompt configuration loading and caching.
+    """
+    orchestration_service = http_request.app.state.orchestration_service
+    
+    if orchestration_service and hasattr(orchestration_service, "prompt_config_loader"):
+        stats = orchestration_service.prompt_config_loader.get_cache_stats()
+        
+        # Add preview of current configuration
+        custom_instructions = orchestration_service.prompt_config_loader.get_custom_instructions()
+        stats["current_prompt_preview"] = (
+            custom_instructions[:200] + "..."
+            if len(custom_instructions) > 200
+            else custom_instructions
+        )
+        stats["applied_to"] = "ResponseGeneratorAgent only (not PromptRefinerAgent)"
+        
+        return stats
+    
+    return {"error": "Prompt configuration loader not initialized"}
+
+
 if __name__ == "__main__":
     logger.info("Starting LLM Orchestration Service API server on port 8100")
     uvicorn.run(

@@ -124,3 +124,7 @@ def get_localized_message(message_dict: dict, language_code: str = "en") -> str:
 RAG_SEARCH_RESQL = "http://resql:8082/rag-search"
 RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
 RAG_SEARCH_RUUTER_PRIVATE = "http://ruuter-private:8088/rag-search"
+
+# Custom Prompt Configuration
+RUUTER_PROMPT_CONFIG_ENDPOINT = "http://ruuter-public:8086/rag-search/llm-connections/prompts/get-prompt"
+PROMPT_CONFIG_CACHE_TTL = 300  # 5 minutes cache
