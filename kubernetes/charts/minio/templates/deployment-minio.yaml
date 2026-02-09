@@ -44,11 +44,17 @@ spec:
             - containerPort: {{ .Values.ports.console }}
               name: console
               protocol: TCP
+          # Non-sensitive env's from values.yaml
           env:
-{{- range $key, $value := .Values.env }}
+            {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: "{{ $value }}"
-{{- end }}
+            {{- end }}
+          # Sensitive env's from Kubernetes Secret
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: minio-data
               mountPath: /data

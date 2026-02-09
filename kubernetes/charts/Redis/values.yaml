@@ -15,10 +15,11 @@ service:
 
 auth:
   enabled: true
-  password: "myredissecret"
-    
-env:
-  REDIS_PASSWORD: "myredissecret"
+
+# Reference to Kubernetes Secret
+envFrom:
+  - secretRef:
+      name: redis-secrets
 
 # Resource configuration
 resources:

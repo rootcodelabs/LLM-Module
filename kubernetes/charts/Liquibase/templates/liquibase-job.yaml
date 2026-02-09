@@ -9,6 +9,10 @@ spec:
   backoffLimit: {{ .Values.backoffLimit }}
   template:
     metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         app: "{{ .Values.release_name }}"
     spec:
@@ -38,8 +42,18 @@ spec:
             - name: {{ .name }}
               value: "{{ .value }}"
             {{- end }}
-               
-           
+            # Sensitive env's from Kubernetes Secret
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: liquibase-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: liquibase-secrets
+                  key: POSTGRES_PASSWORD
+                 
           volumeMounts:
             - name: liquibase-repo
               mountPath: /liquibase-files

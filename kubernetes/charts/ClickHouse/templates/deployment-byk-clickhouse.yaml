@@ -34,13 +34,15 @@ spec:
             - name: native
               containerPort: {{ .Values.service.nativePort }}
               protocol: TCP
+          # Non-sensitive env's from values.yaml
           env:
             - name: CLICKHOUSE_DB
               value: "{{ .Values.env.CLICKHOUSE_DB }}"
-            - name: CLICKHOUSE_USER
-              value: "{{ .Values.env.CLICKHOUSE_USER }}"
-            - name: CLICKHOUSE_PASSWORD
-              value: "{{ .Values.env.CLICKHOUSE_PASSWORD }}"
+          # Sensitive env's from Kubernetes Secret
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
           {{- if .Values.healthcheck.enabled }}
           livenessProbe:
             httpGet:
@@ -61,9 +63,9 @@ spec:
           {{- end }}
           {{- if .Values.persistence.enabled }}
           volumeMounts:
-            - name: langfuse_clickhouse_data
+            - name: langfuse-clickhouse-data
               mountPath: /var/lib/clickhouse
-            - name: langfuse_clickhouse_logs
+            - name: langfuse-clickhouse-logs
               mountPath: /var/log/clickhouse-server
           {{- end }}
           resources:
@@ -75,10 +77,10 @@ spec:
               cpu: "{{ .Values.resources.limits.cpu }}"
       {{- if .Values.persistence.enabled }}
       volumes:
-        - name: langfuse_clickhouse_data
+        - name: langfuse-clickhouse-data
           persistentVolumeClaim:
             claimName: "{{ .Values.release_name }}-data"
-        - name: langfuse_clickhouse_logs
+        - name: langfuse-clickhouse-logs
           persistentVolumeClaim:
             claimName: "{{ .Values.release_name }}-logs"
       {{- end }}

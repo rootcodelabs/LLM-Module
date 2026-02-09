@@ -17,7 +17,6 @@ env:
   SQLMS_DATASOURCES_0_NAME: "byk"
   SQLMS_DATASOURCES_0_JDBCURL: "jdbc:postgresql://rag-search-db:5432/rag-search"
   SQLMS_DATASOURCES_0_USERNAME: "postgres"
-  SQLMS_DATASOURCES_0_PASSWORD: "dbadmin"
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT: "INFO"
   JAVA_OPTS: "-Xms1g -Xmx3g"
 
@@ -30,3 +29,6 @@ resources:
     cpu: "50m"
 
 pullPolicy: IfNotPresent
+
+podAnnotations: 
+  dsl-checksum: "initial"

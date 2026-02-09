@@ -22,11 +22,17 @@ spec:
             - name: http
               containerPort: {{ .Values.port }}
               protocol: TCP
+          # Non-sensitive env's from values.yaml
           env:
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+          # Sensitive env's from Kubernetes Secret
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources

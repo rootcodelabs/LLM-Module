@@ -49,3 +49,6 @@ ingress:
  
 
 pullPolicy: IfNotPresent
+
+podAnnotations:
+  dsl-checksum: "94b84bb5ff4d"

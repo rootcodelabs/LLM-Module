@@ -12,6 +12,10 @@ spec:
       app: "{{ .Values.release_name }}"
   template:
     metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         app: "{{ .Values.release_name }}"
     spec:

@@ -29,3 +29,5 @@ resources:
 
 pullPolicy: IfNotPresent
 
+podAnnotations: 
+  dsl-checksum: "initial"   

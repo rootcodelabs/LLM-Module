@@ -16,9 +16,12 @@ resources:
     cpu: "500m"
 
 env:
-  MINIO_ROOT_USER: "minioadmin"
-  MINIO_ROOT_PASSWORD: "minioadmin"
   MINIO_BROWSER_REDIRECT_URL: "http://localhost:9001"
+
+# Reference to Kubernetes Secret
+envFrom:
+  - secretRef:
+      name: minio-secrets
 
 volumes:
   minio_data:

@@ -19,8 +19,11 @@ service:
 # Environment variables 
 env:
   CLICKHOUSE_DB: "default"
-  CLICKHOUSE_USER: "clickhouse"
-  CLICKHOUSE_PASSWORD: "changeme"
+
+# Reference to Kubernetes Secret
+envFrom:
+  - secretRef:
+      name: clickhouse-secrets
 
 # Security context 
 securityContext:

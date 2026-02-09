@@ -7,5 +7,5 @@ metadata:
 data:
 {{- range $path, $content := .Files.Glob "dashboards/*.json" }}
   {{ base $path }}: |
-{{ $content | indent 4 }}
+{{ $.Files.Get $path | indent 4 }}
 {{- end }}

@@ -2,9 +2,9 @@ gui:
     enabled: true
     release_name: gui
     image:
-      repository: "ghcr.io/buerokratt/rag-gui"  # Update with actual GUI image repository
-      tag: latest
-      pullPolicy: IfNotPresent
+      repository: "ghcr.io/buerokratt/rag-gui" # Update with actual GUI image repository
+      tag: sha-84833e1
+      pullPolicy: Always
     
     # React application configuration
     nodeEnv: production

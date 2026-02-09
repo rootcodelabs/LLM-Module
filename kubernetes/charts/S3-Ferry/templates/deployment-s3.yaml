@@ -22,9 +22,18 @@ spec:
             - name: http
               containerPort: {{ .Values.port }}
               protocol: TCP
+          # Non-sensitive env's from ConfigMap
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          # Sensitive env's from Kubernetes Secret
+          {{- if .Values.envFrom }}
           envFrom:
-            - configMapRef:
-                name: {{ .Values.release_name }}-config
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
+           
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: shared

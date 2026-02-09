@@ -8,14 +8,14 @@ images:
     tag: "4.33.0"
 
 env:
-  - name: POSTGRES_USER
-    value: "postgres"
-  - name: POSTGRES_PASSWORD
-    value: "dbadmin"
   - name: LIQUIBASE_URL
     value: "jdbc:postgresql://rag-search-db:5432/rag-search"
   - name: LIQUIBASE_CHANGELOG_FILE
     value: /master.yml
 
 
+
 pullPolicy: IfNotPresent
+
+podAnnotations: 
+  dsl-checksum: "211bdc77c12b"

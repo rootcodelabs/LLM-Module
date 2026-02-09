@@ -31,9 +31,9 @@ resources:
     cpu: 250m
     memory: 256Mi
 
+# Admin configuration
 admin:
-  user: admin
-  password: admin
+  enabled: true
 
 # Datasources configuration
 datasources:
@@ -55,8 +55,11 @@ dashboardProviders:
     options:
       path: /var/lib/grafana/dashboards
 
-# Environment variables
+# Environment variables (non-sensitive)
 env:
-  GF_SECURITY_ADMIN_USER: admin
-  GF_SECURITY_ADMIN_PASSWORD: admin123
   GF_USERS_ALLOW_SIGN_UP: "false"
+
+# Reference to Kubernetes Secret
+envFrom:
+  - secretRef:
+      name: grafana-secrets

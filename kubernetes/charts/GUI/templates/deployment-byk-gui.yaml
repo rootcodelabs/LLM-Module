@@ -66,21 +66,21 @@ spec:
             cpu: {{ .Values.gui.resources.requests.cpu }}
             memory: {{ .Values.gui.resources.requests.memory }}
 
-        livenessProbe:
-          httpGet:
-            path: /
-            port: {{ .Values.gui.port }}
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
+        # livenessProbe:
+        #   httpGet:
+        #     path: /
+        #     port: {{ .Values.gui.port }}
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 10
+        #   timeoutSeconds: 5
         
-        readinessProbe:
-          httpGet:
-            path: /
-            port: {{ .Values.gui.port }}
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
+        # readinessProbe:
+        #   httpGet:
+        #     path: /
+        #     port: {{ .Values.gui.port }}
+        #   initialDelaySeconds: 10
+        #   periodSeconds: 5
+        #   timeoutSeconds: 3
       
       restartPolicy: Always
 

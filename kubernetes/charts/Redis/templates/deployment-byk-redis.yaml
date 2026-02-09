@@ -31,11 +31,11 @@ spec:
             - --requirepass
             - $(REDIS_PASSWORD)
           {{- end }}
-          env:
-            {{- if .Values.auth.enabled }}
-            - name: REDIS_PASSWORD
-              value: "{{ .Values.auth.password }}"
-            {{- end }}
+          # Sensitive env's from Kubernetes Secret
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
           {{- if .Values.healthcheck.enabled }}
           livenessProbe:
             exec:

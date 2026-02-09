@@ -53,4 +53,6 @@ ingress:
 
 pullPolicy: IfNotPresent
 
+podAnnotations:
+  dsl-checksum: "initial" 
 
