@@ -13,6 +13,7 @@ import ViewLLMConnection from 'pages/LLMConnections/ViewLLMConnection';
 import UserManagement from 'pages/UserManagement';
 import TestLLM from 'pages/TestModel';
 import TestProductionLLM from 'pages/TestProductionLLM';
+import PromptConfigurations from 'pages/PromptConfigurations';
 
 const App: FC = () => {
   const navigate = useNavigate();
@@ -62,6 +63,7 @@ const App: FC = () => {
             <Route path="/llm-connections" element={<LLMConnections />} />
             <Route path="/create-llm-connection" element={<CreateLLMConnection />} />
             <Route path="/view-llm-connection" element={<ViewLLMConnection />} />
+            <Route path="/prompt-configurations" element={<PromptConfigurations />} />
             <Route path="/test-llm" element={<TestLLM />} />
             <Route path="/test-production-llm" element={<TestProductionLLM />} /> 
 

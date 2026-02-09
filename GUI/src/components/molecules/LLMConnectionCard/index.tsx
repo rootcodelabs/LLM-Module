@@ -21,6 +21,10 @@ type LLMConnectionCardProps = {
   isActive?: boolean;
   deploymentEnv?: string;
   budgetStatus?: string;
+  usedBudget?: number;
+  monthlyBudget?: number;
+  stopBudgetThreshold?: number;
+  disconnectOnBudgetExceed?: boolean;
   onStatusChange?: (id: number | string, newStatus: boolean) => void;
 };
 
@@ -32,6 +36,10 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
   isActive,
   deploymentEnv,
   budgetStatus,
+  usedBudget,
+  monthlyBudget,
+  stopBudgetThreshold,
+  disconnectOnBudgetExceed,
   onStatusChange,
 }) => {
   const { open, close } = useDialog();
@@ -39,6 +47,31 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  // Format currency
+  const formatCurrency = (amount?: number): string => {
+  if (amount === undefined || amount === null) {
+    return '0,00 €';
+  }
+
+  return new Intl.NumberFormat('et-EE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+ };
+
+
+  // Get the relevant budget threshold
+  const getRelevantBudget = (): number | undefined => {
+    // here if disconnect on budget exceed is enabled and stop threshold is set, calculate the actual amount from percentage
+    if (disconnectOnBudgetExceed && stopBudgetThreshold && stopBudgetThreshold > 0 && monthlyBudget) {
+      return (monthlyBudget * stopBudgetThreshold) / 100;
+    }
+    // Otherwise using monthly budget
+    return monthlyBudget;
+  };
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string | number; status: 'active' | 'inactive' }) =>
@@ -145,6 +178,16 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
             </span>
             <span className="label-value">{model ?? 'N/A'}</span>
           </div>
+          {(usedBudget !== undefined || monthlyBudget !== undefined) && (
+            <div className="label-row">
+              <span className="label-title">
+                {t('dataModels.budgetUsage')}:
+              </span>
+              <span className="label-value">
+                {formatCurrency(usedBudget)} / {formatCurrency(getRelevantBudget())}
+              </span>
+            </div>
+          )}
           <div className='label-row'>
             {renderDeploymentEnv(deploymentEnv)}
             {renderBudgetStatus(budgetStatus)}

@@ -119,8 +119,37 @@ check_connection_exists:
 validate_connection_exists:
   switch:
     - condition: "${existing_connection.response.body.length > 0}"
-      next: update_llm_connection
+      next: check_deployment_environment
   next: return_not_found
+
+check_deployment_environment:
+  switch:
+    - condition: ${environment == "production" && existing_connection.response.body[0].environment == "testing"}
+      next: get_existing_production_connection
+  next: update_llm_connection
+
+get_existing_production_connection:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/get-production-connection"
+  result: existing_production_result
+  next: update_existing_production_to_testing
+
+update_existing_production_to_testing:
+  switch:
+    - condition: ${existing_production_result.response.body && existing_production_result.response.body.length > 0}
+      next: update_production_connection
+  next: update_llm_connection
+
+update_production_connection:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/update-llm-connection-environment"
+    body:
+      connection_id: ${existing_production_result.response.body[0].id}
+      environment: "testing"
+  result: update_result
+  next: update_llm_connection
 
 update_llm_connection:
   call: http.post
