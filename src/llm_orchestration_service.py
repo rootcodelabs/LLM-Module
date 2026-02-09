@@ -111,7 +111,6 @@ class LLMOrchestrationService:
             timeout_seconds=10,
         )
 
-        # Warm up cache at startup (non-blocking)
         try:
             custom_instructions = self.prompt_config_loader.get_custom_instructions()
             if custom_instructions:

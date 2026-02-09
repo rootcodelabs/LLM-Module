@@ -276,7 +276,7 @@ def orchestrate_llm_request(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
-        )
+        ) from e
 
 
 @app.post(
@@ -658,7 +658,7 @@ async def create_embeddings(request: EmbeddingRequest) -> EmbeddingResponse:
                 "error": "Embedding creation failed",
                 "retry_after": 30,
             },
-        )
+        ) from e
 
 
 @app.post("/generate-context", response_model=ContextGenerationResponse)
@@ -679,7 +679,7 @@ async def generate_context_with_caching(
     except Exception as e:
         error_id = generate_error_id()
         log_error_with_context(logger, error_id, "context_generation_endpoint", None, e)
-        raise HTTPException(status_code=500, detail="Context generation failed")
+        raise HTTPException(status_code=500, detail="Context generation failed") from e
 
 
 @app.get("/embedding-models")
@@ -715,7 +715,7 @@ async def get_available_embedding_models(
         )
         raise HTTPException(
             status_code=500, detail="Failed to retrieve embedding models"
-        )
+        ) from e
 
 
 @app.post("/prompt-config/refresh")
@@ -729,48 +729,81 @@ def refresh_prompt_config(http_request: Request) -> Dict[str, Any]:
 
     Returns:
         Dictionary with refresh status and message
+
+    Raises:
+        HTTPException (503): If prompt configuration loader is not initialized
+        HTTPException (404): If no prompt configuration found in database
+        HTTPException (500): If refresh operation fails
     """
     orchestration_service = http_request.app.state.orchestration_service
 
-    if orchestration_service and hasattr(orchestration_service, "prompt_config_loader"):
-        try:
-            success = orchestration_service.prompt_config_loader.force_refresh()
-
-            if success:
-                # Get the refreshed prompt preview
-                custom_instructions = (
-                    orchestration_service.prompt_config_loader.get_custom_instructions()
-                )
-                prompt_length = len(custom_instructions)
-
-                logger.info(
-                    f"Prompt configuration cache refreshed successfully ({prompt_length} chars)"
-                )
-
-                return {
-                    "refreshed": True,
-                    "message": "Prompt configuration refreshed successfully",
-                    "prompt_length": prompt_length,
-                    "preview": custom_instructions[:100] + "..."
-                    if prompt_length > 100
-                    else custom_instructions,
-                }
-            else:
-                logger.warning("Prompt configuration refresh returned empty result")
-                return {
-                    "refreshed": False,
-                    "message": "No prompt configuration found in database",
-                }
-        except Exception as e:
-            error_id = generate_error_id()
-            logger.error(f"[{error_id}] Failed to refresh prompt configuration: {e}")
-            return {
-                "refreshed": False,
-                "message": "Refresh failed, will use cached version",
+    # Check if loader is initialized
+    if not orchestration_service or not hasattr(
+        orchestration_service, "prompt_config_loader"
+    ):
+        error_id = generate_error_id()
+        logger.error(f"[{error_id}] Prompt configuration loader not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "Prompt configuration loader not initialized",
                 "error_id": error_id,
-            }
+            },
+        )
 
-    return {"refreshed": False, "error": "Prompt configuration loader not initialized"}
+    try:
+        success = orchestration_service.prompt_config_loader.force_refresh()
+
+        if success:
+            # Get prompt metadata without exposing content (security)
+            custom_instructions = (
+                orchestration_service.prompt_config_loader.get_custom_instructions()
+            )
+            prompt_length = len(custom_instructions)
+
+            # Generate hash for verification purposes (without exposing content)
+            import hashlib
+
+            prompt_hash = hashlib.sha256(custom_instructions.encode()).hexdigest()[:16]
+
+            logger.info(
+                f"Prompt configuration cache refreshed successfully ({prompt_length} chars)"
+            )
+
+            return {
+                "refreshed": True,
+                "message": "Prompt configuration refreshed successfully",
+                "prompt_length": prompt_length,
+                "content_hash": prompt_hash,  # Safe: hash instead of preview
+            }
+        else:
+            # No fresh data loaded - could be fetch failure or truly not found
+            error_id = generate_error_id()
+            logger.warning(
+                f"[{error_id}] Prompt configuration refresh returned empty result"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "No prompt configuration found in database",
+                    "error_id": error_id,
+                },
+            )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Unexpected errors during refresh
+        error_id = generate_error_id()
+        logger.error(f"[{error_id}] Failed to refresh prompt configuration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "Failed to refresh prompt configuration",
+                "error_id": error_id,
+            },
+        ) from e
 
 
 if __name__ == "__main__":

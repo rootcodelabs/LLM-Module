@@ -149,7 +149,8 @@ The custom prompt configuration system allows admins to configure prompts via UI
 1. **Service Initialization** (`LLMOrchestrationService.__init__`)
    - Creates `PromptConfigurationLoader` instance
    - Warms up cache by calling `get_custom_instructions()`
-   - Logs success: "✅ Custom prompt configuration loaded at startup (X chars)"
+   - Logs success: "Custom prompt configuration loaded at startup (X chars)"
+   - Logs if not found: "ℹNo custom prompt configuration found - using defaults"
 
 ### **Admin Updates Prompt**
 1. **UI Save Action**
@@ -224,8 +225,10 @@ The custom prompt configuration system allows admins to configure prompts via UI
 
 ### **Constants** (`src/llm_orchestrator_config/llm_ochestrator_constants.py`)
 ```python
-RUUTER_PROMPT_CONFIG_ENDPOINT = "[#RAG_SEARCH_RUUTER_PUBLIC]/llm-connections/prompts/get-prompt"
-PROMPT_CONFIG_CACHE_TTL = 300  # 5 minutes
+RUUTER_PROMPT_CONFIG_ENDPOINT = (
+    "http://ruuter-public:8086/rag-search/llm-connections/prompts/get-prompt"
+)
+PROMPT_CONFIG_CACHE_TTL = 300  # 5 minutes cache
 ```
 
 ### **Environment Variables** (`constants.ini`)
@@ -263,7 +266,7 @@ WHERE id = 1;
 ```
 
 ### **4. Verify Immediate Refresh**
-- Check logs for: "✅ Prompt configuration cache refreshed successfully"
+- Check logs for: "Prompt configuration cache refreshed successfully"
 - Test same question - response format should change immediately
 
 ### **5. Check Cache Status**
@@ -333,7 +336,7 @@ Context: [retrieved documentation chunks...]
 ## Troubleshooting
 
 ### **Prompt Not Applied**
-- Check logs for: "✅ Custom prompt configuration loaded"
+- Check logs for: "Custom prompt configuration loaded at startup"
 - Verify database has prompt: `SELECT * FROM public.prompt_configuration;`
 - Test refresh endpoint: `curl -X POST http://localhost:8100/prompt-config/refresh`
 
@@ -345,7 +348,7 @@ Context: [retrieved documentation chunks...]
 ### **Empty Prompt**
 - Check Ruuter endpoint returns correct format
 - Verify response unwrapping logic in loader
-- Check logs for "⚠️ No custom prompt configuration found"
+- Check logs for "No prompt configuration found in database; caching empty result"
 
 ---
 

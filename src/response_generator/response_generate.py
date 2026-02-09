@@ -244,12 +244,12 @@ class ResponseGeneratorAgent(dspy.Module):
             f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
         )
 
-        # Prepend custom instructions if provided
+        # Apply custom instructions while keeping the user question first, if provided
         augmented_question = question
         if self._custom_instructions_prefix:
-            augmented_question = f"{self._custom_instructions_prefix}{question}"
+            augmented_question = f"{question}\n\n{self._custom_instructions_prefix}"
             logger.debug(
-                f"Applied custom instructions prefix to streaming ({len(self._custom_instructions_prefix)} chars)"
+                f"Applied custom instructions after question for streaming ({len(self._custom_instructions_prefix)} chars)"
             )
 
         output_stream = None
@@ -405,12 +405,12 @@ class ResponseGeneratorAgent(dspy.Module):
 
         logger.info(f"Generating response for question: '{question}'")
 
-        # Prepend custom instructions if provided
+        # Apply custom instructions while keeping the user question first, if provided
         augmented_question = question
         if self._custom_instructions_prefix:
-            augmented_question = f"{self._custom_instructions_prefix}{question}"
+            augmented_question = f"{question}\n\n{self._custom_instructions_prefix}"
             logger.debug(
-                f"Applied custom instructions prefix ({len(self._custom_instructions_prefix)} chars)"
+                f"Applied custom instructions after question ({len(self._custom_instructions_prefix)} chars)"
             )
 
         lm = dspy.settings.lm

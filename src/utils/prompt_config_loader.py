@@ -9,6 +9,12 @@ import threading
 from loguru import logger
 
 
+class PromptConfigLoadError(Exception):
+    """Raised when all retry attempts to load prompt configuration fail."""
+
+    pass
+
+
 class PromptConfigurationLoader:
     """
     Loads custom prompt configurations from Ruuter endpoint.
@@ -46,6 +52,8 @@ class PromptConfigurationLoader:
         self._cached_prompt: Optional[str] = None
         self._cache_timestamp: Optional[float] = None
         self._cache_lock = threading.Lock()
+        self._cache_condition = threading.Condition(self._cache_lock)
+        self._fetch_in_progress = False
 
         # Statistics for monitoring
         self._cache_hits = 0
@@ -62,10 +70,17 @@ class PromptConfigurationLoader:
         """
         Get custom prompt configuration (cached or fresh).
 
+        Uses fine-grained locking with thundering herd prevention:
+        - Quick cache check under lock
+        - Release lock during slow network I/O
+        - Only one thread fetches, others wait
+        - Re-acquire lock to update cache
+
         Returns:
             str: Custom instruction text, or empty string if unavailable
         """
-        with self._cache_lock:
+        # Step 1: Quick cache check under lock
+        with self._cache_condition:
             # Check cache validity
             if self._is_cache_valid():
                 self._cache_hits += 1
@@ -76,16 +91,42 @@ class PromptConfigurationLoader:
                 )
                 return self._cached_prompt or ""
 
-            # Cache miss/expired - load from Ruuter
+            # Cache miss/expired
             self._cache_misses += 1
             logger.info(
                 f"Prompt config cache MISS - loading from Ruuter "
                 f"(cache age: {self._get_cache_age():.1f}s)"
             )
 
-            try:
-                prompt_text = self._load_from_ruuter_with_retry()
+            # Thundering herd prevention: if another thread is fetching, wait
+            while self._fetch_in_progress:
+                logger.debug("Another thread is fetching, waiting...")
+                self._cache_condition.wait()  # Release lock and wait
+                # After waking up, check if cache was updated
+                if self._is_cache_valid():
+                    logger.debug("Cache updated by another thread")
+                    return self._cached_prompt or ""
 
+            # We're the first one, mark fetch in progress
+            self._fetch_in_progress = True
+
+        # Step 2: Fetch WITHOUT holding lock (allows concurrent cache reads)
+        prompt_text = None
+        fetch_error = None
+        try:
+            prompt_text = self._load_from_ruuter_with_retry()
+
+        except PromptConfigLoadError as e:
+            fetch_error = e
+            logger.error(f"Failed to fetch prompt configuration after retries: {e}")
+
+        except Exception as e:
+            fetch_error = e
+            logger.error(f"Unexpected error loading prompt configuration: {e}")
+
+        # Step 3: Update cache and notify waiters (lock re-acquired)
+        with self._cache_condition:
+            try:
                 if prompt_text:
                     # Success - update cache
                     self._cached_prompt = prompt_text
@@ -96,25 +137,36 @@ class PromptConfigurationLoader:
                         f"({len(prompt_text)} chars)"
                     )
                     return prompt_text
+
+                elif prompt_text is None and fetch_error is None:
+                    # No configuration found - cache empty result to avoid repeated loads
+                    logger.warning(
+                        "No prompt configuration found in database; caching empty result"
+                    )
+                    self._cached_prompt = ""
+                    self._cache_timestamp = time.time()
+                    self._last_error = None
+                    return ""
+
                 else:
-                    # No configuration found
-                    logger.warning("No prompt configuration found in database")
-                    # Return stale cache if available, otherwise empty
+                    # Fetch failed - handle error
+                    self._load_failures += 1
+                    self._last_error = str(fetch_error)
+                    logger.error(
+                        f"Failed to fetch prompt configuration "
+                        f"(total failures: {self._load_failures})"
+                    )
+                    # Fallback to stale cache or empty string
+                    if self._cached_prompt:
+                        logger.warning(
+                            f"Using stale cache due to fetch failure (age: {self._get_cache_age():.1f}s)"
+                        )
                     return self._cached_prompt or ""
 
-            except Exception as e:
-                self._load_failures += 1
-                self._last_error = str(e)
-                logger.error(
-                    f"Failed to load prompt configuration: {e} "
-                    f"(failures: {self._load_failures})"
-                )
-                # Fallback to stale cache or empty string
-                if self._cached_prompt:
-                    logger.warning(
-                        f"Using stale cache (age: {self._get_cache_age():.1f}s)"
-                    )
-                return self._cached_prompt or ""
+            finally:
+                # Always clear in-progress flag and notify waiting threads
+                self._fetch_in_progress = False
+                self._cache_condition.notify_all()  # Wake up all waiting threads
 
     def _is_cache_valid(self) -> bool:
         """Check if cache is within TTL window."""
@@ -140,7 +192,10 @@ class PromptConfigurationLoader:
         - Attempt 3: 2s wait
 
         Returns:
-            Optional[str]: Prompt text or None if all retries fail
+            Optional[str]: Prompt text if found, None if configuration is empty/not found
+
+        Raises:
+            PromptConfigLoadError: If all retry attempts fail due to HTTP/network errors
         """
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -160,16 +215,12 @@ class PromptConfigurationLoader:
                 if response.status_code == 200:
                     data = response.json()
 
-                    # DEBUG: Log the actual response structure
-                    logger.info(f"Response data type: {type(data)}")
-                    logger.info(f"Response data content: {data}")
-
                     # Handle response format - Ruuter wraps response in 'response' key
                     prompt = ""
 
                     # Unwrap Ruuter's response wrapper if present
                     if isinstance(data, dict) and "response" in data:
-                        logger.info(f"Unwrapping 'response' key")
+                        logger.info("Unwrapping 'response' key")
                         data = data["response"]
 
                     # Now extract prompt from the unwrapped data
@@ -229,29 +280,33 @@ class PromptConfigurationLoader:
                 logger.debug(f"Retrying in {wait_time}s...")
                 time.sleep(wait_time)
 
-        # All retries failed
-        logger.error(
+        # All retries failed - raise exception to distinguish from "not found"
+        error_msg = (
             f"All {self.max_retries} attempts failed to load prompt configuration"
         )
-        return None
+        logger.error(error_msg)
+        raise PromptConfigLoadError(error_msg)
 
     def force_refresh(self) -> bool:
         """
         Force immediate cache refresh.
 
         Returns:
-            bool: True if refresh successful, False otherwise
+            bool: True if fresh data was successfully loaded, False otherwise
         """
         logger.info("Forcing prompt configuration cache refresh")
-        with self._cache_lock:
-            self._cache_timestamp = None  # Invalidate cache
+        with self._cache_condition:
+            # Invalidate both timestamp and cached value so that a failed refresh
+            # cannot fall back to a stale prompt and be misreported as success.
+            self._cache_timestamp = None
+            self._cached_prompt = None
 
         result = self.get_custom_instructions()
         return bool(result)
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""
-        with self._cache_lock:
+        with self._cache_condition:
             return {
                 "cache_hits": self._cache_hits,
                 "cache_misses": self._cache_misses,
@@ -267,4 +322,5 @@ class PromptConfigurationLoader:
                 "last_error": self._last_error,
                 "ruuter_endpoint": self.ruuter_endpoint,
                 "cache_ttl_seconds": self.cache_ttl_seconds,
+                "fetch_in_progress": self._fetch_in_progress,
             }

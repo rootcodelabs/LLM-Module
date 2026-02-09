@@ -66,14 +66,14 @@ class NeMoRailsAdapter:
 
             logger.info("Registering DSPy custom LLM provider with NeMo Guardrails")
 
-            # NeMo Guardrails' register_llm_provider accepts callable factories at runtime,
-            # despite the type hint indicating type[BaseLLM]. DSPyLLMProviderFactory is a
-            # callable class that implements __call__ to return DSPyNeMoLLM instances (which
-            # properly inherit from BaseLLM). This is the documented pattern for custom providers.
+            # NeMo Guardrails' register_llm_provider accepts callable factories at runtime.
+            # We instantiate DSPyLLMProviderFactory first, then register the instance.
+            # The factory instance implements __call__ to return DSPyNeMoLLM instances
+            # (which properly inherit from BaseLLM). This ensures NeMo can call the factory
+            # without trying to instantiate it with config kwargs that __init__ doesn't accept.
             # We use cast to satisfy the type checker while maintaining runtime correctness.
-            register_llm_provider(
-                "dspy-custom", cast(Type[BaseLLM], DSPyLLMProviderFactory)
-            )
+            factory = DSPyLLMProviderFactory()
+            register_llm_provider("dspy-custom", cast(Type[BaseLLM], factory))
             logger.info("DSPy custom LLM provider registered successfully")
 
         except Exception as e:
