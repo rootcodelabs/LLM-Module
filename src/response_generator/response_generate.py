@@ -67,7 +67,7 @@ class ScopeChecker(dspy.Signature):
 
 
 def build_context_and_citations(
-    chunks: List[Dict[str, Any]], use_top_k: int = None
+    chunks: List[Dict[str, Any]], use_top_k: Optional[int] = None
 ) -> Tuple[List[str], List[str], bool]:
     """
     Turn retriever chunks -> numbered context blocks and source labels.
@@ -124,7 +124,12 @@ class ResponseGeneratorAgent(dspy.Module):
     Returns a dict: {"answer": str, "questionOutOfLLMScope": bool, "usage": dict}
     """
 
-    def __init__(self, max_retries: int = 2, use_optimized: bool = True, custom_instructions_prefix: str = "") -> None:
+    def __init__(
+        self,
+        max_retries: int = 2,
+        use_optimized: bool = True,
+        custom_instructions_prefix: str = "",
+    ) -> None:
         super().__init__()
         self._max_retries = max(0, int(max_retries))
         self._custom_instructions_prefix = custom_instructions_prefix
@@ -238,7 +243,7 @@ class ResponseGeneratorAgent(dspy.Module):
         logger.info(
             f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
         )
-        
+
         # Prepend custom instructions if provided
         augmented_question = question
         if self._custom_instructions_prefix:
@@ -399,7 +404,7 @@ class ResponseGeneratorAgent(dspy.Module):
             max_blocks = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
 
         logger.info(f"Generating response for question: '{question}'")
-        
+
         # Prepend custom instructions if provided
         augmented_question = question
         if self._custom_instructions_prefix:

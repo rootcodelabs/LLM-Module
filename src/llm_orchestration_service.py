@@ -102,7 +102,7 @@ class LLMOrchestrationService:
     def __init__(self) -> None:
         """Initialize the orchestration service."""
         self.langfuse_config = LangfuseConfig()
-        
+
         # Initialize prompt configuration loader
         self.prompt_config_loader = PromptConfigurationLoader(
             ruuter_endpoint=RUUTER_PROMPT_CONFIG_ENDPOINT,
@@ -110,20 +110,20 @@ class LLMOrchestrationService:
             max_retries=3,
             timeout_seconds=10,
         )
-        
+
         # Warm up cache at startup (non-blocking)
         try:
             custom_instructions = self.prompt_config_loader.get_custom_instructions()
             if custom_instructions:
                 logger.info(
-                    f"✅ Custom prompt configuration loaded at startup "
+                    f"Custom prompt configuration loaded at startup "
                     f"({len(custom_instructions)} chars)"
                 )
             else:
-                logger.info("ℹ️  No custom prompt configuration found - using defaults")
+                logger.info("ℹNo custom prompt configuration found - using defaults")
         except Exception as e:
             logger.warning(
-                f"⚠️  Failed to load custom prompts at startup: {e}. "
+                f"Failed to load custom prompts at startup: {e}. "
                 f"Service will continue with default behavior."
             )
 
@@ -168,7 +168,8 @@ class LLMOrchestrationService:
             )
 
             # Store detected language in request for use throughout pipeline
-            request._detected_language = detected_language
+            # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
+            setattr(request, "_detected_language", detected_language)
 
             # Initialize all service components
             components = self._initialize_service_components(request)
@@ -296,7 +297,8 @@ class LLMOrchestrationService:
         )
 
         # Store detected language in request for use throughout pipeline
-        request._detected_language = detected_language
+        # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
+        setattr(request, "_detected_language", detected_language)
 
         # Use StreamManager for centralized tracking and guaranteed cleanup
         async with stream_manager.managed_stream(
@@ -950,7 +952,7 @@ class LLMOrchestrationService:
         components: Dict[str, Any],
         costs_dict: Dict[str, Dict[str, Any]],
         timing_dict: Dict[str, float],
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components."""
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
@@ -1004,17 +1006,27 @@ class LLMOrchestrationService:
         timing_dict["response_generation"] = time.time() - start_time
 
         # Step 5: Output Guardrails Check
+        # Only apply guardrails to OrchestrationResponse (production/testing),
+        # TestOrchestrationResponse doesn't require chatId-based guardrail handling
         start_time = time.time()
-        output_guardrails_response = self.handle_output_guardrails(
-            components["guardrails_adapter"], generated_response, request, costs_dict
-        )
+        if isinstance(generated_response, OrchestrationResponse):
+            output_guardrails_response = self.handle_output_guardrails(
+                components["guardrails_adapter"],
+                generated_response,
+                request,
+                costs_dict,
+            )
+        else:
+            # TestOrchestrationResponse - skip output guardrails
+            output_guardrails_response = generated_response
         timing_dict["output_guardrails_check"] = time.time() - start_time
 
         # Step 6: Store inference data (for production and testing environments)
+        # Only store OrchestrationResponse (has chatId), not TestOrchestrationResponse
         if request.environment in [
             PRODUCTION_DEPLOYMENT_ENVIRONMENT,
             TEST_DEPLOYMENT_ENVIRONMENT,
-        ]:
+        ] and isinstance(output_guardrails_response, OrchestrationResponse):
             try:
                 self._store_production_inference_data(
                     request=request,
@@ -2031,7 +2043,7 @@ class LLMOrchestrationService:
         try:
             # Get custom instructions for response generation
             custom_prefix = self._get_custom_instructions_for_response_generation()
-            
+
             # Set up DSPy configuration for the response generator
             with llm_manager.use_task_local():
                 response_generator = ResponseGeneratorAgent(
@@ -2044,16 +2056,16 @@ class LLMOrchestrationService:
         except Exception as e:
             logger.error(f"Failed to initialize response generator: {str(e)}")
             raise
-    
+
     def _get_custom_instructions_for_response_generation(self) -> str:
         """
         Get custom prompt instructions for response generation only.
-        
+
         Note: Applied only to ResponseGeneratorAgent, not PromptRefinerAgent.
         PromptRefiner focuses on query optimization for retrieval, while
         ResponseGenerator needs to follow language policy and interaction style
         for user-facing content.
-        
+
         Returns:
             str: Custom instruction prefix for prepending to questions
         """

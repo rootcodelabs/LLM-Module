@@ -718,31 +718,59 @@ async def get_available_embedding_models(
         )
 
 
-@app.get("/prompt-config/stats")
-def get_prompt_config_stats(http_request: Request) -> Dict[str, Any]:
+@app.post("/prompt-config/refresh")
+def refresh_prompt_config(http_request: Request) -> Dict[str, Any]:
     """
-    Get prompt configuration cache statistics.
-    
-    Returns cache performance metrics and current configuration preview.
-    Useful for monitoring custom prompt configuration loading and caching.
+    Force immediate refresh of prompt configuration cache.
+
+    This endpoint is called by Ruuter after admin updates the prompt configuration
+    in the database, ensuring the changes are reflected immediately without waiting
+    for the cache TTL to expire.
+
+    Returns:
+        Dictionary with refresh status and message
     """
     orchestration_service = http_request.app.state.orchestration_service
-    
+
     if orchestration_service and hasattr(orchestration_service, "prompt_config_loader"):
-        stats = orchestration_service.prompt_config_loader.get_cache_stats()
-        
-        # Add preview of current configuration
-        custom_instructions = orchestration_service.prompt_config_loader.get_custom_instructions()
-        stats["current_prompt_preview"] = (
-            custom_instructions[:200] + "..."
-            if len(custom_instructions) > 200
-            else custom_instructions
-        )
-        stats["applied_to"] = "ResponseGeneratorAgent only (not PromptRefinerAgent)"
-        
-        return stats
-    
-    return {"error": "Prompt configuration loader not initialized"}
+        try:
+            success = orchestration_service.prompt_config_loader.force_refresh()
+
+            if success:
+                # Get the refreshed prompt preview
+                custom_instructions = (
+                    orchestration_service.prompt_config_loader.get_custom_instructions()
+                )
+                prompt_length = len(custom_instructions)
+
+                logger.info(
+                    f"Prompt configuration cache refreshed successfully ({prompt_length} chars)"
+                )
+
+                return {
+                    "refreshed": True,
+                    "message": "Prompt configuration refreshed successfully",
+                    "prompt_length": prompt_length,
+                    "preview": custom_instructions[:100] + "..."
+                    if prompt_length > 100
+                    else custom_instructions,
+                }
+            else:
+                logger.warning("Prompt configuration refresh returned empty result")
+                return {
+                    "refreshed": False,
+                    "message": "No prompt configuration found in database",
+                }
+        except Exception as e:
+            error_id = generate_error_id()
+            logger.error(f"[{error_id}] Failed to refresh prompt configuration: {e}")
+            return {
+                "refreshed": False,
+                "message": "Refresh failed, will use cached version",
+                "error_id": error_id,
+            }
+
+    return {"refreshed": False, "error": "Prompt configuration loader not initialized"}
 
 
 if __name__ == "__main__":
