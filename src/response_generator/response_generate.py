@@ -67,7 +67,7 @@ class ScopeChecker(dspy.Signature):
 
 
 def build_context_and_citations(
-    chunks: List[Dict[str, Any]], use_top_k: int = None
+    chunks: List[Dict[str, Any]], use_top_k: Optional[int] = None
 ) -> Tuple[List[str], List[str], bool]:
     """
     Turn retriever chunks -> numbered context blocks and source labels.
@@ -124,9 +124,15 @@ class ResponseGeneratorAgent(dspy.Module):
     Returns a dict: {"answer": str, "questionOutOfLLMScope": bool, "usage": dict}
     """
 
-    def __init__(self, max_retries: int = 2, use_optimized: bool = True) -> None:
+    def __init__(
+        self,
+        max_retries: int = 2,
+        use_optimized: bool = True,
+        custom_instructions_prefix: str = "",
+    ) -> None:
         super().__init__()
         self._max_retries = max(0, int(max_retries))
+        self._custom_instructions_prefix = custom_instructions_prefix
 
         # Attribute to cache the streamified predictor
         self._stream_predictor: Optional[Any] = None
@@ -238,6 +244,14 @@ class ResponseGeneratorAgent(dspy.Module):
             f"Starting NATIVE DSPy streaming for question with {len(chunks)} chunks"
         )
 
+        # Apply custom instructions while keeping the user question first, if provided
+        augmented_question = question
+        if self._custom_instructions_prefix:
+            augmented_question = f"{question}\n\n{self._custom_instructions_prefix}"
+            logger.debug(
+                f"Applied custom instructions after question for streaming ({len(self._custom_instructions_prefix)} chars)"
+            )
+
         output_stream = None
         try:
             # Build context
@@ -254,10 +268,10 @@ class ResponseGeneratorAgent(dspy.Module):
             # Get the streamified predictor
             stream_predictor = self._get_stream_predictor()
 
-            # Call the streamified predictor
+            # Call the streamified predictor with augmented question
             logger.info("Calling streamified predictor with signature inputs...")
             output_stream = stream_predictor(
-                question=question,
+                question=augmented_question,
                 context_blocks=context_blocks,
                 citations=citation_labels,
             )
@@ -391,6 +405,14 @@ class ResponseGeneratorAgent(dspy.Module):
 
         logger.info(f"Generating response for question: '{question}'")
 
+        # Apply custom instructions while keeping the user question first, if provided
+        augmented_question = question
+        if self._custom_instructions_prefix:
+            augmented_question = f"{question}\n\n{self._custom_instructions_prefix}"
+            logger.debug(
+                f"Applied custom instructions after question ({len(self._custom_instructions_prefix)} chars)"
+            )
+
         lm = dspy.settings.lm
         history_length_before = len(lm.history) if lm and hasattr(lm, "history") else 0
 
@@ -398,7 +420,7 @@ class ResponseGeneratorAgent(dspy.Module):
             chunks, use_top_k=max_blocks
         )
 
-        pred = self._predict_once(question, context_blocks, citation_labels)
+        pred = self._predict_once(augmented_question, context_blocks, citation_labels)
         valid = self._validate_prediction(pred)
 
         attempts = 0
@@ -407,7 +429,7 @@ class ResponseGeneratorAgent(dspy.Module):
             logger.warning(f"Retry attempt {attempts}/{self._max_retries}")
 
             pred = self._predictor(
-                question=question,
+                question=augmented_question,
                 context_blocks=context_blocks,
                 citations=citation_labels,
                 config={"rollout_id": attempts, "temperature": 0.1},
