@@ -39,6 +39,8 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     TEST_DEPLOYMENT_ENVIRONMENT,
     STREAM_TOKEN_LIMIT_MESSAGE,
     PRODUCTION_DEPLOYMENT_ENVIRONMENT,
+    RUUTER_PROMPT_CONFIG_ENDPOINT,
+    PROMPT_CONFIG_CACHE_TTL,
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.vector_indexer.constants import ResponseGenerationConstants
@@ -49,6 +51,7 @@ from src.utils.time_tracker import log_step_timings
 from src.utils.budget_tracker import get_budget_tracker
 from src.utils.production_store import get_production_store
 from src.utils.language_detector import detect_language, get_language_name
+from src.utils.prompt_config_loader import PromptConfigurationLoader
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.llm_orchestrator_config.exceptions import (
@@ -100,6 +103,29 @@ class LLMOrchestrationService:
         """Initialize the orchestration service."""
         self.langfuse_config = LangfuseConfig()
 
+        # Initialize prompt configuration loader
+        self.prompt_config_loader = PromptConfigurationLoader(
+            ruuter_endpoint=RUUTER_PROMPT_CONFIG_ENDPOINT,
+            cache_ttl_seconds=PROMPT_CONFIG_CACHE_TTL,
+            max_retries=3,
+            timeout_seconds=10,
+        )
+
+        try:
+            custom_instructions = self.prompt_config_loader.get_custom_instructions()
+            if custom_instructions:
+                logger.info(
+                    f"Custom prompt configuration loaded at startup "
+                    f"({len(custom_instructions)} chars)"
+                )
+            else:
+                logger.info("ℹNo custom prompt configuration found - using defaults")
+        except Exception as e:
+            logger.warning(
+                f"Failed to load custom prompts at startup: {e}. "
+                f"Service will continue with default behavior."
+            )
+
     @observe(name="orchestration_request", as_type="agent")
     def process_orchestration_request(
         self, request: OrchestrationRequest
@@ -141,7 +167,8 @@ class LLMOrchestrationService:
             )
 
             # Store detected language in request for use throughout pipeline
-            request._detected_language = detected_language
+            # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
+            setattr(request, "_detected_language", detected_language)
 
             # Initialize all service components
             components = self._initialize_service_components(request)
@@ -269,7 +296,8 @@ class LLMOrchestrationService:
         )
 
         # Store detected language in request for use throughout pipeline
-        request._detected_language = detected_language
+        # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
+        setattr(request, "_detected_language", detected_language)
 
         # Use StreamManager for centralized tracking and guaranteed cleanup
         async with stream_manager.managed_stream(
@@ -923,7 +951,7 @@ class LLMOrchestrationService:
         components: Dict[str, Any],
         costs_dict: Dict[str, Dict[str, Any]],
         timing_dict: Dict[str, float],
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components."""
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
@@ -977,17 +1005,22 @@ class LLMOrchestrationService:
         timing_dict["response_generation"] = time.time() - start_time
 
         # Step 5: Output Guardrails Check
+        # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
         output_guardrails_response = self.handle_output_guardrails(
-            components["guardrails_adapter"], generated_response, request, costs_dict
+            components["guardrails_adapter"],
+            generated_response,
+            request,
+            costs_dict,
         )
         timing_dict["output_guardrails_check"] = time.time() - start_time
 
         # Step 6: Store inference data (for production and testing environments)
+        # Only store OrchestrationResponse (has chatId), not TestOrchestrationResponse
         if request.environment in [
             PRODUCTION_DEPLOYMENT_ENVIRONMENT,
             TEST_DEPLOYMENT_ENVIRONMENT,
-        ]:
+        ] and isinstance(output_guardrails_response, OrchestrationResponse):
             try:
                 self._store_production_inference_data(
                     request=request,
@@ -1175,16 +1208,21 @@ class LLMOrchestrationService:
     def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
-        generated_response: OrchestrationResponse,
+        generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
         request: OrchestrationRequest,
         costs_dict: Dict[str, Dict[str, Any]],
-    ) -> OrchestrationResponse:
-        """Check output guardrails and handle blocked responses."""
-        if (
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
+        """Check output guardrails and handle blocked responses for both response types."""
+        # Determine if we should run guardrails (same logic for both response types)
+        should_check_guardrails = (
             guardrails_adapter is not None
             and generated_response.llmServiceActive
             and not generated_response.questionOutOfLLMScope
-        ):
+        )
+
+        if should_check_guardrails:
+            # Type assertion: should_check_guardrails guarantees guardrails_adapter is not None
+            assert guardrails_adapter is not None
             output_check_result = self._check_output_guardrails(
                 guardrails_adapter=guardrails_adapter,
                 assistant_message=generated_response.content,
@@ -1201,13 +1239,23 @@ class LLMOrchestrationService:
                     OUTPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_lang
                 )
 
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=localized_msg,
-                )
+                # Return appropriate response type based on original response type
+                if isinstance(generated_response, TestOrchestrationResponse):
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=localized_msg,
+                        chunks=None,
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=localized_msg,
+                    )
 
             logger.info("Output guardrails check passed")
         else:
@@ -2002,9 +2050,14 @@ class LLMOrchestrationService:
         logger.info("Initializing response generator")
 
         try:
+            # Get custom instructions for response generation
+            custom_prefix = self._get_custom_instructions_for_response_generation()
+
             # Set up DSPy configuration for the response generator
             with llm_manager.use_task_local():
-                response_generator = ResponseGeneratorAgent()
+                response_generator = ResponseGeneratorAgent(
+                    custom_instructions_prefix=custom_prefix
+                )
 
             logger.info("Response generator initialized successfully")
             return response_generator
@@ -2012,6 +2065,28 @@ class LLMOrchestrationService:
         except Exception as e:
             logger.error(f"Failed to initialize response generator: {str(e)}")
             raise
+
+    def _get_custom_instructions_for_response_generation(self) -> str:
+        """
+        Get custom prompt instructions for response generation only.
+
+        Note: Applied only to ResponseGeneratorAgent, not PromptRefinerAgent.
+        PromptRefiner focuses on query optimization for retrieval, while
+        ResponseGenerator needs to follow language policy and interaction style
+        for user-facing content.
+
+        Returns:
+            str: Custom instruction prefix for prepending to questions
+        """
+        try:
+            custom_prompt = self.prompt_config_loader.get_custom_instructions()
+            if custom_prompt:
+                # Format for prepending to questions in ResponseGenerator
+                return f"[SYSTEM INSTRUCTIONS]\n{custom_prompt}\n\n[USER QUESTION]\n"
+            return ""
+        except Exception as e:
+            logger.error(f"Error retrieving custom instructions: {e}")
+            return ""
 
     @staticmethod
     def _format_chunks_for_test_response(

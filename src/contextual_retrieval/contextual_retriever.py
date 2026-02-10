@@ -206,18 +206,20 @@ class ContextualRetriever:
                     semantic_task, bm25_task, return_exceptions=True
                 )
 
-                # Handle exceptions and assign results
-                if isinstance(search_results[0], Exception):
-                    logger.error(f"Semantic search failed: {search_results[0]}")
+                # Handle exceptions and assign results with proper type narrowing
+                semantic_result = search_results[0]
+                if isinstance(semantic_result, BaseException):
+                    logger.error(f"Semantic search failed: {semantic_result}")
                     semantic_results = []
                 else:
-                    semantic_results = search_results[0]
+                    semantic_results = semantic_result
 
-                if isinstance(search_results[1], Exception):
-                    logger.error(f"BM25 search failed: {search_results[1]}")
+                bm25_result = search_results[1]
+                if isinstance(bm25_result, BaseException):
+                    logger.error(f"BM25 search failed: {bm25_result}")
                     bm25_results = []
                 else:
-                    bm25_results = search_results[1]
+                    bm25_results = bm25_result
             else:
                 # Sequential execution
                 semantic_results = await self._semantic_search(
