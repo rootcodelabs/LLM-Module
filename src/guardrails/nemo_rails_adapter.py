@@ -1,10 +1,11 @@
-from typing import Any, Dict, Optional, AsyncIterator
+from typing import Any, Dict, Optional, AsyncIterator, cast, Type
 import asyncio
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
+from langchain_core.language_models.llms import BaseLLM
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
 )
@@ -65,9 +66,14 @@ class NeMoRailsAdapter:
 
             logger.info("Registering DSPy custom LLM provider with NeMo Guardrails")
 
-            provider_factory = DSPyLLMProviderFactory()
-
-            register_llm_provider("dspy-custom", provider_factory)
+            # NeMo Guardrails' register_llm_provider accepts callable factories at runtime.
+            # We instantiate DSPyLLMProviderFactory first, then register the instance.
+            # The factory instance implements __call__ to return DSPyNeMoLLM instances
+            # (which properly inherit from BaseLLM). This ensures NeMo can call the factory
+            # without trying to instantiate it with config kwargs that __init__ doesn't accept.
+            # We use cast to satisfy the type checker while maintaining runtime correctness.
+            factory = DSPyLLMProviderFactory()
+            register_llm_provider("dspy-custom", cast(Type[BaseLLM], factory))
             logger.info("DSPy custom LLM provider registered successfully")
 
         except Exception as e:
@@ -260,12 +266,17 @@ class NeMoRailsAdapter:
                 raise RuntimeError("Rails config not available")
 
             # Find the self_check_input prompt
-            for prompt in self._rails.config.prompts:
-                if prompt.task == "self_check_input":
-                    # Replace the template variable with actual content
-                    prompt_text = prompt.content.replace("{{ user_input }}", user_input)
-                    logger.debug("Found self_check_input prompt in NeMo config")
-                    return prompt_text
+            if self._rails.config.prompts:
+                for prompt in self._rails.config.prompts:
+                    if prompt.task == "self_check_input":
+                        # Ensure content is not None before calling replace
+                        if prompt.content:
+                            # Replace the template variable with actual content
+                            prompt_text = prompt.content.replace(
+                                "{{ user_input }}", user_input
+                            )
+                            logger.debug("Found self_check_input prompt in NeMo config")
+                            return prompt_text
 
             # Fallback if prompt not found in config
             logger.warning(
@@ -503,14 +514,19 @@ Is this user message safe according to the policy? Answer with 'safe' or 'unsafe
                 raise RuntimeError("Rails config not available")
 
             # Find the self_check_output prompt
-            for prompt in self._rails.config.prompts:
-                if prompt.task == "self_check_output":
-                    # Replace the template variable with actual content
-                    prompt_text = prompt.content.replace(
-                        "{{ bot_response }}", bot_response
-                    )
-                    logger.debug("Found self_check_output prompt in NeMo config")
-                    return prompt_text
+            if self._rails.config.prompts:
+                for prompt in self._rails.config.prompts:
+                    if prompt.task == "self_check_output":
+                        # Ensure content is not None before calling replace
+                        if prompt.content:
+                            # Replace the template variable with actual content
+                            prompt_text = prompt.content.replace(
+                                "{{ bot_response }}", bot_response
+                            )
+                            logger.debug(
+                                "Found self_check_output prompt in NeMo config"
+                            )
+                            return prompt_text
 
             # Fallback if prompt not found in config
             logger.warning(
