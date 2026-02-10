@@ -23,6 +23,12 @@ OUTPUT_GUARDRAIL_VIOLATION_MESSAGES = {
     "en": "I apologize, but I'm unable to provide a response as it may violate our usage policies.",
 }
 
+# Query validation messages - single generic message for all rejection types
+# (empty queries, special characters only, too short, repetitive characters)
+QUERY_VALIDATION_FAILED_MESSAGES = {
+    "et": "Palun esitage kehtiv küsimus või sõnum, et ma saaksin teid aidata."
+}
+
 # Legacy constants for backward compatibility (English defaults)
 OUT_OF_SCOPE_MESSAGE = OUT_OF_SCOPE_MESSAGES["en"]
 TECHNICAL_ISSUE_MESSAGE = TECHNICAL_ISSUE_MESSAGES["en"]
@@ -106,9 +112,9 @@ VALIDATION_GENERIC_ERROR = "I apologize, but I couldn't process your request. Pl
 
 
 # Helper function to get localized messages
-def get_localized_message(message_dict: dict, language_code: str = "en") -> str:
+def get_localized_message(message_dict: dict, language_code: str = "et") -> str:
     """
-    Get message in the specified language, fallback to English.
+    Get message in the specified language, fallback to Estonian.
 
     Args:
         message_dict: Dictionary with language codes as keys
@@ -117,7 +123,7 @@ def get_localized_message(message_dict: dict, language_code: str = "en") -> str:
     Returns:
         Localized message string
     """
-    return message_dict.get(language_code, message_dict.get("en", ""))
+    return message_dict.get(language_code, message_dict.get("et", ""))
 
 
 # Service endpoints

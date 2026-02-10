@@ -34,6 +34,7 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     INPUT_GUARDRAIL_VIOLATION_MESSAGES,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGES,
+    QUERY_VALIDATION_FAILED_MESSAGES,
     get_localized_message,
     GUARDRAILS_BLOCKED_PHRASES,
     TEST_DEPLOYMENT_ENVIRONMENT,
@@ -52,6 +53,7 @@ from src.utils.budget_tracker import get_budget_tracker
 from src.utils.production_store import get_production_store
 from src.utils.language_detector import detect_language, get_language_name
 from src.utils.prompt_config_loader import PromptConfigurationLoader
+from src.utils.query_validator import validate_query_basic
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.llm_orchestrator_config.exceptions import (
@@ -298,6 +300,22 @@ class LLMOrchestrationService:
         # Store detected language in request for use throughout pipeline
         # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
         setattr(request, "_detected_language", detected_language)
+
+        # Step 0.5: Basic Query Validation (before guardrails)
+        validation_result = validate_query_basic(request.message)
+        if not validation_result.is_valid:
+            logger.info(
+                f"[{request.chatId}] Streaming - Query validation failed: {validation_result.rejection_reason}"
+            )
+            # Get localized message
+            validation_msg = get_localized_message(
+                QUERY_VALIDATION_FAILED_MESSAGES, detected_language
+            )
+
+            # Yield SSE format error + END marker
+            yield self._format_sse(request.chatId, validation_msg)
+            yield self._format_sse(request.chatId, "END")
+            return  # Stop processing
 
         # Use StreamManager for centralized tracking and guaranteed cleanup
         async with stream_manager.managed_stream(
@@ -953,6 +971,36 @@ class LLMOrchestrationService:
         timing_dict: Dict[str, float],
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components."""
+        # Step 0: Basic Query Validation (before guardrails)
+        validation_result = validate_query_basic(request.message)
+        if not validation_result.is_valid:
+            logger.info(
+                f"[{request.chatId}] Query validation failed: {validation_result.rejection_reason}"
+            )
+            # Get localized message
+            detected_lang = getattr(request, "_detected_language", "en")
+            validation_msg = get_localized_message(
+                QUERY_VALIDATION_FAILED_MESSAGES, detected_lang
+            )
+
+            # Return appropriate response type
+            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                return TestOrchestrationResponse(
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=validation_msg,
+                    chunks=None,
+                )
+            else:
+                return OrchestrationResponse(
+                    chatId=request.chatId,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=validation_msg,
+                )
+
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
             start_time = time.time()
