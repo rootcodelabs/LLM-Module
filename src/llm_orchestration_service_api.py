@@ -30,6 +30,7 @@ from src.llm_orchestrator_config.exceptions import StreamTimeoutException
 from src.utils.stream_timeout import stream_timeout
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.rate_limiter import RateLimiter
+from src.utils.prompt_config_loader import RefreshStatus
 from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
@@ -752,40 +753,73 @@ def refresh_prompt_config(http_request: Request) -> Dict[str, Any]:
         )
 
     try:
-        success = orchestration_service.prompt_config_loader.force_refresh()
+        # Use new method that returns detailed status
+        refresh_result = (
+            orchestration_service.prompt_config_loader.force_refresh_with_status()
+        )
+        refresh_status = refresh_result.get("status")
 
-        if success:
-            # Get prompt metadata without exposing content (security)
-            custom_instructions = (
-                orchestration_service.prompt_config_loader.get_custom_instructions()
-            )
-            prompt_length = len(custom_instructions)
-
-            # Generate hash for verification purposes (without exposing content)
-            import hashlib
-
-            prompt_hash = hashlib.sha256(custom_instructions.encode()).hexdigest()[:16]
-
-            logger.info(
-                f"Prompt configuration cache refreshed successfully ({prompt_length} chars)"
-            )
-
+        if refresh_status == RefreshStatus.SUCCESS:
+            # Success - configuration loaded
+            logger.info("Prompt configuration refreshed successfully")
             return {
                 "refreshed": True,
-                "message": "Prompt configuration refreshed successfully",
-                "prompt_length": prompt_length,
-                "content_hash": prompt_hash,  # Safe: hash instead of preview
+                "message": refresh_result.get("message"),
+                "prompt_length": refresh_result.get("length"),
             }
-        else:
-            # No fresh data loaded - could be fetch failure or truly not found
+
+        elif refresh_status == RefreshStatus.NOT_FOUND:
+            # Configuration absent in database
             error_id = generate_error_id()
-            logger.warning(
-                f"[{error_id}] Prompt configuration refresh returned empty result"
-            )
+            logger.warning(f"[{error_id}] Prompt configuration not found in database")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
-                    "error": "No prompt configuration found in database",
+                    "error": refresh_result.get("message"),
+                    "error_id": error_id,
+                },
+            )
+
+        elif refresh_status == RefreshStatus.FETCH_FAILED:
+            # Upstream service failure (network/HTTP/timeout errors)
+            error_id = generate_error_id()
+            had_stale = refresh_result.get("had_stale_cache", False)
+
+            if had_stale:
+                logger.warning(
+                    f"[{error_id}] Upstream service unavailable, stale cache exists"
+                )
+                # Temporarily unavailable but we have fallback
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": "Upstream service temporarily unavailable",
+                        "error_id": error_id,
+                        "message": "Stale configuration available as fallback",
+                    },
+                )
+            else:
+                logger.warning(
+                    f"[{error_id}] Upstream service unavailable, no cache exists"
+                )
+                # Service gateway error or timeout
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "error": refresh_result.get("message"),
+                        "error_id": error_id,
+                        "details": refresh_result.get("error"),
+                    },
+                )
+
+        else:
+            # Unexpected status - should never happen but handle defensively
+            error_id = generate_error_id()
+            logger.error(f"[{error_id}] Unexpected refresh status: {refresh_status}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error": "Unexpected error during refresh",
                     "error_id": error_id,
                 },
             )

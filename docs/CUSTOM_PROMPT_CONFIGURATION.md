@@ -165,7 +165,7 @@ The custom prompt configuration system allows admins to configure prompts via UI
 3. **Cache Invalidation** (`/prompt-config/refresh`)
    - `force_refresh()` clears cache immediately
    - Fetches new prompt from Ruuter
-   - Returns success status with prompt preview
+   - Returns success status with prompt length and content hash (no preview for security)
 
 ### **User Request Processing**
 1. **Request Received** (Any of 3 endpoints)
@@ -192,7 +192,7 @@ The custom prompt configuration system allows admins to configure prompts via UI
 5. **Question Modification**
    ```python
    # In forward() or stream_response()
-   modified_question = f"{custom_instructions_prefix}{user_question}"
+   modified_question = f"{user_question}{custom_instructions_prefix}"
    ```
 
 6. **LLM Processing**
@@ -274,6 +274,17 @@ WHERE id = 1;
 # Manual refresh (optional)
 curl -X POST http://localhost:8100/prompt-config/refresh
 ```
+
+**Response:**
+```json
+{
+  "refreshed": true,
+  "message": "Prompt configuration refreshed successfully",
+  "prompt_length": 245,
+  "content_hash": "a3f5b8c9e1d2f4a6"
+}
+```
+**Note:** For security, the endpoint returns only the prompt length and a SHA-256 hash (not the actual prompt content).
 
 ---
 

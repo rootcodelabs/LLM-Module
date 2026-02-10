@@ -6,6 +6,7 @@ import requests
 from typing import Optional, Dict, Any
 import time
 import threading
+from enum import Enum
 from loguru import logger
 
 
@@ -13,6 +14,14 @@ class PromptConfigLoadError(Exception):
     """Raised when all retry attempts to load prompt configuration fail."""
 
     pass
+
+
+class RefreshStatus(Enum):
+    """Status of a refresh operation."""
+
+    SUCCESS = "success"  # Configuration loaded successfully
+    NOT_FOUND = "not_found"  # Configuration absent in database
+    FETCH_FAILED = "fetch_failed"  # Network/HTTP/upstream errors
 
 
 class PromptConfigurationLoader:
@@ -226,7 +235,12 @@ class PromptConfigurationLoader:
                     # Now extract prompt from the unwrapped data
                     if isinstance(data, list) and len(data) > 0:
                         # Array format: [{"id": 1, "prompt": "..."}]
-                        logger.info(f"Extracting from list, first element: {data[0]}")
+                        first_elem_keys = (
+                            list(data[0].keys()) if isinstance(data[0], dict) else []
+                        )
+                        logger.info(
+                            f"Extracting from list, first element keys: {first_elem_keys}"
+                        )
                         prompt = data[0].get("prompt", "").strip()
                     elif isinstance(data, dict):
                         # Dict format: {"id": 1, "prompt": "..."}
@@ -234,7 +248,7 @@ class PromptConfigurationLoader:
                         prompt = data.get("prompt", "").strip()
                     else:
                         logger.warning(
-                            f"Unexpected data type: {type(data)}, value: {data}"
+                            f"Unexpected data type: {type(data).__name__}, structure not recognized"
                         )
 
                     logger.info(
@@ -294,15 +308,89 @@ class PromptConfigurationLoader:
         Returns:
             bool: True if fresh data was successfully loaded, False otherwise
         """
+        status_dict = self.force_refresh_with_status()
+        return status_dict["status"] == RefreshStatus.SUCCESS
+
+    def force_refresh_with_status(self) -> Dict[str, Any]:
+        """
+        Force immediate cache refresh and return detailed status.
+
+        Returns:
+            Dict with keys:
+                - status: RefreshStatus enum value
+                - message: Human-readable message
+                - error: Error message (if status != SUCCESS)
+        """
         logger.info("Forcing prompt configuration cache refresh")
+
+        # Track state before refresh
+        had_cached_value = self._cached_prompt is not None
+
         with self._cache_condition:
             # Invalidate both timestamp and cached value so that a failed refresh
             # cannot fall back to a stale prompt and be misreported as success.
             self._cache_timestamp = None
             self._cached_prompt = None
 
-        result = self.get_custom_instructions()
-        return bool(result)
+        # Attempt fresh load
+        prompt_text = None
+        fetch_error = None
+        try:
+            prompt_text = self._load_from_ruuter_with_retry()
+
+        except PromptConfigLoadError as e:
+            fetch_error = e
+            logger.error(f"Failed to fetch prompt configuration after retries: {e}")
+
+        except Exception as e:
+            fetch_error = e
+            logger.error(f"Unexpected error loading prompt configuration: {e}")
+
+        # Determine status and update cache
+        with self._cache_condition:
+            if prompt_text:
+                # Success - update cache
+                self._cached_prompt = prompt_text
+                self._cache_timestamp = time.time()
+                self._last_error = None
+                logger.info(
+                    f"Prompt configuration refreshed successfully ({len(prompt_text)} chars)"
+                )
+                return {
+                    "status": RefreshStatus.SUCCESS,
+                    "message": "Prompt configuration refreshed successfully",
+                    "length": len(prompt_text),
+                }
+
+            elif prompt_text is None and fetch_error is None:
+                # No configuration found (explicit empty response from Ruuter)
+                self._cached_prompt = ""
+                self._cache_timestamp = time.time()
+                self._last_error = None
+                logger.warning("No prompt configuration found in database")
+                return {
+                    "status": RefreshStatus.NOT_FOUND,
+                    "message": "No prompt configuration found in database",
+                    "error": None,
+                }
+
+            else:
+                # Fetch failed (network/HTTP/timeout errors)
+                self._load_failures += 1
+                self._last_error = str(fetch_error)
+                logger.error(f"Failed to fetch prompt configuration: {fetch_error}")
+
+                # Do NOT cache empty result on failure - let next call retry
+                # Only keep stale cache if it existed before
+                if had_cached_value:
+                    logger.warning("Keeping stale cache due to fetch failure")
+
+                return {
+                    "status": RefreshStatus.FETCH_FAILED,
+                    "message": "Failed to refresh configuration due to upstream service error",
+                    "error": str(fetch_error),
+                    "had_stale_cache": had_cached_value,
+                }
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""
