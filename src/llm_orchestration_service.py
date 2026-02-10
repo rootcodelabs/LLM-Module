@@ -172,7 +172,36 @@ class LLMOrchestrationService:
             # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
             setattr(request, "_detected_language", detected_language)
 
-            # Initialize all service components
+            # STEP 0.5: Basic Query Validation (before expensive component initialization)
+            validation_result = validate_query_basic(request.message)
+            if not validation_result.is_valid:
+                logger.info(
+                    f"[{request.chatId}] Query validation failed: {validation_result.rejection_reason}"
+                )
+                # Get localized message
+                validation_msg = get_localized_message(
+                    QUERY_VALIDATION_FAILED_MESSAGES, detected_language
+                )
+
+                # Return appropriate response type without initializing components
+                if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=validation_msg,
+                        chunks=None,
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=validation_msg,
+                    )
+
+            # Initialize all service components (only for valid queries)
             components = self._initialize_service_components(request)
 
             # Execute the orchestration pipeline
@@ -971,35 +1000,8 @@ class LLMOrchestrationService:
         timing_dict: Dict[str, float],
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components."""
-        # Step 0: Basic Query Validation (before guardrails)
-        validation_result = validate_query_basic(request.message)
-        if not validation_result.is_valid:
-            logger.info(
-                f"[{request.chatId}] Query validation failed: {validation_result.rejection_reason}"
-            )
-            # Get localized message
-            detected_lang = getattr(request, "_detected_language", "en")
-            validation_msg = get_localized_message(
-                QUERY_VALIDATION_FAILED_MESSAGES, detected_lang
-            )
-
-            # Return appropriate response type
-            if request.environment == TEST_DEPLOYMENT_ENVIRONMENT:
-                return TestOrchestrationResponse(
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=validation_msg,
-                    chunks=None,
-                )
-            else:
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=validation_msg,
-                )
+        # Note: Query validation now happens in process_orchestration_request()
+        # before component initialization for true early rejection
 
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
