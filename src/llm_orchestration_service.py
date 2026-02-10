@@ -1055,19 +1055,14 @@ class LLMOrchestrationService:
         timing_dict["response_generation"] = time.time() - start_time
 
         # Step 5: Output Guardrails Check
-        # Only apply guardrails to OrchestrationResponse (production/testing),
-        # TestOrchestrationResponse doesn't require chatId-based guardrail handling
+        # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
-        if isinstance(generated_response, OrchestrationResponse):
-            output_guardrails_response = self.handle_output_guardrails(
-                components["guardrails_adapter"],
-                generated_response,
-                request,
-                costs_dict,
-            )
-        else:
-            # TestOrchestrationResponse - skip output guardrails
-            output_guardrails_response = generated_response
+        output_guardrails_response = self.handle_output_guardrails(
+            components["guardrails_adapter"],
+            generated_response,
+            request,
+            costs_dict,
+        )
         timing_dict["output_guardrails_check"] = time.time() - start_time
 
         # Step 6: Store inference data (for production and testing environments)
@@ -1263,16 +1258,21 @@ class LLMOrchestrationService:
     def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
-        generated_response: OrchestrationResponse,
+        generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
         request: OrchestrationRequest,
         costs_dict: Dict[str, Dict[str, Any]],
-    ) -> OrchestrationResponse:
-        """Check output guardrails and handle blocked responses."""
-        if (
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
+        """Check output guardrails and handle blocked responses for both response types."""
+        # Determine if we should run guardrails (same logic for both response types)
+        should_check_guardrails = (
             guardrails_adapter is not None
             and generated_response.llmServiceActive
             and not generated_response.questionOutOfLLMScope
-        ):
+        )
+
+        if should_check_guardrails:
+            # Type assertion: should_check_guardrails guarantees guardrails_adapter is not None
+            assert guardrails_adapter is not None
             output_check_result = self._check_output_guardrails(
                 guardrails_adapter=guardrails_adapter,
                 assistant_message=generated_response.content,
@@ -1289,13 +1289,23 @@ class LLMOrchestrationService:
                     OUTPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_lang
                 )
 
-                return OrchestrationResponse(
-                    chatId=request.chatId,
-                    llmServiceActive=True,
-                    questionOutOfLLMScope=False,
-                    inputGuardFailed=False,
-                    content=localized_msg,
-                )
+                # Return appropriate response type based on original response type
+                if isinstance(generated_response, TestOrchestrationResponse):
+                    return TestOrchestrationResponse(
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=localized_msg,
+                        chunks=None,
+                    )
+                else:
+                    return OrchestrationResponse(
+                        chatId=request.chatId,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=localized_msg,
+                    )
 
             logger.info("Output guardrails check passed")
         else:
