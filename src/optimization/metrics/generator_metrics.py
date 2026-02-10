@@ -5,6 +5,7 @@ Combines scope detection accuracy with answer quality using DSPy's SemanticF1.
 
 from typing import Any, Dict, List
 import dspy
+from dspy.evaluate import SemanticF1
 from loguru import logger
 
 
@@ -34,7 +35,7 @@ class GeneratorMetric:
 
         # Initialize DSPy's native SemanticF1 with decompositional mode
         # This uses the configured LM to evaluate semantic similarity
-        self.semantic_f1 = dspy.evaluate.SemanticF1(decompositional=True)
+        self.semantic_f1 = SemanticF1(decompositional=True)
 
         logger.info("Initialized GeneratorMetric with DSPy's native SemanticF1")
 
@@ -96,6 +97,11 @@ class GeneratorMetric:
                 semantic_prediction = dspy.Prediction(response=predicted_answer)
 
                 quality_score = self.semantic_f1(semantic_example, semantic_prediction)
+
+                # Ensure quality_score is a float (SemanticF1 returns float)
+                quality_score = (
+                    float(quality_score) if quality_score is not None else 0.0
+                )
 
                 logger.debug(f"SemanticF1 quality score: {quality_score:.3f}")
 
