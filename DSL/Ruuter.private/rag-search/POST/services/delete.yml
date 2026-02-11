@@ -1,0 +1,86 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Delete a service (soft delete)"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+  allowlist:
+    body:
+      - field: id
+        type: number
+        description: "Service ID"
+
+extract_request_data:
+  assign:
+    id: ${Number(incoming.body.id)}
+    updated_at: ${new Date().toISOString()}
+  next: validate_id
+
+validate_id:
+  switch:
+    - condition: "${!id}"
+      next: return_validation_error
+  next: check_service_exists
+
+check_service_exists:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/get-service"
+    body:
+      id: ${id}
+  result: existing_service
+  next: validate_service_exists
+
+validate_service_exists:
+  switch:
+    - condition: "${existing_service.response.body.length > 0}"
+      next: delete_service
+  next: return_not_found
+
+delete_service:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/delete-service"
+    body:
+      id: ${id}
+      updated_at: ${updated_at}
+  result: delete_result
+  next: handle_delete_response
+
+handle_delete_response:
+  switch:
+    - condition: "${delete_result.response.statusCodeValue >= 400}"
+      next: return_error
+  next: return_success
+
+return_success:
+  return:
+    success: true
+    message: "Service deleted successfully"
+  next: end
+
+return_validation_error:
+  status: 400
+  return:
+    success: false
+    error: "Missing required field: id is required"
+  next: end
+
+return_not_found:
+  status: 404
+  return:
+    success: false
+    error: "Service not found"
+  next: end
+
+return_error:
+  status: ${delete_result.response.statusCodeValue || 500}
+  return:
+    success: false
+    error: "Failed to delete service"
+    details: ${delete_result.response.body}
+  next: end
+
+end:

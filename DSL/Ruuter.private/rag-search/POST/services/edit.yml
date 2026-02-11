@@ -1,0 +1,144 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Update an existing service"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+  allowlist:
+    body:
+      - field: id
+        type: number
+        description: "Service ID"
+      - field: name
+        type: string
+        description: "Service name"
+      - field: description
+        type: string
+        description: "Service description"
+      - field: service_id
+        type: string
+        description: "Unique service identifier"
+      - field: ruuter_type
+        type: string
+        description: "Ruuter request type (GET or POST)"
+      - field: current_state
+        type: string
+        description: "Service state (active, inactive, draft)"
+      - field: is_common
+        type: boolean
+        description: "Whether the service is common"
+      - field: slot
+        type: string
+        description: "Intent classification slot"
+      - field: entities
+        type: array
+        description: "Array of entities for intent classification"
+      - field: examples
+        type: array
+        description: "Array of example phrases for intent classification"
+      - field: structure
+        type: object
+        description: "Service configuration structure"
+      - field: endpoints
+        type: array
+        description: "Array of service endpoints"
+
+extract_request_data:
+  assign:
+    id: ${Number(incoming.body.id)}
+    name: ${incoming.body.name}
+    description: ${incoming.body.description}
+    service_id: ${incoming.body.service_id}
+    ruuter_type: ${incoming.body.ruuter_type}
+    current_state: ${incoming.body.current_state}
+    is_common: ${incoming.body.is_common}
+    slot: ${incoming.body.slot || ""}
+    entities: ${incoming.body.entities || []}
+    examples: ${incoming.body.examples || []}
+    structure: ${incoming.body.structure || {}}
+    endpoints: ${incoming.body.endpoints || []}
+    updated_at: ${new Date().toISOString()}
+  next: validate_required_fields
+
+validate_required_fields:
+  switch:
+    - condition: "${!id || !name || !description || !service_id}"
+      next: return_validation_error
+  next: check_service_exists
+
+check_service_exists:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/get-service"
+    body:
+      id: ${id}
+  result: existing_service
+  next: validate_service_exists
+
+validate_service_exists:
+  switch:
+    - condition: "${existing_service.response.body.length > 0}"
+      next: update_service
+  next: return_not_found
+
+update_service:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/update-service"
+    body:
+      id: ${id}
+      name: ${name}
+      description: ${description}
+      service_id: ${service_id}
+      ruuter_type: ${ruuter_type}
+      current_state: ${current_state}
+      is_common: ${is_common}
+      slot: ${slot}
+      entities: ${entities}
+      examples: ${examples}
+      structure: ${structure}
+      endpoints: ${endpoints}
+      updated_at: ${updated_at}
+  result: update_result
+  next: handle_update_response
+
+handle_update_response:
+  switch:
+    - condition: "${update_result.response.statusCodeValue >= 400}"
+      next: return_error
+    - condition: "${update_result.response.body.length === 0}"
+      next: return_not_found
+  next: return_success
+
+return_success:
+  return:
+    success: true
+    message: "Service updated successfully"
+    service: ${update_result.response.body[0]}
+  next: end
+
+return_validation_error:
+  status: 400
+  return:
+    success: false
+    error: "Missing required fields: id, name, description, and service_id are required"
+  next: end
+
+return_not_found:
+  status: 404
+  return:
+    success: false
+    error: "Service not found"
+  next: end
+
+return_error:
+  status: ${update_result.response.statusCodeValue || 500}
+  return:
+    success: false
+    error: "Failed to update service"
+    details: ${update_result.response.body}
+  next: end
+
+end:
