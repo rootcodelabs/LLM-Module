@@ -35,3 +35,6 @@ CREATE TABLE public.services (
 
 );
 
+-- Create index for unique service_id for faster lookups
+CREATE UNIQUE INDEX idx_services_service_id ON public.services(service_id);
+
