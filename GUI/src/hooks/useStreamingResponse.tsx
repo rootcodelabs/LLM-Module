@@ -1,7 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
-const notificationNodeUrl = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
+const getNotificationNodeUrl = (): string => {
+  const value = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
+  if (!value) {
+    throw new Error(
+      'Environment variable REACT_APP_NOTIFICATION_NODE_URL is not defined. ' +
+        'Please set it to the base URL of the notification service to enable streaming responses.'
+    );
+  }
+  return value;
+};
+const notificationNodeUrl = getNotificationNodeUrl();
+console.log(notificationNodeUrl);
 
 interface StreamingOptions {
   authorId: string;

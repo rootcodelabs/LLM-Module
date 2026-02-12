@@ -10,6 +10,8 @@ interface Message {
   content: string;
   isUser: boolean;
   timestamp: string;
+  hasError?: boolean;
+  errorMessage?: string;
 }
 
 const TestProductionLLM: FC = () => {
@@ -28,6 +30,17 @@ const TestProductionLLM: FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Cleanup incomplete messages on unmount if streaming is active
+  useEffect(() => {
+    return () => {
+      if (isStreaming) {
+        stopStreaming();
+        // Remove incomplete bot messages on unmount
+        setMessages(prev => prev.filter(msg => msg.isUser || !msg.content.trim() === false));
+      }
+    };
+  }, [isStreaming, stopStreaming]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) {
@@ -80,7 +93,6 @@ const TestProductionLLM: FC = () => {
         if (botMsgIndex === -1) {
           // First token - add the bot message
           console.log('[Component] Adding bot message with first token');
-          setIsLoading(false);
           return [
             ...prev,
             {
@@ -105,12 +117,39 @@ const TestProductionLLM: FC = () => {
 
     const onComplete = () => {
       console.log('[Component] Stream completed');
+      // Always reset loading state on completion
       setIsLoading(false);
     };
 
     const onError = (error: string) => {
       console.error('[Component] Stream error:', error);
+      // Always reset loading state on error
       setIsLoading(false);
+      
+      // Handle incomplete bot message
+      setMessages(prev => {
+        const botMsgIndex = prev.findIndex(msg => msg.id === botMessageId);
+        
+        if (botMsgIndex !== -1) {
+          const botMessage = prev[botMsgIndex];
+          
+          // If the bot message has content, mark it as errored
+          if (botMessage.content.trim()) {
+            const updated = [...prev];
+            updated[botMsgIndex] = {
+              ...botMessage,
+              hasError: true,
+              errorMessage: error,
+            };
+            return updated;
+          } else {
+            // If no content, remove the empty bot message
+            return prev.filter(msg => msg.id !== botMessageId);
+          }
+        }
+        
+        return prev;
+      });
       
       toast.open({
         type: 'error',
@@ -124,6 +163,7 @@ const TestProductionLLM: FC = () => {
       await startStreaming(userMessageText, streamingOptions, onToken, onComplete, onError);
     } catch (error) {
       console.error('[Component] Failed to start streaming:', error);
+      // Reset loading state if streaming fails to start
       setIsLoading(false);
     }
   };
@@ -169,10 +209,21 @@ const TestProductionLLM: FC = () => {
                 key={msg.id}
                 className={`test-production-llm__message ${
                   msg.isUser ? 'test-production-llm__message--user' : 'test-production-llm__message--bot'
+                } ${
+                  msg.hasError ? 'test-production-llm__message--error' : ''
                 }`}
               >
                 <div className="test-production-llm__message-content">
                   <MessageContent content={msg.content} />
+                  {msg.hasError && (
+                    <div className="test-production-llm__message-error">
+                      <span className="test-production-llm__message-error-icon">⚠️</span>
+                      <span className="test-production-llm__message-error-text">
+                        {t('testProductionLLM.incompleteMessageError', { defaultValue: 'This message is incomplete due to an error' })}
+                        {msg.errorMessage && `: ${msg.errorMessage}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="test-production-llm__message-timestamp">
                   {new Date(msg.timestamp).toLocaleTimeString()}
