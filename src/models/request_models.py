@@ -66,19 +66,20 @@ class OrchestrationRequest(BaseModel):
     def validate_and_sanitize_message(cls, v: str) -> str:
         """Sanitize and validate user message.
 
-        Note: Content safety checks (prompt injection, PII, harmful content)
+        Note: This validator only handles security/format concerns:
+        - XSS/HTML sanitization
+        - Maximum length enforcement
+
+        Query quality validation (empty messages, special chars, etc.) is handled
+        by the business logic layer (query_validator) with localized error messages.
+
+        Content safety checks (prompt injection, PII, harmful content)
         are handled by NeMo Guardrails after this validation layer.
         """
         # Sanitize HTML/XSS and normalize whitespace
         v = InputSanitizer.sanitize_message(v)
 
-        # Check if message is empty after sanitization
-        if not v or len(v.strip()) < 3:
-            raise ValueError(
-                "Message must contain at least 3 characters after sanitization"
-            )
-
-        # Check length after sanitization
+        # Check length after sanitization (resource protection)
         if len(v) > StreamConfig.MAX_MESSAGE_LENGTH:
             raise ValueError(
                 f"Message exceeds maximum length of {StreamConfig.MAX_MESSAGE_LENGTH} characters"
