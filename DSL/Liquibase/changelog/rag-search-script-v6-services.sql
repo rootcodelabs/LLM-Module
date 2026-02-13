@@ -6,7 +6,7 @@ CREATE TYPE service_state AS ENUM ('active', 'inactive', 'draft');
 
 CREATE TABLE public.services (
   -- Primary key
-  id BIGINT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   
   -- Basic service information
   name TEXT NOT NULL,
@@ -17,7 +17,6 @@ CREATE TABLE public.services (
   ruuter_type ruuter_request_type DEFAULT 'GET',  -- ENUM: 'GET' or 'POST'
   current_state service_state DEFAULT 'draft',    -- ENUM: 'active', 'inactive', 'draft'
   is_common BOOLEAN NOT NULL DEFAULT FALSE,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE,
   
   -- Intent classification data (for LLM)
   slot TEXT NOT NULL DEFAULT '',
@@ -30,9 +29,7 @@ CREATE TABLE public.services (
   
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT services_pkey PRIMARY KEY (id)
-
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create index for unique service_id for faster lookups
