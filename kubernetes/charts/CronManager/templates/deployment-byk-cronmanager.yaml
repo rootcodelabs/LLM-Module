@@ -1,0 +1,107 @@
+{{- if .Values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Values.release_name }}"
+  labels:
+    app: "{{ .Values.release_name }}"
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: "{{ .Values.release_name }}"
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        app: "{{ .Values.release_name }}"
+    spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      initContainers:
+        - name: git-clone
+          image: alpine/git:latest
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+          - name: dsl
+            mountPath: /DSL
+          - name: scripts
+            mountPath: /app/scripts
+          - name: vector-indexer
+            mountPath: /app/src/vector_indexer
+          command:
+            - sh
+            - -c
+            - |
+                git clone --single-branch --depth 1 --branch wip  https://github.com/rootcodelabs/RAG-Module /tmp/rag &&
+
+                mkdir -p /app/src/vector_indexer &&
+                mkdir -p /app/scripts &&
+                mkdir -p /DSL
+                
+                cp -r /tmp/rag/DSL/CronManager/DSL/* /DSL/ &&
+                cp -r /tmp/rag/DSL/CronManager/script/* /app/scripts/ &&
+                cp -r /tmp/rag/src/vector_indexer/* /app/src/vector_indexer/ &&
+                
+                # Set execute permissions on all shell scripts
+                chmod +x /app/scripts/*.sh &&
+                echo "Scripts copied and permissions set successfully"
+       
+      containers:
+        - name: "{{ .Values.release_name }}"
+          image: "{{ .Values.cronmanager.image.registry }}/{{ .Values.cronmanager.image.repository }}:{{ .Values.cronmanager.image.tag }}"
+          imagePullPolicy: {{ .Values.cronmanager.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.cronmanager.environment.containerPort }}
+              protocol: TCP
+          env:
+            - name: PYTHONPATH
+              value: {{ .Values.cronmanager.environment.pythonPath | quote }}
+            - name: VAULT_ADDR
+              value: {{ .Values.cronmanager.environment.VAULT_ADDR | quote }}
+            - name: RAG_MODULE_RUUTER_PRIVATE
+              value: {{ .Values.constants.RAG_MODULE_RUUTER_PRIVATE | quote }}
+            - name: RAG_MODULE_RESQL
+              value: {{ .Values.constants.RAG_MODULE_RESQL | quote }}
+            - name: RAG_MODULE_TIM
+              value: {{ .Values.constants.RAG_MODULE_TIM | quote }}
+            - name: UV_VERBOSE
+              value: "1"
+        
+          volumeMounts:
+            - name: dsl
+              mountPath: /DSL
+            - name: cronmanager-data
+              mountPath: /app/data
+            - name: scripts
+              mountPath: /app/scripts
+            - name: vector-indexer
+              mountPath: /app/src/vector_indexer
+            - name: datasets
+              mountPath: /app/datasets
+         
+      volumes:
+        - name: dsl
+          emptyDir: {}
+        - name: scripts
+          emptyDir: {}
+        - name: vector-indexer
+          emptyDir: {}
+        - name: datasets
+          emptyDir: {}
+        - name: cronmanager-data
+          persistentVolumeClaim:
+            claimName: "{{ .Values.release_name }}-data"
+        - name: config-volume
+          configMap:
+            name: "{{ .Values.release_name }}-config"
+
+{{- end }}
