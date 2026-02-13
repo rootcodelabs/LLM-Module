@@ -8,6 +8,6 @@ databaseChangeLog:
   - include:
       file: changelog/rag-search-script-v4-authority-data.xml
   - include:
-      file: changelog/rag-search-script-v5-services.sql
+      file: changelog/rag-search-script-v6-services.sql
   - include:
       file: changelog/rag-search-script-v5-prompt-config.sql

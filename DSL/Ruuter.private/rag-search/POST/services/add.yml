@@ -51,10 +51,10 @@ extract_request_data:
     current_state: ${incoming.body.current_state || "draft"}
     is_common: ${incoming.body.is_common || false}
     slot: ${incoming.body.slot || ""}
-    entities: ${incoming.body.entities || []}
-    examples: ${incoming.body.examples || []}
-    structure: ${incoming.body.structure || {}}
-    endpoints: ${incoming.body.endpoints || []}
+    entities: ${incoming.body.entities}
+    examples: ${incoming.body.examples}
+    structure: ${JSON.stringify(incoming.body.structure)}
+    endpoints: ${JSON.stringify(incoming.body.endpoints)}
     created_at: ${new Date().toISOString()}
     updated_at: ${new Date().toISOString()}
   next: validate_required_fields
@@ -93,25 +93,15 @@ handle_insert_response:
   next: return_success
 
 return_success:
-  return:
-    success: true
-    message: "Service created successfully"
-    service: ${insert_result.response.body[0]}
+  return: "Service created successfully"
   next: end
 
 return_validation_error:
   status: 400
-  return:
-    success: false
-    error: "Missing required fields: name, description, and service_id are required"
+  return: "Missing required fields: name, description, and service_id are required"
   next: end
 
 return_error:
-  status: ${insert_result.response.statusCodeValue || 500}
-  return:
-    success: false
-    error: "Failed to create service"
-    details: ${insert_result.response.body}
+  status: 500
+  return: "Failed to create service"
   next: end
-
-end:

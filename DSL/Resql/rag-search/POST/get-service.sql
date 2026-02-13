@@ -14,4 +14,4 @@ SELECT
     created_at,
     updated_at
 FROM services
-WHERE id = :id AND deleted = false;
+WHERE id = :id;

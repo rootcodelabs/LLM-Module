@@ -7,12 +7,12 @@ SET
     current_state = :current_state::service_state,
     is_common = :is_common,
     slot = :slot,
-    entities = :entities::text[],
-    examples = :examples::text[],
+    entities = ARRAY[:entities]::text[],
+    examples = ARRAY[:examples]::text[],
     structure = :structure::json,
     endpoints = :endpoints::json,
     updated_at = :updated_at::timestamp with time zone
-WHERE id = :id AND deleted = false
+WHERE id = :id
 RETURNING
     id,
     name,

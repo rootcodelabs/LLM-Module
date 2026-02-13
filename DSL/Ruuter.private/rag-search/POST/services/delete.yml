@@ -45,7 +45,6 @@ delete_service:
     url: "[#RAG_SEARCH_RESQL]/delete-service"
     body:
       id: ${id}
-      updated_at: ${updated_at}
   result: delete_result
   next: handle_delete_response
 
@@ -56,31 +55,20 @@ handle_delete_response:
   next: return_success
 
 return_success:
-  return:
-    success: true
-    message: "Service deleted successfully"
+  return: "Service deleted successfully"
   next: end
 
 return_validation_error:
   status: 400
-  return:
-    success: false
-    error: "Missing required field: id is required"
+  return: "Missing required field: id is required"
   next: end
 
 return_not_found:
   status: 404
-  return:
-    success: false
-    error: "Service not found"
+  return: "Service not found"
   next: end
 
 return_error:
-  status: ${delete_result.response.statusCodeValue || 500}
-  return:
-    success: false
-    error: "Failed to delete service"
-    details: ${delete_result.response.body}
+  status: 500
+  return: "Failed to delete service"
   next: end
-
-end:

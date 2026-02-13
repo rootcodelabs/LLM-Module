@@ -55,10 +55,10 @@ extract_request_data:
     current_state: ${incoming.body.current_state}
     is_common: ${incoming.body.is_common}
     slot: ${incoming.body.slot || ""}
-    entities: ${incoming.body.entities || []}
-    examples: ${incoming.body.examples || []}
-    structure: ${incoming.body.structure || {}}
-    endpoints: ${incoming.body.endpoints || []}
+    entities: ${incoming.body.entities}
+    examples: ${incoming.body.examples}
+    structure: ${JSON.stringify(incoming.body.structure)}
+    endpoints: ${JSON.stringify(incoming.body.endpoints)}
     updated_at: ${new Date().toISOString()}
   next: validate_required_fields
 
@@ -113,32 +113,20 @@ handle_update_response:
   next: return_success
 
 return_success:
-  return:
-    success: true
-    message: "Service updated successfully"
-    service: ${update_result.response.body[0]}
+  return: "Service updated successfully"
   next: end
 
 return_validation_error:
   status: 400
-  return:
-    success: false
-    error: "Missing required fields: id, name, description, and service_id are required"
+  return: "Missing required fields: id, name, description, and service_id are required"
   next: end
 
 return_not_found:
   status: 404
-  return:
-    success: false
-    error: "Service not found"
+  return: "Service not found"
   next: end
 
 return_error:
-  status: ${update_result.response.statusCodeValue || 500}
-  return:
-    success: false
-    error: "Failed to update service"
-    details: ${update_result.response.body}
+  status: 500
+  return: "Failed to update service"
   next: end
-
-end:
