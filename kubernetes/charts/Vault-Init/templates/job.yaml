@@ -1,0 +1,93 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.release_name }}
+  labels:
+    app: {{ .Values.release_name }}
+    component: vault-init
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.release_name }}
+        component: vault-init
+    spec:
+      restartPolicy: {{ .Values.job.restartPolicy }}
+      {{- if .Values.affinity.enabled }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ .Values.vault.serviceName }}
+            topologyKey: kubernetes.io/hostname
+      {{- end }}
+      volumes:
+        {{- if .Values.volumes.vaultData.enabled }}
+        - name: vault-data
+          persistentVolumeClaim:
+            claimName: vault-storage-{{ .Values.vault.serviceName }}-0
+        {{- end }}
+        {{- if .Values.volumes.agentCredentials.enabled }}
+        - name: vault-agent-creds
+          persistentVolumeClaim:
+            claimName: vault-agent-creds
+        {{- end }}
+        {{- if .Values.volumes.agentToken.enabled }}
+        - name: vault-agent-token
+          persistentVolumeClaim:
+            claimName: vault-agent-token
+        {{- end }}
+        {{- if .Values.initScript.enabled }}
+        - name: init-script
+          configMap:
+            name: {{ .Values.release_name }}-script
+            defaultMode: 0755
+        {{- end }}
+      containers:
+      - name: vault-init
+        image: "{{ .Values.images.vault.registry }}/{{ .Values.images.vault.repository }}:{{ .Values.images.vault.tag }}"
+        imagePullPolicy: {{ .Values.pullPolicy }}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Install dependencies and setup permissions
+            apk add --no-cache curl jq
+            mkdir -p /agent/credentials /agent/out
+            chmod -R 755 /agent/credentials
+            chmod -R 770 /agent/out
+            echo "Permissions set successfully"
+            
+            # Run the init script
+            /bin/sh /scripts/{{ .Values.initScript.filename }}
+        env:
+          - name: VAULT_ADDR
+            value: {{ .Values.vault.addr | quote }}
+          - name: VAULT_SKIP_VERIFY
+            value: "true"
+        volumeMounts:
+          {{- if .Values.volumes.vaultData.enabled }}
+          - name: vault-data
+            mountPath: {{ .Values.volumes.vaultData.mountPath }}
+          {{- end }}
+          {{- if .Values.volumes.agentCredentials.enabled }}
+          - name: vault-agent-creds
+            mountPath: {{ .Values.volumes.agentCredentials.mountPath }}
+          {{- end }}
+          {{- if .Values.volumes.agentToken.enabled }}
+          - name: vault-agent-token
+            mountPath: {{ .Values.volumes.agentToken.mountPath }}
+          {{- end }}
+          {{- if .Values.initScript.enabled }}
+          - name: init-script
+            mountPath: "/scripts"
+            readOnly: true
+          {{- end }}
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- end }}
