@@ -60,6 +60,8 @@ from src.llm_orchestrator_config.exceptions import (
     ContextualRetrieverInitializationError,
     ContextualRetrievalFailureError,
 )
+from src.llm_orchestrator_config.feature_flags import FeatureFlags
+from src.tool_classifier import ToolClassifier
 
 
 class LangfuseConfig:
@@ -128,8 +130,15 @@ class LLMOrchestrationService:
                 f"Service will continue with default behavior."
             )
 
+        # Initialize tool classifier (lazy initialization - will be created when first needed)
+        # This allows components to be initialized per-request with proper context
+        self.tool_classifier = None
+
+        # Log feature flag configuration
+        FeatureFlags.log_configuration()
+
     @observe(name="orchestration_request", as_type="agent")
-    def process_orchestration_request(
+    async def process_orchestration_request(
         self, request: OrchestrationRequest
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """
@@ -204,10 +213,65 @@ class LLMOrchestrationService:
             # Initialize all service components (only for valid queries)
             components = self._initialize_service_components(request)
 
-            # Execute the orchestration pipeline
-            response = self._execute_orchestration_pipeline(
-                request, components, costs_dict, timing_dict
-            )
+            # TOOL CLASSIFIER INTEGRATION
+            # Route through tool classifier if enabled, otherwise use existing RAG pipeline
+            if FeatureFlags.TOOL_CLASSIFIER_ENABLED:
+                try:
+                    logger.info(
+                        f"[{request.chatId}] Tool classifier enabled - routing query"
+                    )
+
+                    # Initialize tool classifier if not already done
+                    if self.tool_classifier is None:
+                        self.tool_classifier = ToolClassifier(
+                            llm_manager=components["llm_manager"],
+                            orchestration_service=self,
+                        )
+                        logger.info("Tool classifier initialized")
+
+                    # Classify query to determine workflow
+                    classification = await self.tool_classifier.classify(
+                        query=request.message,
+                        conversation_history=request.conversationHistory,
+                        language=detected_language,
+                    )
+
+                    logger.info(
+                        f"[{request.chatId}] Classification: {classification.workflow.value} "
+                        f"(confidence: {classification.confidence:.2f})"
+                    )
+
+                    # Route to appropriate workflow
+                    response = await self.tool_classifier.route_to_workflow(
+                        classification=classification,
+                        request=request,
+                        is_streaming=False,
+                    )
+
+                except Exception as classifier_error:
+                    logger.error(
+                        f"[{request.chatId}] Tool classifier error: {classifier_error}",
+                        exc_info=True,
+                    )
+
+                    if FeatureFlags.FALLBACK_TO_RAG_ON_ERROR:
+                        logger.info(
+                            f"[{request.chatId}] Falling back to RAG pipeline due to classifier error"
+                        )
+                        # Execute existing RAG pipeline as fallback
+                        response = await self._execute_orchestration_pipeline(
+                            request, components, costs_dict, timing_dict
+                        )
+                    else:
+                        raise
+            else:
+                # Tool classifier disabled - use existing RAG pipeline
+                logger.debug(
+                    f"[{request.chatId}] Tool classifier disabled - using RAG pipeline"
+                )
+                response = await self._execute_orchestration_pipeline(
+                    request, components, costs_dict, timing_dict
+                )
 
             # Log final costs and return response
             self._log_costs(costs_dict)
@@ -390,7 +454,81 @@ class LLMOrchestrationService:
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed "
                 )
 
+                # TOOL CLASSIFIER INTEGRATION (STREAMING)
+                # Route through tool classifier if enabled, otherwise use existing RAG pipeline
+                if FeatureFlags.TOOL_CLASSIFIER_ENABLED:
+                    try:
+                        logger.info(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier enabled - routing query (streaming)"
+                        )
+
+                        # Initialize tool classifier if not already done
+                        if self.tool_classifier is None:
+                            self.tool_classifier = ToolClassifier(
+                                llm_manager=components["llm_manager"],
+                                orchestration_service=self,
+                            )
+                            logger.info(
+                                f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier initialized"
+                            )
+
+                        # Classify query to determine workflow
+                        classification = await self.tool_classifier.classify(
+                            query=request.message,
+                            conversation_history=request.conversationHistory,
+                            language=detected_language,
+                        )
+
+                        logger.info(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Classification: {classification.workflow.value} "
+                            f"(confidence: {classification.confidence:.2f})"
+                        )
+
+                        # Route to appropriate workflow (streaming)
+                        # route_to_workflow returns AsyncIterator[str] when is_streaming=True
+                        stream_result = await self.tool_classifier.route_to_workflow(
+                            classification=classification,
+                            request=request,
+                            is_streaming=True,
+                        )
+
+                        async for sse_chunk in stream_result:
+                            yield sse_chunk
+
+                        # Successfully completed streaming through classifier
+                        logger.info(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier streaming completed"
+                        )
+
+                        # Log costs and timings
+                        self._log_costs(costs_dict)
+                        log_step_timings(timing_dict, request.chatId)
+                        stream_ctx.mark_completed()
+                        return  # Exit after successful classifier routing
+
+                    except Exception as classifier_error:
+                        logger.error(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier error: {classifier_error}",
+                            exc_info=True,
+                        )
+
+                        if not FeatureFlags.FALLBACK_TO_RAG_ON_ERROR:
+                            # Don't fallback - raise error
+                            raise
+
+                        # Fallback to RAG pipeline below
+                        logger.info(
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Falling back to RAG streaming due to classifier error"
+                        )
+                        # Continue to existing RAG streaming pipeline below
+                else:
+                    logger.debug(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier disabled - using RAG streaming"
+                    )
+                    # Continue to existing RAG streaming pipeline below
+
                 # STEP 2: REFINE USER PROMPT (blocking)
+                # NOTE: This step only executes if tool classifier is disabled or fallback occurred
                 logger.info(
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Step 2: Refining user prompt"
                 )
@@ -992,7 +1130,7 @@ class LLMOrchestrationService:
             logger.warning(f" Generator: Status check failed - {str(e)}")
 
     @observe(name="execute_orchestration_pipeline", as_type="span")
-    def _execute_orchestration_pipeline(
+    async def _execute_orchestration_pipeline(
         self,
         request: OrchestrationRequest,
         components: Dict[str, Any],
@@ -1006,7 +1144,7 @@ class LLMOrchestrationService:
         # Step 1: Input Guardrails Check
         if components["guardrails_adapter"]:
             start_time = time.time()
-            input_blocked_response = self.handle_input_guardrails(
+            input_blocked_response = await self.handle_input_guardrails(
                 components["guardrails_adapter"], request, costs_dict
             )
             timing_dict["input_guardrails_check"] = time.time() - start_time
@@ -1026,7 +1164,7 @@ class LLMOrchestrationService:
         # Step 3: Retrieve relevant chunks using contextual retrieval
         try:
             start_time = time.time()
-            relevant_chunks = self._safe_retrieve_contextual_chunks_sync(
+            relevant_chunks = await self._safe_retrieve_contextual_chunks(
                 components["contextual_retriever"], refined_output, request
             )
             timing_dict["contextual_retrieval"] = time.time() - start_time
@@ -1057,7 +1195,7 @@ class LLMOrchestrationService:
         # Step 5: Output Guardrails Check
         # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
-        output_guardrails_response = self.handle_output_guardrails(
+        output_guardrails_response = await self.handle_output_guardrails(
             components["guardrails_adapter"],
             generated_response,
             request,
@@ -1132,14 +1270,14 @@ class LLMOrchestrationService:
             )
             return None
 
-    def handle_input_guardrails(
+    async def handle_input_guardrails(
         self,
         guardrails_adapter: NeMoRailsAdapter,
         request: OrchestrationRequest,
         costs_dict: Dict[str, Dict[str, Any]],
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse, None]:
         """Check input guardrails and return blocked response if needed."""
-        input_check_result = self._check_input_guardrails(
+        input_check_result = await self._check_input_guardrails_async(
             guardrails_adapter=guardrails_adapter,
             user_message=request.message,
             costs_dict=costs_dict,
@@ -1186,21 +1324,23 @@ class LLMOrchestrationService:
         """Synchronous wrapper for _safe_retrieve_contextual_chunks for non-streaming pipeline."""
 
         try:
-            # Safely execute the async method in the sync context
+            # Check if there's a running event loop
             try:
                 asyncio.get_running_loop()
-                # If we get here, there's a running event loop; cannot block synchronously
-                raise RuntimeError(
+                # If we get here, there IS a running event loop; cannot use asyncio.run()
+                raise ContextualRetrievalFailureError(
                     "Cannot call _safe_retrieve_contextual_chunks_sync from an async context with a running event loop. "
                     "Please use the async version _safe_retrieve_contextual_chunks instead."
                 )
             except RuntimeError:
-                # No running loop, safe to use asyncio.run()
-                return asyncio.run(
-                    self._safe_retrieve_contextual_chunks(
-                        contextual_retriever, refined_output, request
-                    )
+                # No running loop (get_running_loop raised RuntimeError), safe to use asyncio.run()
+                pass
+
+            return asyncio.run(
+                self._safe_retrieve_contextual_chunks(
+                    contextual_retriever, refined_output, request
                 )
+            )
         except (
             ContextualRetrieverInitializationError,
             ContextualRetrievalFailureError,
@@ -1255,7 +1395,7 @@ class LLMOrchestrationService:
                 f"Contextual chunk retrieval failed: {str(retrieval_error)}"
             ) from retrieval_error
 
-    def handle_output_guardrails(
+    async def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
         generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
@@ -1273,7 +1413,7 @@ class LLMOrchestrationService:
         if should_check_guardrails:
             # Type assertion: should_check_guardrails guarantees guardrails_adapter is not None
             assert guardrails_adapter is not None
-            output_check_result = self._check_output_guardrails(
+            output_check_result = await self._check_output_guardrails(
                 guardrails_adapter=guardrails_adapter,
                 assistant_message=generated_response.content,
                 costs_dict=costs_dict,
@@ -1694,7 +1834,7 @@ class LLMOrchestrationService:
             )
 
     @observe(name="check_output_guardrails", as_type="span")
-    def _check_output_guardrails(
+    async def _check_output_guardrails(
         self,
         guardrails_adapter: NeMoRailsAdapter,
         assistant_message: str,
@@ -1714,7 +1854,7 @@ class LLMOrchestrationService:
         logger.info("Starting output guardrails check")
 
         try:
-            result = guardrails_adapter.check_output(assistant_message)
+            result = await guardrails_adapter.check_output_async(assistant_message)
 
             # Store guardrail costs
             costs_dict["output_guardrails"] = result.usage
