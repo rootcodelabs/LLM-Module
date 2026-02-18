@@ -313,7 +313,7 @@ class ToolClassifier:
                     yield chunk
                 return
 
-            # TODO: Implement fullback to next layer
+            # TODO: Implement fallback to next layer
             # For now, if workflow returns None, call RAG as fallback
             logger.warning(
                 f"[{chat_id}] {workflow_name} returned None, "

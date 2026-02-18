@@ -79,7 +79,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         components = self.orchestration_service._initialize_service_components(request)
 
         # Call existing RAG pipeline
-        response = self.orchestration_service._execute_orchestration_pipeline(
+        response = await self.orchestration_service._execute_orchestration_pipeline(
             request=request,
             components=components,
             costs_dict=costs_dict,
