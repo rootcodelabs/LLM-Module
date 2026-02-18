@@ -123,9 +123,50 @@ class RAGWorkflowExecutor(BaseWorkflow):
         """
         logger.info(f"[{request.chatId}] Executing RAG workflow (streaming)")
 
-        # Delegate to existing streaming implementation
-        # This handles all RAG logic + guardrails
-        async for sse_chunk in self.orchestration_service.stream_orchestration_response(
-            request
+        # Initialize tracking dictionaries
+        costs_dict: Dict[str, Any] = {}
+        timing_dict: Dict[str, float] = {}
+
+        # Get components from context if provided, otherwise initialize
+        components = context.get("components")
+        if components is None:
+            components = self.orchestration_service._initialize_service_components(
+                request
+            )
+
+        # Get stream context from context if provided, otherwise create minimal tracking
+        stream_ctx = context.get("stream_ctx")
+        if stream_ctx is None:
+            # Create minimal stream context when called via tool classifier
+            # In production flow, this is provided by stream_orchestration_response
+            class MinimalStreamContext:
+                """Minimal stream context for RAG workflow when called directly."""
+
+                def __init__(self, chat_id: str) -> None:
+                    self.stream_id = f"rag-{chat_id}"
+                    self.token_count = 0
+                    self.bot_generator = None
+
+                def mark_completed(self) -> None:
+                    """No-op: Tracking handled by orchestration service."""
+                    pass
+
+                def mark_cancelled(self) -> None:
+                    """No-op: Tracking handled by orchestration service."""
+                    pass
+
+                def mark_error(self, error_id: str) -> None:
+                    """No-op: Tracking handled by orchestration service."""
+                    pass
+
+            stream_ctx = MinimalStreamContext(request.chatId)
+
+        # Delegate to core RAG pipeline (bypasses classifier to avoid recursion)
+        async for sse_chunk in self.orchestration_service._stream_rag_pipeline(
+            request=request,
+            components=components,
+            stream_ctx=stream_ctx,
+            costs_dict=costs_dict,
+            timing_dict=timing_dict,
         ):
             yield sse_chunk
