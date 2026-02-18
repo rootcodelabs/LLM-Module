@@ -26,7 +26,7 @@ This skeleton implements the **framework** for a multi-workflow routing system b
 - Output guardrails integration for new workflows
 - Database schema changes
 
-###Current Behavior
+### Current Behavior
 
 When `TOOL_CLASSIFIER_ENABLED=false` (default):
 -  System works exactly as before (RAG-only pipeline)
