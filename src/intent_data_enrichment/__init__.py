@@ -20,4 +20,3 @@ __all__ = [
     "QdrantManager",
     "EnrichmentConstants",
 ]
-

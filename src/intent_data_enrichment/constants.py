@@ -11,19 +11,19 @@ class EnrichmentConstants:
     DEFAULT_API_BASE_URL = "http://llm-orchestration-service:8100"
     DEFAULT_ENVIRONMENT = "production"
     DEFAULT_CONNECTION_ID = "gpt-4o-mini"
-    
+
     # Retry Configuration
     MAX_RETRIES = 3
     RETRY_DELAY_BASE = 2  # Exponential backoff base (2^attempt seconds)
     REQUEST_TIMEOUT = 60  # seconds
-    
+
     # Qdrant Configuration
     COLLECTION_NAME = "intent_collections"
     DEFAULT_QDRANT_HOST = "qdrant"
     DEFAULT_QDRANT_PORT = 6333
     VECTOR_SIZE = 3072  # Azure text-embedding-3-large dimension
     DISTANCE_METRIC = "Cosine"
-    
+
     # Context Generation
     CONTEXT_TEMPLATE = """<document>
 {full_service_info}

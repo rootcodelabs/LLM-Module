@@ -62,15 +62,15 @@ class LLMAPIClient:
         full_service_info = f"""Service: {service_data.name}
 ID: {service_data.service_id}
 Description: {service_data.description}
-Examples: {', '.join(service_data.examples)}
-Entities: {', '.join(service_data.entities)}"""
+Examples: {", ".join(service_data.examples)}
+Entities: {", ".join(service_data.entities)}"""
 
         # Build context generation prompt
         context_prompt = EnrichmentConstants.CONTEXT_TEMPLATE.format(
             full_service_info=full_service_info,
             name=service_data.name,
             description=service_data.description,
-            examples=', '.join(service_data.examples),
+            examples=", ".join(service_data.examples),
         )
 
         request_data = {
@@ -93,8 +93,7 @@ Entities: {', '.join(service_data.entities)}"""
                     raise RuntimeError("HTTP session not initialized")
 
                 response = await self.session.post(
-                    f"{self.api_base_url}/generate-context",
-                    json=request_data
+                    f"{self.api_base_url}/generate-context", json=request_data
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -117,7 +116,7 @@ Entities: {', '.join(service_data.entities)}"""
                 )
 
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_delay_base ** attempt
+                    delay = self.retry_delay_base**attempt
                     logger.info(f"Retrying in {delay} seconds...")
                     await asyncio.sleep(delay)
 
@@ -160,8 +159,7 @@ Entities: {', '.join(service_data.entities)}"""
                     raise RuntimeError("HTTP session not initialized")
 
                 response = await self.session.post(
-                    f"{self.api_base_url}/embeddings",
-                    json=request_data
+                    f"{self.api_base_url}/embeddings", json=request_data
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -181,11 +179,13 @@ Entities: {', '.join(service_data.entities)}"""
                 logger.warning(f"Embedding creation attempt {attempt + 1} failed: {e}")
 
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_delay_base ** attempt
+                    delay = self.retry_delay_base**attempt
                     logger.info(f"Retrying in {delay} seconds...")
                     await asyncio.sleep(delay)
 
         # All retries failed
-        error_msg = f"Embedding creation failed after {self.max_retries} attempts: {last_error}"
+        error_msg = (
+            f"Embedding creation failed after {self.max_retries} attempts: {last_error}"
+        )
         logger.error(error_msg)
         raise RuntimeError(error_msg)

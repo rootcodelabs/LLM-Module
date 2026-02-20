@@ -55,10 +55,10 @@ class QdrantManager:
             if self.collection_name in collection_names:
                 # Check if existing collection has correct vector size
                 collection_info = self.client.get_collection(self.collection_name)
-                
+
                 # Qdrant vectors config is a dict - get the default vector config
                 vectors_config = collection_info.config.params.vectors
-                
+
                 existing_vector_size: Optional[int] = None
                 if isinstance(vectors_config, dict):
                     # Get first vector config (usually the default/unnamed one)
@@ -68,9 +68,11 @@ class QdrantManager:
                 elif vectors_config is not None:
                     # Direct VectorParams object (older API)
                     existing_vector_size = vectors_config.size
-                
+
                 if existing_vector_size is None:
-                    logger.warning(f"Could not determine vector size for '{self.collection_name}', recreating")
+                    logger.warning(
+                        f"Could not determine vector size for '{self.collection_name}', recreating"
+                    )
                     self.client.delete_collection(self.collection_name)
                     self._create_collection()
                 elif existing_vector_size != EnrichmentConstants.VECTOR_SIZE:
@@ -78,7 +80,9 @@ class QdrantManager:
                         f"Collection '{self.collection_name}' exists with wrong vector size: "
                         f"{existing_vector_size} (expected {EnrichmentConstants.VECTOR_SIZE})"
                     )
-                    logger.info(f"Deleting and recreating collection '{self.collection_name}'")
+                    logger.info(
+                        f"Deleting and recreating collection '{self.collection_name}'"
+                    )
                     self.client.delete_collection(self.collection_name)
                     self._create_collection()
                 else:
@@ -97,7 +101,7 @@ class QdrantManager:
         """Create the collection with correct vector configuration."""
         if not self.client:
             raise RuntimeError(_CLIENT_NOT_INITIALIZED)
-            
+
         logger.info(
             f"Creating collection '{self.collection_name}' "
             f"with vector size {EnrichmentConstants.VECTOR_SIZE}"

@@ -96,8 +96,6 @@ assign_success:
       success: true
       service_id: ${service_id}
       message: "Service enrichment job queued successfully. Processing asynchronously."
-      status: "queued"
-      note: "The enrichment pipeline runs asynchronously. Check logs for completion status."
   next: return_ok
 
 return_ok:
