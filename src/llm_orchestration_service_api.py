@@ -225,7 +225,7 @@ def health_check(request: Request) -> dict[str, str]:
     summary="Process LLM orchestration request",
     description="Processes a user message through the LLM orchestration pipeline",
 )
-def orchestrate_llm_request(
+async def orchestrate_llm_request(
     http_request: Request,
     request: OrchestrationRequest,
 ) -> OrchestrationResponse:
@@ -262,7 +262,7 @@ def orchestrate_llm_request(
             )
 
         # Process the request
-        response = orchestration_service.process_orchestration_request(request)
+        response = await orchestration_service.process_orchestration_request(request)
 
         logger.info(f"Successfully processed request for chatId: {request.chatId}")
         return response
@@ -287,7 +287,7 @@ def orchestrate_llm_request(
     summary="Process test LLM orchestration request",
     description="Processes a simplified test message through the LLM orchestration pipeline",
 )
-def test_orchestrate_llm_request(
+async def test_orchestrate_llm_request(
     http_request: Request,
     request: TestOrchestrationRequest,
 ) -> TestOrchestrationResponse:
@@ -341,7 +341,9 @@ def test_orchestrate_llm_request(
         logger.info(f"This is full request constructed for testing: {full_request}")
 
         # Process the request using the same logic
-        response = orchestration_service.process_orchestration_request(full_request)
+        response = await orchestration_service.process_orchestration_request(
+            full_request
+        )
 
         # If response is already TestOrchestrationResponse (when environment is testing), return it directly
         if isinstance(response, TestOrchestrationResponse):
