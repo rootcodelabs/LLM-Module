@@ -7,10 +7,10 @@ Services are enriched with LLM-generated context and stored in intent_collection
 
 __version__ = "1.0.0"
 
-from data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
-from data_enrichment.api_client import LLMAPIClient
-from data_enrichment.qdrant_manager import QdrantManager
-from data_enrichment.constants import EnrichmentConstants
+from intent_data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
+from intent_data_enrichment.api_client import LLMAPIClient
+from intent_data_enrichment.qdrant_manager import QdrantManager
+from intent_data_enrichment.constants import EnrichmentConstants
 
 __all__ = [
     "ServiceData",

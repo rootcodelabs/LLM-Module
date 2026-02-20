@@ -6,8 +6,8 @@ from loguru import logger
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
-from data_enrichment.constants import EnrichmentConstants
-from data_enrichment.models import EnrichedService
+from intent_data_enrichment.constants import EnrichmentConstants
+from intent_data_enrichment.models import EnrichedService
 
 # Error messages
 _CLIENT_NOT_INITIALIZED = "Qdrant client not initialized"

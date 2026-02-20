@@ -12,9 +12,9 @@ import argparse
 import asyncio
 from loguru import logger
 
-from data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
-from data_enrichment.api_client import LLMAPIClient
-from data_enrichment.qdrant_manager import QdrantManager
+from intent_data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
+from intent_data_enrichment.api_client import LLMAPIClient
+from intent_data_enrichment.qdrant_manager import QdrantManager
 
 
 def parse_arguments() -> ServiceData:
