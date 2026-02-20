@@ -31,8 +31,6 @@ class QdrantManager:
         """Connect to Qdrant."""
         try:
             logger.info(f"Connecting to Qdrant at {self.host}:{self.port}")
-            # Suppress version compatibility warning (client 1.17.0 vs server 1.15.1)
-            # Minor version difference is acceptable (see warning in logs)
             self.client = QdrantClient(
                 host=self.host,
                 port=self.port,
@@ -132,7 +130,6 @@ class QdrantManager:
             # Convert service_id to UUID for Qdrant compatibility
             # Qdrant requires point IDs to be either integers or UUIDs
             point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, enriched_service.id))
-            logger.debug(f"Generated UUID: {point_id} for service_id: {enriched_service.id}")
 
             # Prepare payload (all metadata except embedding)
             payload = {

@@ -1,7 +1,7 @@
 declaration:
   call: declare
   version: 0.1
-  description: "Enrich service data and index in Qdrant"
+  description: "Enrich service data and index in Qdrant (async via CronManager)"
   method: post
   accepts: json
   returns: json
@@ -38,8 +38,8 @@ extract_request_data:
     service_id: ${incoming.body.service_id}
     service_name: ${incoming.body.name}
     service_description: ${incoming.body.description}
-    service_examples: ${JSON.stringify(incoming.body.examples) || '[]'}
-    service_entities: ${JSON.stringify(incoming.body.entities) || '[]'}
+    service_examples: ${encodeURIComponent(JSON.stringify(incoming.body.examples) || '[]')}
+    service_entities: ${encodeURIComponent(JSON.stringify(incoming.body.entities) || '[]')}
     service_ruuter_type: ${incoming.body.ruuter_type || 'GET'}
     service_current_state: ${incoming.body.current_state || 'draft'}
     service_is_common: ${incoming.body.is_common || false}
@@ -58,8 +58,7 @@ return_missing_fields:
       error: "MISSING_REQUIRED_FIELDS",
       message: "service_id, name, and description are required"
     }
-  # next: return_bad_request
-  next: end
+  next: return_bad_request
 
 execute_enrichment:
   call: http.post
@@ -76,29 +75,30 @@ execute_enrichment:
       is_common: ${service_is_common}
   result: enrichment_result
   next: assign_success
-  on_error: handle_error
+  on_error: handle_cron_error
 
-handle_error:
-  log: "ERROR: Service enrichment failed - ${enrichment_result.error || 'Unknown error'}"
-  next: assign_failure
+handle_cron_error:
+  log: "ERROR: Failed to queue enrichment job - ${enrichment_result.error || 'CronManager unreachable'}"
+  next: assign_cron_failure
+
+assign_cron_failure:
+  assign:
+    response_data:
+      success: false
+      error: "ENRICHMENT_QUEUE_FAILED"
+      message: "Failed to queue enrichment job. CronManager may be unavailable."
+      details: ${enrichment_result.error}
+  next: return_server_error
 
 assign_success:
   assign:
     response_data:
       success: true
       service_id: ${service_id}
-      message: "Service enriched and indexed successfully"
-      details: ${enrichment_result.response.body}
+      message: "Service enrichment job queued successfully. Processing asynchronously."
+      status: "queued"
+      note: "The enrichment pipeline runs asynchronously. Check logs for completion status."
   next: return_ok
-
-assign_failure:
-  assign:
-    response_data:
-      success: false
-      error: "ENRICHMENT_FAILED"
-      message: "Failed to enrich and index service"
-      details: ${enrichment_result.response.body || enrichment_result.error}
-  next: return_server_error
 
 return_ok:
   status: 200

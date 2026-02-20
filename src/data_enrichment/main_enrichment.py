@@ -10,23 +10,11 @@ import sys
 import json
 import argparse
 import asyncio
-from datetime import datetime
 from loguru import logger
 
 from data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
 from data_enrichment.api_client import LLMAPIClient
 from data_enrichment.qdrant_manager import QdrantManager
-
-
-def log_separator(title: str = "") -> None:
-    """Log a formatted separator line"""
-    separator = "=" * 80
-    if title:
-        logger.info(f"\n{separator}")
-        logger.info(f"  {title}")
-        logger.info(f"{separator}\n")
-    else:
-        logger.info(f"\n{separator}\n")
 
 
 def parse_arguments() -> ServiceData:
@@ -51,7 +39,6 @@ def parse_arguments() -> ServiceData:
                 content = f.read().strip()
                 if content:
                     examples = json.loads(content)
-                    logger.debug(f"Loaded {len(examples)} examples from file")
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to read/parse examples file: {e}")
     
@@ -62,7 +49,6 @@ def parse_arguments() -> ServiceData:
                 content = f.read().strip()
                 if content:
                     entities = json.loads(content)
-                    logger.debug(f"Loaded {len(entities)} entities from file")
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to read/parse entities file: {e}")
     
@@ -153,13 +139,10 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
 
 def main() -> int:
     """Main entry point for service enrichment"""
-    log_separator("SERVICE DATA ENRICHMENT PIPELINE")
-    logger.info(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"Python: {sys.version}")
+    logger.info("Starting service data enrichment pipeline")
     
     try:
         # Parse arguments
-        log_separator("STEP 1: PARSING INPUT")
         service_data = parse_arguments()
         logger.info(f"Service ID: {service_data.service_id}")
         logger.info(f"Service Name: {service_data.name}")
@@ -167,30 +150,25 @@ def main() -> int:
         logger.info(f"Entities: {len(service_data.entities)} provided")
         
         # Run enrichment pipeline
-        log_separator("STEP 2: ENRICHMENT PIPELINE")
         result = asyncio.run(enrich_service(service_data))
         
         # Log results
-        log_separator("ENRICHMENT RESULT")
         if result.success:
-            logger.success("✓ Enrichment completed successfully")
+            logger.success("Enrichment completed successfully")
             logger.info(f"Service: {result.service_id}")
             logger.info(f"Message: {result.message}")
             logger.info(f"Context Length: {result.context_length} characters")
             logger.info(f"Embedding Dimension: {result.embedding_dimension}")
-            log_separator()
             return 0
         else:
-            logger.error("✗ Enrichment failed")
+            logger.error("Enrichment failed")
             logger.error(f"Service: {result.service_id}")
             logger.error(f"Message: {result.message}")
             logger.error(f"Error: {result.error}")
-            log_separator()
             return 1
             
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        log_separator("ENRICHMENT FAILED")
         return 1
 
 

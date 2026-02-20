@@ -51,27 +51,24 @@ echo "[FOUND] Python script at: $PYTHON_SCRIPT"
 
 # Run enrichment script with arguments
 echo "[STARTING] Service enrichment processing..."
-echo "[DEBUG] examples env var (base64): $examples"
-echo "[DEBUG] entities env var (base64): $entities"
+
+# URL decode function using Python
+url_decode() {
+    python3 -c "import sys; from urllib.parse import unquote; print(unquote(sys.argv[1]))" "$1"
+}
 
 # Write JSON arrays to temporary files to avoid bash parsing issues
-# Arrays are base64 encoded from Ruuter, need to decode them
+# Arrays are URL-encoded from Ruuter, need to decode them
 TEMP_DIR=$(mktemp -d)
 EXAMPLES_FILE="$TEMP_DIR/examples.json"
 ENTITIES_FILE="$TEMP_DIR/entities.json"
 
 if [ -n "$examples" ]; then
-    echo "$examples" | base64 -d > "$EXAMPLES_FILE"
-    echo "[DEBUG] Decoded and written examples to: $EXAMPLES_FILE"
-    echo "[DEBUG] File content:"
-    cat "$EXAMPLES_FILE"
+    url_decode "$examples" > "$EXAMPLES_FILE"
 fi
 
 if [ -n "$entities" ]; then
-    echo "$entities" | base64 -d > "$ENTITIES_FILE"
-    echo "[DEBUG] Decoded and written entities to: $ENTITIES_FILE"
-    echo "[DEBUG] File content:"
-    cat "$ENTITIES_FILE"
+    url_decode "$entities" > "$ENTITIES_FILE"
 fi
 
 # Build Python command arguments array
@@ -89,16 +86,12 @@ PYTHON_ARGS=(
 [ -n "$examples" ] && PYTHON_ARGS+=(--examples-file "$EXAMPLES_FILE")
 [ -n "$entities" ] && PYTHON_ARGS+=(--entities-file "$ENTITIES_FILE")
 
-echo "[COMMAND] python3 -u ${PYTHON_ARGS[@]}"
-
 # Execute Python script directly (no eval to avoid parsing issues)
 python3 -u "${PYTHON_ARGS[@]}" 2>&1
 PYTHON_EXIT_CODE=$?
 
 # Cleanup temporary files
 rm -rf "$TEMP_DIR"
-
-echo "[DEBUG] Python execution completed with exit code: $PYTHON_EXIT_CODE"
 
 # Handle exit codes
 if [ $PYTHON_EXIT_CODE -eq 0 ]; then
