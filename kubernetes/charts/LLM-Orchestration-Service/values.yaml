@@ -1,0 +1,86 @@
+replicas: 1
+enabled: true
+
+images:
+  llmOrchestration:
+    repository: "ghcr.io/buerokratt/llm-orchestration-service"  # Update with actual llm-orchestration image repository
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+
+release_name: "llm-orchestration-service"
+
+service:
+  type: ClusterIP
+  port: 8100
+  targetPort: 8100
+
+app:
+  environment: "production"
+
+# Volume configurations
+volumes:
+  # Runtime-generated config volume (managed by InitContainer + PVC)
+  config:
+    enabled: true
+    mountPath: "/app/src/llm_config_module/config"
+    size: "1Gi"
+    accessMode: "ReadWriteOnce"
+    storageClass: ""
+  
+  # Runtime-generated optimization modules (managed by InitContainer + PVC)
+  optimization:
+    enabled: true
+    mountPath: "/app/src/optimization/optimized_modules"
+    size: "5Gi"
+    accessMode: "ReadWriteOnce"
+    storageClass: ""
+  
+  # Logs volume (persistent)
+  logs:
+    enabled: true
+    mountPath: "/app/logs"
+    size: "5Gi"
+    accessMode: "ReadWriteOnce"
+    storageClass: ""
+  
+  # Vault agent token volume (emptyDir - managed by sidecar)
+  vaultToken:
+    enabled: true
+    mountPath: "/agent/out"
+
+# InitContainer configuration for runtime volume preparation
+initContainer:
+  enabled: true
+  image: 
+    repository:  "ghcr.io/buerokratt/llm-orchestration-service"  # Update with actual llm-orchestration image repository
+    tag: "latest"
+  # InitContainer will prepare the runtime volumes
+  prepareVolumes: true
+
+env:
+  ENVIRONMENT: "production"
+
+vault:
+  enabled: true
+  addr: "http://vault:8200"
+  tokenPath: "/agent/out/token"
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+healthcheck:
+  enabled: false
+  initialDelaySeconds: 40
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+  successThreshold: 1
+  # LLM orchestration health endpoint
+  httpPath: "/health"
+  # Additional readiness checks
+  readinessPath: "/ready"
