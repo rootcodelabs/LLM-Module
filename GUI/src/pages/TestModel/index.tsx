@@ -3,6 +3,8 @@ import { Button, FormSelect, FormTextarea, Collapsible } from 'components';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
 import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './TestLLM.scss';
 import { useDialog } from 'hooks/useDialog';
 import { fetchLLMConnectionsPaginated, LegacyLLMConnectionFilters } from 'services/llmConnections';
@@ -139,7 +141,9 @@ const TestLLM: FC = () => {
               <div className="result-item">
                 <strong>Response:</strong>
                 <div className="response-content">
-                  {inferenceResult.content}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {inferenceResult.content}
+                  </ReactMarkdown>
                 </div>
               </div>
 
@@ -155,7 +159,9 @@ const TestLLM: FC = () => {
                               <strong>Rank {contextItem.rank}</strong>
                             </div>
                             <div className="context-content">
-                              {contextItem.chunkRetrieved}
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {contextItem.chunkRetrieved}
+                              </ReactMarkdown>
                             </div>
                           </div>
                         ))}

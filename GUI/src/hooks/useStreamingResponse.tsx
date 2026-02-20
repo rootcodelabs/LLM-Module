@@ -1,6 +1,19 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
+const getNotificationNodeUrl = (): string => {
+  const value = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
+  if (!value) {
+    throw new Error(
+      'Environment variable REACT_APP_NOTIFICATION_NODE_URL is not defined. ' +
+        'Please set it to the base URL of the notification service to enable streaming responses.'
+    );
+  }
+  return value;
+};
+const notificationNodeUrl = getNotificationNodeUrl();
+console.log(notificationNodeUrl);
+
 interface StreamingOptions {
   authorId: string;
   conversationHistory: Array<{ authorRole: string; message: string; timestamp: string }>;
@@ -50,7 +63,7 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
 
       try {
         // Step 1: Open SSE connection FIRST
-        const sseUrl = `https://est-rag-rtc.rootcode.software/notifications-server/sse/stream/${channelId}`;
+        const sseUrl = `${notificationNodeUrl}/sse/stream/${channelId}`;
         console.log('[SSE] Connecting to:', sseUrl);
 
         const eventSource = new EventSource(sseUrl);
@@ -102,7 +115,7 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Step 3: POST to trigger streaming
-        const postUrl = `https://est-rag-rtc.rootcode.software/notifications-server/channels/${channelId}/orchestrate/stream`;
+        const postUrl = `${notificationNodeUrl}/channels/${channelId}/orchestrate/stream`;
         console.log('[API] Triggering stream:', postUrl);
 
         await axios.post(postUrl, {

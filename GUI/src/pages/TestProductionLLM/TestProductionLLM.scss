@@ -77,6 +77,34 @@
         border-radius: 18px 18px 18px 4px;
       }
     }
+
+    &--error {
+      .test-production-llm__message-content {
+        border-color: #f44336;
+        background-color: #ffebee;
+      }
+    }
+  }
+
+  &__message-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #ffcdd2;
+    font-size: 0.85rem;
+    color: #c62828;
+  }
+
+  &__message-error-icon {
+    flex-shrink: 0;
+    font-size: 1rem;
+  }
+
+  &__message-error-text {
+    flex: 1;
+    line-height: 1.3;
   }
 
   &__message-content {
