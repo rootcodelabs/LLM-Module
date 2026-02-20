@@ -9,6 +9,7 @@ datasets
 logs/
 data_sets
 vault/agent-out
+.vscode/
 
 # RSA Private Keys - DO NOT COMMIT
 vault/keys/rsa_private_key.pem

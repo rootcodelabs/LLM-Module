@@ -9,35 +9,16 @@ from tool_classifier.base_workflow import BaseWorkflow
 
 class ContextWorkflowExecutor(BaseWorkflow):
     """
-    Handles queries answerable from conversation history or greetings (Layer 2).
+    Handles greetings and conversation history queries (Layer 2).
 
-    This workflow handles two types of queries:
-    1. Greetings and conversational pleasantries
-       - "Hello", "Good morning", "Thanks", "Goodbye"
-    2. Queries referencing conversation history
-       - "What did you say earlier?"
-       - "Can you repeat that?"
-       - "What was the rate you mentioned?"
+    Detects:
+    - Greetings: "Hello", "Thanks", "Goodbye"
+    - History references: "What did you say earlier?", "Can you repeat that?"
 
-    Uses LLM-based detection (no regex patterns) for:
-    - Semantic greeting detection (multilingual)
-    - Context reference detection
-    - Answer extraction from conversation history
+    Uses LLM for semantic detection (multilingual), no regex patterns.
 
-    Examples:
-    - "Tere!" → Friendly greeting response
-    - "Hello" → "Hello! How can I help you?"
-    - "What was the rate?" (history: "Rate is 1.08") → "The rate was 1.08"
-
-    Implementation Status: SKELETON
-    Returns None (triggers fallback to RAG workflow)
-
-    TODO - Full Implementation (Separate Task):
-    - Greeting detection using LLM
-    - Context availability check using LLM
-    - Answer extraction from conversation history
-    - Output guardrails for context-based responses
-    - Multilingual support (Estonian, English)
+    Status: SKELETON - Returns None (fallback to RAG)
+    TODO: Implement greeting/context detection, answer extraction, guardrails
     """
 
     def __init__(self, llm_manager: Any):
@@ -58,32 +39,8 @@ class ContextWorkflowExecutor(BaseWorkflow):
         """
         Execute context workflow in non-streaming mode.
 
-        TODO: Implement context workflow logic:
-        1. Check if query is a greeting using LLM
-           - If yes: Generate appropriate greeting response
-        2. If not greeting, check conversation history:
-           - Get recent history (last 10 turns)
-           - Call LLM to check if query can be answered from history
-           - If yes: Extract answer from history
-        3. Validate answer with output guardrails
-        4. Return OrchestrationResponse with context-based answer
-
-        LLM Prompt for Context Check:
-        ```
-        Conversation History:
-        1. User: What's the exchange rate?
-        2. Bot: EUR/USD rate is 1.08
-        3. User: Thanks
-
-        Current Query: "What was the rate?"
-
-        Can this be answered from history? If yes, provide answer.
-        ```
-
-        Failure scenarios:
-        - Not a greeting and no conversation history → return None
-        - Cannot answer from history → return None (fallback to RAG)
-        - Output guardrails blocked → return None or violation message
+        TODO: Check greeting (LLM) → generate response, OR check history (last 10 turns)
+        → extract answer → validate with guardrails. Return None if cannot answer.
 
         Args:
             request: Orchestration request with user query and history
@@ -109,35 +66,8 @@ class ContextWorkflowExecutor(BaseWorkflow):
         """
         Execute context workflow in streaming mode.
 
-        TODO: Implement context workflow streaming:
-        1. Detect greeting or check conversation history (same as non-streaming)
-        2. Get complete answer from history or generate greeting response
-        3. Validate with output guardrails (validation-first)
-        4. If blocked: yield violation message + END
-        5. If allowed: chunk answer and stream token-by-token
-        6. Simulate streaming for consistent UX with RAG
-
-        Streaming approach (validation-first):
-        ```python
-        # Get complete context-based answer
-        context_result = await analyze_context(query, history)
-
-        if not context_result.can_answer:
-            return None  # Fallback to RAG
-
-        # Validate BEFORE streaming
-        is_safe = await guardrails.check_output_async(context_result.answer)
-        if not is_safe:
-            yield format_sse(chatId, VIOLATION_MESSAGE)
-            yield format_sse(chatId, "END")
-            return
-
-        # Stream validated answer
-        for chunk in split_into_tokens(context_result.answer, chunk_size=5):
-            yield format_sse(chatId, chunk)
-            await asyncio.sleep(0.01)
-        yield format_sse(chatId, "END")
-        ```
+        TODO: Get answer (greeting/history) → validate BEFORE streaming → chunk and
+        yield as SSE. Return None if cannot answer.
 
         Args:
             request: Orchestration request with user query and history

@@ -1,153 +1,169 @@
-import { FC, useState, useRef, useEffect } from 'react';
+import { FC, useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, FormTextarea, Section } from 'components';
-import { productionInference, ProductionInferenceRequest } from 'services/inference';
+import { Button, FormTextarea } from 'components';
 import { useToast } from 'hooks/useToast';
+import { useStreamingResponse } from 'hooks/useStreamingResponse';
 import './TestProductionLLM.scss';
-
+import MessageContent from 'components/MessageContent';
 interface Message {
   id: string;
   content: string;
   isUser: boolean;
   timestamp: string;
+  hasError?: boolean;
+  errorMessage?: string;
 }
 
 const TestProductionLLM: FC = () => {
   const { t } = useTranslation();
   const toast = useToast();
-  const [message, setMessage] = useState<string>('');
+  const [inputMessage, setInputMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // Generate a unique channel ID for this session
+  const channelId = useMemo(() => `channel-${Math.random().toString(36).substring(2, 15)}`, []);
+  const { startStreaming, stopStreaming, isStreaming } = useStreamingResponse(channelId);
 
+  // Auto-scroll to bottom
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Cleanup incomplete messages on unmount if streaming is active
+  useEffect(() => {
+    return () => {
+      if (isStreaming) {
+        stopStreaming();
+        // Remove incomplete bot messages on unmount
+        setMessages(prev => prev.filter(msg => msg.isUser || !msg.content.trim() === false));
+      }
+    };
+  }, [isStreaming, stopStreaming]);
+
   const handleSendMessage = async () => {
-    if (!message.trim()) {
+    if (!inputMessage.trim()) {
       toast.open({
         type: 'warning',
-        title: t('warningTitle'),
-        message: t('emptyMessageWarning'),
+        title: t('testProductionLLM.warningTitle'),
+        message: t('testProductionLLM.emptyMessageWarning'),
       });
       return;
     }
 
+    const userMessageText = inputMessage.trim();
+    
+    // Add user message
     const userMessage: Message = {
       id: `user-${Date.now()}`,
-      content: message.trim(),
+      content: userMessageText,
       isUser: true,
       timestamp: new Date().toISOString(),
     };
 
-    // Add user message to chat
     setMessages(prev => [...prev, userMessage]);
-    setMessage('');
+    setInputMessage('');
     setIsLoading(true);
 
-    try {
-      // Hardcoded values as requested
-      const request: ProductionInferenceRequest = {
-        chatId: 'test-chat-001',
-        message: userMessage.content,
-        authorId: 'test-author-001', 
-        conversationHistory: messages.map(msg => ({
-          authorRole: msg.isUser ? 'user' : 'bot',
-          message: msg.content,
-          timestamp: msg.timestamp,
-        })),
-        url: 'https://test-url.example.com',
-      };
+    // Create bot message ID
+    const botMessageId = `bot-${Date.now()}`;
 
-      let response;
-      let attemptCount = 0;
-      const maxAttempts = 2;
+    // Prepare conversation history (exclude the current user message)
+    const conversationHistory = messages.map(msg => ({
+      authorRole: msg.isUser ? 'user' : 'bot',
+      message: msg.content,
+      timestamp: msg.timestamp,
+    }));
 
-      // Retry logic
-      while (attemptCount < maxAttempts) {
-        try {
-          attemptCount++;
-          console.log(`Production Inference Attempt ${attemptCount}/${maxAttempts}`);
-          response = await productionInference(request);
-          
-          // If we get a successful response, break out of retry loop
-          if (!response.status || response.status < 400) {
-            break;
-          }
-          
-          // If first attempt failed with error status, retry once more
-          if (attemptCount < maxAttempts && response.status >= 400) {
-            console.log('Retrying due to error status...');
-            continue;
-          }
-        } catch (err) {
-          // If first attempt threw an error, retry once more
-          if (attemptCount < maxAttempts) {
-            console.log('Retrying due to exception...');
-            continue;
-          }
-          throw err; // Re-throw on final attempt
-        }
-      }
+    const streamingOptions = {
+      authorId: 'test-user-456',
+      conversationHistory,
+      url: 'opensearch-dashboard-test',
+    };
 
-      console.log('Production Inference Response:', response);
-
-      // Create bot response message
-      let botContent = '';
-      let botMessageType: 'success' | 'error' = 'success';
-
-      if (response.status && response.status >= 400) {
-        // Error response
-        botContent = response.content || 'An error occurred while processing your request.';
-        botMessageType = 'error';
-      } else {
-        // Success response
-        botContent = response?.response?.content || 'Response received successfully.';
-        
-        if (response.questionOutOfLlmScope) {
-          botContent += ' (Note: This question appears to be outside the LLM scope)';
-        }
-      }
-
-      const botMessage: Message = {
-        id: `bot-${Date.now()}`,
-        content: botContent,
-        isUser: false,
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, botMessage]);
-
-      // Show toast notification
-      // toast.open({
-      //   type: botMessageType,
-      //   title: t('errorOccurred'),
-      //   message: t('errorMessage'),
-      // });
-
-    } catch (error) {
-      console.error('Error sending message:', error);
+    // Callbacks for streaming
+    const onToken = (token: string) => {
+      console.log('[Component] Received token:', token);
       
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        content: 'Failed to send message. Please check your connection and try again.',
-        isUser: false,
-        timestamp: new Date().toISOString(),
-      };
+      setMessages(prev => {
+        // Find the bot message
+        const botMsgIndex = prev.findIndex(msg => msg.id === botMessageId);
+        
+        if (botMsgIndex === -1) {
+          // First token - add the bot message
+          console.log('[Component] Adding bot message with first token');
+          return [
+            ...prev,
+            {
+              id: botMessageId,
+              content: token,
+              isUser: false,
+              timestamp: new Date().toISOString(),
+            }
+          ];
+        } else {
+          // Append token to existing message
+          console.log('[Component] Appending token to existing message');
+          const updated = [...prev];
+          updated[botMsgIndex] = {
+            ...updated[botMsgIndex],
+            content: updated[botMsgIndex].content + token,
+          };
+          return updated;
+        }
+      });
+    };
 
-      setMessages(prev => [...prev, errorMessage]);
+    const onComplete = () => {
+      console.log('[Component] Stream completed');
+      // Always reset loading state on completion
+      setIsLoading(false);
+    };
 
+    const onError = (error: string) => {
+      console.error('[Component] Stream error:', error);
+      // Always reset loading state on error
+      setIsLoading(false);
+      
+      // Handle incomplete bot message
+      setMessages(prev => {
+        const botMsgIndex = prev.findIndex(msg => msg.id === botMessageId);
+        
+        if (botMsgIndex !== -1) {
+          const botMessage = prev[botMsgIndex];
+          
+          // If the bot message has content, mark it as errored
+          if (botMessage.content.trim()) {
+            const updated = [...prev];
+            updated[botMsgIndex] = {
+              ...botMessage,
+              hasError: true,
+              errorMessage: error,
+            };
+            return updated;
+          } else {
+            // If no content, remove the empty bot message
+            return prev.filter(msg => msg.id !== botMessageId);
+          }
+        }
+        
+        return prev;
+      });
+      
       toast.open({
         type: 'error',
-        title: 'Connection Error',
-        message: 'Unable to connect to the production LLM service.',
+        title: t('testProductionLLM.streamingErrorTitle'),
+        message: error,
       });
-    } finally {
+    };
+
+    // Start streaming
+    try {
+      await startStreaming(userMessageText, streamingOptions, onToken, onComplete, onError);
+    } catch (error) {
+      console.error('[Component] Failed to start streaming:', error);
+      // Reset loading state if streaming fails to start
       setIsLoading(false);
     }
   };
@@ -161,10 +177,11 @@ const TestProductionLLM: FC = () => {
 
   const clearChat = () => {
     setMessages([]);
+    stopStreaming();
     toast.open({
       type: 'info',
-      title: 'Chat Cleared',
-      message: 'All messages have been cleared.',
+      title: t('testProductionLLM.chatClearedTitle'),
+      message: t('testProductionLLM.chatClearedMessage'),
     });
   };
 
@@ -172,9 +189,9 @@ const TestProductionLLM: FC = () => {
     <div>
       <div className="test-production-llm">
         <div className="test-production-llm__header">
-          <h1>{t('Test Production LLM')}</h1>
+          <h1>{t('testProductionLLM.title')}</h1>
           <Button onClick={clearChat} appearance="secondary">
-            {t('Clear Chat')}
+            {t('testProductionLLM.clearChat')}
           </Button>
         </div>
 
@@ -182,8 +199,8 @@ const TestProductionLLM: FC = () => {
           <div className="test-production-llm__messages">
             {messages.length === 0 && (
               <div className="test-production-llm__welcome">
-                <p>Welcome to Production LLM Testing</p>
-                <p>Start a conversation by typing a message below.</p>
+                <p>{t('testProductionLLM.welcomeTitle')}</p>
+                <p>{t('testProductionLLM.welcomeSubtitle')}</p>
               </div>
             )}
             
@@ -192,10 +209,21 @@ const TestProductionLLM: FC = () => {
                 key={msg.id}
                 className={`test-production-llm__message ${
                   msg.isUser ? 'test-production-llm__message--user' : 'test-production-llm__message--bot'
+                } ${
+                  msg.hasError ? 'test-production-llm__message--error' : ''
                 }`}
               >
                 <div className="test-production-llm__message-content">
-                  {msg.content}
+                  <MessageContent content={msg.content} />
+                  {msg.hasError && (
+                    <div className="test-production-llm__message-error">
+                      <span className="test-production-llm__message-error-icon">⚠️</span>
+                      <span className="test-production-llm__message-error-text">
+                        {t('testProductionLLM.incompleteMessageError', { defaultValue: 'This message is incomplete due to an error' })}
+                        {msg.errorMessage && `: ${msg.errorMessage}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="test-production-llm__message-timestamp">
                   {new Date(msg.timestamp).toLocaleTimeString()}
@@ -220,22 +248,22 @@ const TestProductionLLM: FC = () => {
 
           <div className="test-production-llm__input-area">
             <FormTextarea
-              label="Message"
+              label={t('testProductionLLM.messageLabel')}
               name="message"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
+              placeholder={t('testProductionLLM.messagePlaceholder')??""}
               hideLabel
               maxRows={4}
-              disabled={isLoading}
+              disabled={isLoading || isStreaming}
             />
             <Button
               onClick={handleSendMessage}
-              disabled={isLoading || !message.trim()}
+              disabled={isLoading || isStreaming || !inputMessage.trim()}
               className="test-production-llm__send-button"
             >
-              {isLoading ? 'Sending...' : 'Send'}
+              {isLoading || isStreaming ? t('testProductionLLM.sendingButton') : t('testProductionLLM.sendButton')}
             </Button>
           </div>
         </div>
