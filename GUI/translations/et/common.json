@@ -415,6 +415,21 @@
       "azure": "Azure OpenAI"
     }
   },
+  "testProductionLLM": {
+    "title": "Testi Tootmise LLM",
+    "clearChat": "Tühjenda Vestlus",
+    "welcomeTitle": "Tere tulemast Tootmise LLM Testimisse",
+    "welcomeSubtitle": "Alusta vestlust, kirjutades allpool sõnumi.",
+    "messageLabel": "Sõnum",
+    "messagePlaceholder": "Kirjuta oma sõnum siia... (Vajuta Enter saatmiseks, Shift+Enter uue rea jaoks)",
+    "sendButton": "Saada",
+    "sendingButton": "Saatmine...",
+    "warningTitle": "Hoiatus",
+    "emptyMessageWarning": "Palun sisesta sõnum",
+    "streamingErrorTitle": "Voogedastuse Viga",
+    "chatClearedTitle": "Vestlus Tühjendatud",
+    "chatClearedMessage": "Kõik sõnumid on tühjendatud."
+  },
   "promptConfigurations": {
     "title": "Viiba Seaded",
     "subtitle": "Seadista ja halda oma viiba malle",
