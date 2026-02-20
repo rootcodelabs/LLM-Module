@@ -110,11 +110,12 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
         # Step 4: Store in Qdrant
         logger.info("Step 3: Storing in Qdrant")
         qdrant = QdrantManager()
-        qdrant.connect()
-        qdrant.ensure_collection()
-
-        success = qdrant.upsert_service(enriched_service)
-        qdrant.close()
+        try:
+            qdrant.connect()
+            qdrant.ensure_collection()
+            success = qdrant.upsert_service(enriched_service)
+        finally:
+            qdrant.close()
 
         if success:
             return EnrichmentResult(
