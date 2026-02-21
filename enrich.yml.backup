@@ -1,0 +1,157 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Enrich service data and index in Qdrant"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+  allowlist:
+    body:
+      - field: service_id
+        type: string
+        description: "Unique service identifier"
+      - field: name
+        type: string
+        description: "Service name"
+      - field: description
+        type: string
+        description: "Service description"
+      - field: examples
+        type: array
+        description: "Example queries"
+      - field: entities
+        type: array
+        description: "Expected entity names"
+      - field: ruuter_type
+        type: string
+        description: "HTTP method (GET/POST)"
+      - field: current_state
+        type: string
+        description: "Service state (active/inactive/draft)"
+      - field: is_common
+        type: boolean
+        description: "Is common service"
+
+validate_request:
+  assign:
+    service_id: ${incoming.body.service_id}
+    service_name: ${incoming.body.name}
+    service_description: ${incoming.body.description}
+  next: check_required_fields
+
+check_required_fields:
+  switch:
+    - condition: ${!service_id}
+      next: assign_missing_service_id_error
+    - condition: ${!service_name}
+      next: assign_missing_name_error
+    - condition: ${!service_description}
+      next: assign_missing_description_error
+  next: prepare_service_data
+
+assign_missing_service_id_error:
+  assign:
+    error_response: {
+      success: false,
+      error: "MISSING_SERVICE_ID",
+      message: "service_id is required"
+    }
+  next: return_missing_service_id
+
+return_missing_service_id:
+  status: 400
+  return: ${error_response}
+  next: end
+
+assign_missing_name_error:
+  assign:
+    error_response: {
+      success: false,
+      error: "MISSING_NAME",
+      message: "name is required"
+    }
+  next: return_missing_name
+
+return_missing_name:
+  status: 400
+  return: ${error_response}
+  next: end
+
+assign_missing_description_error:
+  assign:
+    error_response: {
+      success: false,
+      error: "MISSING_DESCRIPTION",
+      message: "description is required"
+    }
+  next: return_missing_description
+
+return_missing_description:
+  status: 400
+  return: ${error_response}
+  next: end
+
+prepare_service_data:
+  assign:
+    service_data: {
+      service_id: ${service_id},
+      name: ${service_name},
+      description: ${service_description},
+      examples: ${incoming.body.examples || []},
+      entities: ${incoming.body.entities || []},
+      ruuter_type: ${incoming.body.ruuter_type || 'GET'},
+      current_state: ${incoming.body.current_state || 'draft'},
+      is_common: ${incoming.body.is_common || false}
+    }
+  next: stringify_service_data
+
+stringify_service_data:
+  assign:
+    service_json: ${JSON.stringify(service_data)}
+  next: execute_enrichment
+
+execute_enrichment:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_CRON_MANAGER]/execute/service_enrichment/enrich_and_index"
+    query:
+      service_id: ${service_id}
+      service_data: ${service_json}
+  result: enrichment_result
+  next: assign_success_response
+  on_error: handle_enrichment_error
+
+handle_enrichment_error:
+  log: "ERROR: Service enrichment failed - ${enrichment_result.error || 'Unknown error'}"
+  next: assign_error_response
+
+assign_success_response:
+  assign:
+    success_response: {
+      success: true,
+      service_id: ${service_id},
+      message: "Service enriched and indexed successfully",
+      enrichment_details: ${enrichment_result.response.body}
+    }
+  next: return_success
+
+assign_error_response:
+  assign:
+    error_response: {
+      success: false,
+      error: "ENRICHMENT_FAILED",
+      message: "Failed to enrich and index service",
+      details: ${enrichment_result.response.body || enrichment_result.error}
+    }
+  next: return_enrichment_error
+
+return_success:
+  status: 200
+  return: ${success_response}
+  next: end
+
+return_enrichment_error:
+  status: 500
+  return: ${error_response}
+  next: end
