@@ -6,8 +6,8 @@ from loguru import logger
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
-from data_enrichment.constants import EnrichmentConstants
-from data_enrichment.models import EnrichedService
+from intent_data_enrichment.constants import EnrichmentConstants
+from intent_data_enrichment.models import EnrichedService
 
 # Error messages
 _CLIENT_NOT_INITIALIZED = "Qdrant client not initialized"
@@ -70,21 +70,27 @@ class QdrantManager:
                     existing_vector_size = vectors_config.size
 
                 if existing_vector_size is None:
-                    logger.warning(
-                        f"Could not determine vector size for '{self.collection_name}', recreating"
+                    logger.error(
+                        f"Collection '{self.collection_name}' exists but vector size cannot be determined"
                     )
-                    self.client.delete_collection(self.collection_name)
-                    self._create_collection()
+                    raise RuntimeError(
+                        f"Collection '{self.collection_name}' exists but vector size cannot be determined. "
+                        "This may indicate a Qdrant API issue or unexpected collection configuration. "
+                        "Manual intervention required: verify Qdrant health, inspect collection config, "
+                        "or manually delete the collection if recreating is intended."
+                    )
                 elif existing_vector_size != EnrichmentConstants.VECTOR_SIZE:
-                    logger.warning(
-                        f"Collection '{self.collection_name}' exists with wrong vector size: "
+                    logger.error(
+                        f"Collection '{self.collection_name}' has incompatible vector size: "
                         f"{existing_vector_size} (expected {EnrichmentConstants.VECTOR_SIZE})"
                     )
-                    logger.info(
-                        f"Deleting and recreating collection '{self.collection_name}'"
+                    raise RuntimeError(
+                        f"Collection '{self.collection_name}' has incompatible vector size "
+                        f"({existing_vector_size} vs expected {EnrichmentConstants.VECTOR_SIZE}). "
+                        "This prevents automatic deletion to avoid accidental data loss. "
+                        "To recreate the collection, manually delete it first using: "
+                        f"qdrant.client.delete_collection('{self.collection_name}') or via Qdrant UI/API."
                     )
-                    self.client.delete_collection(self.collection_name)
-                    self._create_collection()
                 else:
                     logger.info(
                         f"Collection '{self.collection_name}' already exists "
@@ -120,7 +126,8 @@ class QdrantManager:
         Upsert enriched service to Qdrant (update if exists, insert if new).
 
         Args:
-            enriched_service: Enric_CLIENT_NOT_INITIALIZED
+            enriched_service: EnrichedService instance containing the embedding and
+                associated metadata to upsert into Qdrant.
 
         Returns:
             True if successful, False otherwise
