@@ -74,8 +74,14 @@ execute_enrichment:
       current_state: ${service_current_state}
       is_common: ${service_is_common}
   result: enrichment_result
-  next: assign_success
   on_error: handle_cron_error
+  next: check_enrichment_status
+
+check_enrichment_status:
+  switch:
+    - condition: ${200 <= enrichment_result.response.statusCodeValue && enrichment_result.response.statusCodeValue < 300}
+      next: assign_success
+  next: assign_cron_failure
 
 handle_cron_error:
   log: "ERROR: Failed to queue enrichment job - ${enrichment_result.error || 'CronManager unreachable'}"

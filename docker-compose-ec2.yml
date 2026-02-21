@@ -179,7 +179,7 @@ services:
       - ./DSL/CronManager/DSL:/DSL
       - ./DSL/CronManager/script:/app/scripts
       - ./src/vector_indexer:/app/src/vector_indexer
-      - ./src/data_enrichment:/app/src/data_enrichment
+      - ./src/intent_data_enrichment:/app/src/intent_data_enrichment
       - ./src/utils/decrypt_vault_secrets.py:/app/src/utils/decrypt_vault_secrets.py:ro  # Decryption utility (read-only)
       - cron_data:/app/data
       - shared-volume:/app/shared  # Access to shared resources for cross-container coordination
@@ -188,7 +188,7 @@ services:
       - ./.env:/app/.env:ro
     environment:
       - server.port=9010
-      - PYTHONPATH=/app:/app/src/vector_indexer:/app/src/data_enrichment
+      - PYTHONPATH=/app:/app/src/vector_indexer:/app/src/intent_data_enrichment
       - VAULT_AGENT_URL=http://vault-agent-cron:8203
     ports:
       - 9010:8080

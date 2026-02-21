@@ -6,8 +6,8 @@ from typing import List, Optional
 from types import TracebackType
 from loguru import logger
 
-from data_enrichment.constants import EnrichmentConstants
-from data_enrichment.models import ServiceData
+from intent_data_enrichment.constants import EnrichmentConstants
+from intent_data_enrichment.models import ServiceData
 
 
 class LLMAPIClient:

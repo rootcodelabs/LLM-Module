@@ -12,9 +12,9 @@ import argparse
 import asyncio
 from loguru import logger
 
-from data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
-from data_enrichment.api_client import LLMAPIClient
-from data_enrichment.qdrant_manager import QdrantManager
+from intent_data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
+from intent_data_enrichment.api_client import LLMAPIClient
+from intent_data_enrichment.qdrant_manager import QdrantManager
 
 
 def parse_arguments() -> ServiceData:
@@ -110,11 +110,12 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
         # Step 4: Store in Qdrant
         logger.info("Step 3: Storing in Qdrant")
         qdrant = QdrantManager()
-        qdrant.connect()
-        qdrant.ensure_collection()
-
-        success = qdrant.upsert_service(enriched_service)
-        qdrant.close()
+        try:
+            qdrant.connect()
+            qdrant.ensure_collection()
+            success = qdrant.upsert_service(enriched_service)
+        finally:
+            qdrant.close()
 
         if success:
             return EnrichmentResult(
