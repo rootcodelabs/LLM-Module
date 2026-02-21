@@ -8,7 +8,7 @@ if [ -z "$service_id" ] || [ -z "$name" ] || [ -z "$description" ]; then
   exit 1
 fi
 
-PYTHON_SCRIPT="/app/src/data_enrichment/main_enrichment.py"
+PYTHON_SCRIPT="/app/src/intent_data_enrichment/main_enrichment.py"
 
 echo "[INFO] Service ID: $service_id"
 echo "[INFO] Service Name: $name"
@@ -42,7 +42,7 @@ echo "[PACKAGES] Installing required packages..."
 echo "[PACKAGES] All packages installed successfully"
 
 # Set Python path
-export PYTHONPATH="/app:/app/src:/app/src/data_enrichment:$PYTHONPATH"
+export PYTHONPATH="/app:/app/src:/app/src/intent_data_enrichment:$PYTHONPATH"
 
 # Verify Python script exists
 [ ! -f "$PYTHON_SCRIPT" ] && { echo "[ERROR] Python script not found at $PYTHON_SCRIPT"; exit 1; }
