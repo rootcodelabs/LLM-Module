@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides a technical deep dive into the HashiCorp Vault security architecture implemented in the RAG-Module. The design follows a defense-in-depth strategy with multiple security layers to protect sensitive credentials used by LLM providers (AWS Bedrock, Azure OpenAI) and embedding services.
+This document provides a technical deep dive into the HashiCorp Vault security architecture implemented in the LLM-Module. The design follows a defense-in-depth strategy with multiple security layers to protect sensitive credentials used by LLM providers (AWS Bedrock, Azure OpenAI) and embedding services.
 
 ### Security Principles
 
@@ -1317,4 +1317,4 @@ The Vault security architecture implements industry best practices for secrets m
  **Audit Capability**: Full request logging available
  **Defense in Depth**: Multiple security layers prevent single point of failure
 
-This architecture provides a secure foundation for managing sensitive credentials in the RAG-Module while maintaining operational simplicity and developer productivity.
+This architecture provides a secure foundation for managing sensitive credentials in the LLM-Module while maintaining operational simplicity and developer productivity.

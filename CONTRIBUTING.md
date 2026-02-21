@@ -11,7 +11,7 @@ This project uses **uv** for Python packaging and virtual environments. Python i
 Clone the repository and navigate to the project directory.
 
 ```bash
-cd RAG-Module
+cd LLM-Module
 ```
 
 ### Step 2: Install uv

@@ -40,7 +40,7 @@ spec:
             - sh
             - -c
             - |
-                git clone --single-branch --depth 1 --branch wip  https://github.com/rootcodelabs/RAG-Module /tmp/rag &&
+                git clone --single-branch --depth 1 --branch wip  https://github.com/rootcodelabs/LLM-Module /tmp/rag &&
 
                 mkdir -p /app/src/vector_indexer &&
                 mkdir -p /app/scripts &&

@@ -1,6 +1,6 @@
 def main():
     ""
-    print("Hello from rag-module!")
+    print("Hello from llm-module!")
 
 
 if __name__ == "__main__":
