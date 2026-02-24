@@ -8,7 +8,7 @@
 QDRANT_HOST = "qdrant"
 """Qdrant server hostname."""
 
-QDRANT_PORT = int("6333")
+QDRANT_PORT = 6333
 """Qdrant server port."""
 
 QDRANT_TIMEOUT = 10.0
@@ -38,7 +38,6 @@ RUUTER_BASE_URL = "http://ruuter-private:8086"
 """Base URL for Ruuter private service endpoints."""
 
 RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
-
 """Public Ruuter endpoint for RAG search service discovery."""
 
 SERVICE_CALL_TIMEOUT = 10

@@ -440,8 +440,9 @@ def _transform_entities_to_array(
 ### Endpoint Construction
 
 ```python
-endpoint_url = f"{RUUTER_BASE_URL}{service_metadata['ruuter_url']}"
-# Example: "http://ruuter:8080/currency/convert"
+endpoint_url = f"{RUUTER_BASE_URL}/services/active{service_metadata['service_name']}"
+# Example: "http://ruuter:8080/services/active/currency-conversion"
+# (Note: service_name from service metadata, e.g., "/currency-conversion")
 ```
 
 ### Payload Construction (Planned)
