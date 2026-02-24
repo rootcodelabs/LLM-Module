@@ -55,6 +55,7 @@ class ToolClassifier:
         # Initialize workflow executors
         self.service_workflow = ServiceWorkflowExecutor(
             llm_manager=llm_manager,
+            orchestration_service=orchestration_service,
         )
         self.context_workflow = ContextWorkflowExecutor(
             llm_manager=llm_manager,
@@ -75,10 +76,11 @@ class ToolClassifier:
         """
         Classify a user query to determine which workflow should handle it.
 
-        Implements layer-wise classification logic:
-        1. Check if SERVICE workflow can handle (intent detection)
-        2. Check if CONTEXT workflow can handle (greeting/history check)
-        3. Default to RAG workflow (knowledge retrieval)
+        Implements layer-wise classification logic with fallback chain:
+        1. SERVICE workflow (external API calls)
+        2. CONTEXT workflow (greetings/conversation history)
+        3. RAG workflow (knowledge base retrieval)
+        4. OOD workflow (out-of-domain)
 
         Args:
             query: User's query string
@@ -87,60 +89,15 @@ class ToolClassifier:
 
         Returns:
             ClassificationResult indicating which workflow to use
-
-        Note:
-            In this skeleton, always defaults to RAG. Full implementation
-            will add Layer 1 and Layer 2 logic in separate tasks.
         """
         logger.info(f"Classifying query: {query[:100]}...")
 
-        # TODO: LAYER 1 - SERVICE WORKFLOW DETECTION
-        # Implementation task: Service workflow implementation
-        # Logic:
-        # 1. Count active services in database
-        # 2. If count > 50: Use Qdrant semantic search for top 20 services
-        # 3. If count <= 50: Use all services
-        # 4. Call LLM to detect intent and extract entities
-        # 5. If intent detected and service valid: return SERVICE classification
-        # Example:
-        #   service_check = await self._check_service_layer(query, language)
-        #   if service_check.can_handle:
-        #       return ClassificationResult(
-        #           workflow=WorkflowType.SERVICE,
-        #           confidence=service_check.confidence,
-        #           metadata=service_check.metadata,
-        #           reasoning="Service intent detected"
-        #       )
-
-        # TODO: LAYER 2 - CONTEXT WORKFLOW DETECTION
-        # Implementation task: Context workflow implementation
-        # Logic:
-        # 1. Check if query is a greeting using LLM
-        # 2. If greeting: return CONTEXT classification
-        # 3. If conversation_history exists: Check if query references history
-        # 4. Call LLM to determine if history contains answer
-        # 5. If can answer from history: return CONTEXT classification
-        # Example:
-        #   context_check = await self._check_context_layer(
-        #       query, conversation_history, language
-        #   )
-        #   if context_check.can_handle:
-        #       return ClassificationResult(
-        #           workflow=WorkflowType.CONTEXT,
-        #           confidence=context_check.confidence,
-        #           metadata=context_check.metadata,
-        #           reasoning="Greeting or answerable from history"
-        #       )
-
-        # LAYER 3 - RAG WORKFLOW (DEFAULT)
-        # Always defaults to RAG for now
-        # RAG workflow will handle the query or return OOD if no chunks found
-        logger.info("Defaulting to RAG workflow (Layers 1-2 not implemented)")
+        logger.info("Starting layer-wise fallback: ")
         return ClassificationResult(
-            workflow=WorkflowType.RAG,
+            workflow=WorkflowType.SERVICE,
             confidence=1.0,
             metadata={},
-            reasoning="Default to RAG workflow (service and context layers not implemented)",
+            reasoning="Start with Service workflow - will cascade through layers",
         )
 
     @overload
@@ -235,10 +192,7 @@ class ToolClassifier:
         """
         Execute workflow with fallback to subsequent layers (non-streaming).
 
-        TODO: Implement full fallback chain logic
-        Currently just executes the primary workflow.
-
-        Full implementation should:
+        Implementation:
         1. Try primary workflow
         2. If returns None, try next layer in WORKFLOW_LAYER_ORDER
         3. Continue until workflow returns non-None result
@@ -256,19 +210,38 @@ class ToolClassifier:
                 logger.info(f"[{chat_id}] {workflow_name} handled successfully")
                 return result
 
-            # TODO: Implement fallback to next layer
-            # For now, if workflow returns None, call RAG as fallback
-            logger.warning(
+            # Implement layer-wise fallback chain
+            logger.info(
                 f"[{chat_id}] {workflow_name} returned None, "
-                f"falling back to RAG workflow"
+                f"trying next layer in fallback chain"
             )
-            rag_result = await self.rag_workflow.execute_async(request, {})
-            if rag_result is not None:
-                return rag_result
-            else:
-                # This should never happen since RAG always returns a result
-                # But handle gracefully
-                raise RuntimeError("RAG workflow returned None unexpectedly")
+
+            # Get the layer order starting from current layer
+            from tool_classifier.enums import WORKFLOW_LAYER_ORDER
+
+            current_index = WORKFLOW_LAYER_ORDER.index(start_layer)
+            remaining_layers = WORKFLOW_LAYER_ORDER[current_index + 1 :]
+
+            # Try each subsequent layer in order
+            for next_layer in remaining_layers:
+                next_workflow = self._get_workflow_executor(next_layer)
+                next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
+
+                logger.info(
+                    f"[{chat_id}] Falling back to {next_name} (Layer {current_index + 2})"
+                )
+
+                result = await next_workflow.execute_async(request, {})
+
+                if result is not None:
+                    logger.info(f"[{chat_id}] {next_name} handled successfully")
+                    return result
+
+                logger.info(f"[{chat_id}] {next_name} returned None, continuing...")
+                current_index += 1
+
+            # This should never happen since RAG/OOD should always return result
+            raise RuntimeError("All workflows returned None (unexpected)")
 
         except Exception as e:
             logger.error(f"[{chat_id}] Error executing {workflow_name}: {e}")
@@ -290,10 +263,7 @@ class ToolClassifier:
         """
         Execute workflow with fallback to subsequent layers (streaming).
 
-        TODO: Implement full fallback chain logic
-        Currently just executes the primary workflow.
-
-        Full implementation should:
+        Implementation:
         1. Try primary workflow
         2. If returns None, try next layer in WORKFLOW_LAYER_ORDER
         3. Stream from the first workflow that returns non-None
@@ -313,18 +283,41 @@ class ToolClassifier:
                     yield chunk
                 return
 
-            # TODO: Implement fallback to next layer
-            # For now, if workflow returns None, call RAG as fallback
-            logger.warning(
+            # Implement layer-wise fallback chain for streaming
+            logger.info(
                 f"[{chat_id}] {workflow_name} returned None, "
-                f"falling back to RAG workflow streaming"
+                f"trying next layer in fallback chain"
             )
-            streaming_result = await self.rag_workflow.execute_streaming(request, {})
-            if streaming_result is not None:
-                async for chunk in streaming_result:
-                    yield chunk
-            else:
-                raise RuntimeError("RAG workflow returned None unexpectedly")
+
+            # Get the layer order starting from current layer
+            from tool_classifier.enums import WORKFLOW_LAYER_ORDER
+
+            current_index = WORKFLOW_LAYER_ORDER.index(start_layer)
+            remaining_layers = WORKFLOW_LAYER_ORDER[current_index + 1 :]
+
+            # Try each subsequent layer in order
+            for next_layer in remaining_layers:
+                next_workflow = self._get_workflow_executor(next_layer)
+                next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
+
+                logger.info(
+                    f"[{chat_id}] Falling back to {next_name} streaming "
+                    f"(Layer {current_index + 2})"
+                )
+
+                result = await next_workflow.execute_streaming(request, {})
+
+                if result is not None:
+                    logger.info(f"[{chat_id}] {next_name} streaming started")
+                    async for chunk in result:
+                        yield chunk
+                    return
+
+                logger.info(f"[{chat_id}] {next_name} returned None, continuing...")
+                current_index += 1
+
+            # This should never happen
+            raise RuntimeError("All workflows returned None in streaming (unexpected)")
 
         except Exception as e:
             logger.error(f"[{chat_id}] Error executing {workflow_name} streaming: {e}")
