@@ -84,16 +84,6 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         """Initialize service workflow executor."""
         self.llm_manager = llm_manager
         self.orchestration_service = orchestration_service
-        self._qdrant_client: Optional[httpx.AsyncClient] = None
-
-    async def _get_qdrant_client(self) -> httpx.AsyncClient:
-        """Get or create Qdrant HTTP client (lazy initialization)."""
-        if self._qdrant_client is None:
-            qdrant_url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
-            self._qdrant_client = httpx.AsyncClient(
-                base_url=qdrant_url, timeout=QDRANT_TIMEOUT
-            )
-        return self._qdrant_client
 
     async def _semantic_search_services(
         self,
@@ -102,7 +92,11 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         chat_id: str,
         top_k: int = SEMANTIC_SEARCH_TOP_K,
     ) -> Optional[List[Dict[str, Any]]]:
-        """Search services using semantic search via Qdrant."""
+        """Search services using semantic search via Qdrant.
+
+        Creates a new httpx.AsyncClient per request to ensure proper resource cleanup.
+        This is safe and efficient since semantic search is infrequent (only when many services exist).
+        """
         if not self.orchestration_service:
             logger.error(
                 f"[{chat_id}] Semantic search unavailable: orchestration service not provided"
@@ -125,73 +119,76 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
             query_embedding = embeddings[0]
 
-            # Verify collection exists and has data
-            client = await self._get_qdrant_client()
+            # Create Qdrant client with proper resource cleanup via context manager
+            qdrant_url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
+            async with httpx.AsyncClient(
+                base_url=qdrant_url, timeout=QDRANT_TIMEOUT
+            ) as client:
+                # Verify collection exists and has data
+                try:
+                    collection_info = await client.get(
+                        f"/collections/{QDRANT_COLLECTION}"
+                    )
+                    if collection_info.status_code == 200:
+                        info = collection_info.json()
+                        points_count = info.get("result", {}).get("points_count", 0)
+                        if points_count == 0:
+                            logger.error(f"[{chat_id}] Collection is empty")
+                            return None
+                except Exception as e:
+                    logger.warning(f"[{chat_id}] Could not verify collection: {e}")
 
-            try:
-                collection_info = await client.get(f"/collections/{QDRANT_COLLECTION}")
-                if collection_info.status_code == 200:
-                    info = collection_info.json()
-                    points_count = info.get("result", {}).get("points_count", 0)
-                    if points_count == 0:
-                        logger.error(f"[{chat_id}] Collection is empty")
-                        return None
-            except Exception as e:
-                logger.warning(f"[{chat_id}] Could not verify collection: {e}")
-
-            # Search Qdrant collection
-            client = await self._get_qdrant_client()
-
-            search_payload = {
-                "vector": query_embedding,
-                "limit": top_k,
-                "score_threshold": SEMANTIC_SEARCH_THRESHOLD,
-                "with_payload": True,
-            }
-
-            response = await client.post(
-                f"/collections/{QDRANT_COLLECTION}/points/search",
-                json=search_payload,
-            )
-
-            if response.status_code != 200:
-                logger.error(
-                    f"[{chat_id}] Qdrant search failed: HTTP {response.status_code}"
-                )
-                return None
-
-            search_results = response.json()
-            points = search_results.get("result", [])
-
-            if len(points) == 0:
-                logger.warning(
-                    f"[{chat_id}] No services matched (threshold={SEMANTIC_SEARCH_THRESHOLD})"
-                )
-                return None
-
-            # Transform Qdrant results to service format
-            services: List[Dict[str, Any]] = []
-            for point in points:
-                payload = point.get("payload", {})
-                score = float(point.get("score", 0))
-
-                service = {
-                    "serviceId": payload.get("service_id"),
-                    "service_id": payload.get("service_id"),
-                    "name": payload.get("name"),
-                    "description": payload.get("description"),
-                    "examples": payload.get("examples", []),
-                    "entities": payload.get("entities", []),
-                    # Note: endpoint not stored in intent_collections,
-                    # will be resolved via database lookup if needed
-                    "similarity_score": score,
+                # Search Qdrant collection
+                search_payload = {
+                    "vector": query_embedding,
+                    "limit": top_k,
+                    "score_threshold": SEMANTIC_SEARCH_THRESHOLD,
+                    "with_payload": True,
                 }
-                services.append(service)
 
-            logger.info(
-                f"[{chat_id}] Found {len(services)} services via semantic search"
-            )
-            return services
+                response = await client.post(
+                    f"/collections/{QDRANT_COLLECTION}/points/search",
+                    json=search_payload,
+                )
+
+                if response.status_code != 200:
+                    logger.error(
+                        f"[{chat_id}] Qdrant search failed: HTTP {response.status_code}"
+                    )
+                    return None
+
+                search_results = response.json()
+                points = search_results.get("result", [])
+
+                if len(points) == 0:
+                    logger.warning(
+                        f"[{chat_id}] No services matched (threshold={SEMANTIC_SEARCH_THRESHOLD})"
+                    )
+                    return None
+
+                # Transform Qdrant results to service format
+                services: List[Dict[str, Any]] = []
+                for point in points:
+                    payload = point.get("payload", {})
+                    score = float(point.get("score", 0))
+
+                    service = {
+                        "serviceId": payload.get("service_id"),
+                        "service_id": payload.get("service_id"),
+                        "name": payload.get("name"),
+                        "description": payload.get("description"),
+                        "examples": payload.get("examples", []),
+                        "entities": payload.get("entities", []),
+                        # Note: endpoint not stored in intent_collections,
+                        # will be resolved via database lookup if needed
+                        "similarity_score": score,
+                    }
+                    services.append(service)
+
+                logger.info(
+                    f"[{chat_id}] Found {len(services)} services via semantic search"
+                )
+                return services
 
         except Exception as e:
             logger.error(f"[{chat_id}] Semantic search failed: {e}", exc_info=True)
@@ -290,6 +287,53 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             f"[{chat_id}] Service validation failed: '{matched_service_id}' not found"
         )
         return None
+
+    async def _process_intent_detection(
+        self,
+        services: List[Dict[str, Any]],
+        request: OrchestrationRequest,
+        chat_id: str,
+        context: Dict[str, Any],
+        costs_dict: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Detect intent, validate service, and populate context.
+
+        This helper method encapsulates the common logic of:
+        1. Calling intent detection (LLM)
+        2. Tracking costs
+        3. Validating matched service
+        4. Populating context with service metadata
+
+        Args:
+            services: List of services to match against
+            request: Orchestration request
+            chat_id: Chat ID for logging
+            context: Context dict to populate with results
+            costs_dict: Dictionary to track LLM costs
+        """
+        intent_result, intent_usage = await self._detect_service_intent(
+            user_query=request.message,
+            services=services,
+            conversation_history=request.conversationHistory,
+            chat_id=chat_id,
+        )
+        costs_dict["intent_detection"] = intent_usage
+
+        if intent_result and intent_result.get("matched_service_id"):
+            service_id = intent_result["matched_service_id"]
+            logger.info(f"[{chat_id}] Matched: {service_id}")
+
+            validated_service = self._validate_detected_service(
+                matched_service_id=service_id,
+                services=services,
+                chat_id=chat_id,
+            )
+
+            if validated_service:
+                context["service_id"] = service_id
+                context["confidence"] = intent_result.get("confidence", 0.0)
+                context["entities"] = intent_result.get("entities", {})
+                context["service_data"] = validated_service
 
     def _extract_service_metadata(
         self, context: Dict[str, Any], chat_id: str
@@ -478,56 +522,24 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                         services = []
 
                 if services:
-                    intent_result, intent_usage = await self._detect_service_intent(
-                        user_query=request.message,
+                    await self._process_intent_detection(
                         services=services,
-                        conversation_history=request.conversationHistory,
+                        request=request,
                         chat_id=chat_id,
+                        context=context,
+                        costs_dict=costs_dict,
                     )
-                    costs_dict["intent_detection"] = intent_usage
-
-                    if intent_result and intent_result.get("matched_service_id"):
-                        service_id = intent_result["matched_service_id"]
-                        logger.info(f"[{chat_id}] Matched: {service_id}")
-
-                        validated_service = self._validate_detected_service(
-                            matched_service_id=service_id,
-                            services=services,
-                            chat_id=chat_id,
-                        )
-
-                        if validated_service:
-                            context["service_id"] = service_id
-                            context["confidence"] = intent_result.get("confidence", 0.0)
-                            context["entities"] = intent_result.get("entities", {})
-                            context["service_data"] = validated_service
             else:
                 services = response_data.get("services", [])
 
                 if services:
-                    intent_result, intent_usage = await self._detect_service_intent(
-                        user_query=request.message,
+                    await self._process_intent_detection(
                         services=services,
-                        conversation_history=request.conversationHistory,
+                        request=request,
                         chat_id=chat_id,
+                        context=context,
+                        costs_dict=costs_dict,
                     )
-                    costs_dict["intent_detection"] = intent_usage
-
-                    if intent_result and intent_result.get("matched_service_id"):
-                        service_id = intent_result["matched_service_id"]
-                        logger.info(f"[{chat_id}] Matched: {service_id}")
-
-                        validated_service = self._validate_detected_service(
-                            matched_service_id=service_id,
-                            services=services,
-                            chat_id=chat_id,
-                        )
-
-                        if validated_service:
-                            context["service_id"] = service_id
-                            context["confidence"] = intent_result.get("confidence", 0.0)
-                            context["entities"] = intent_result.get("entities", {})
-                            context["service_data"] = validated_service
         else:
             logger.warning(f"[{chat_id}] Service discovery failed")
 

@@ -5,9 +5,6 @@
 # Qdrant Vector Database Configuration
 # ============================================================================
 
-import os
-
-
 QDRANT_HOST = "qdrant"
 """Qdrant server hostname."""
 
