@@ -228,7 +228,8 @@ class ToolClassifier:
                 next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
 
                 logger.info(
-                    f"[{chat_id}] Falling back to {next_name} (Layer {current_index + 2})"
+                    f"[{chat_id}] Falling back to {next_name} "
+                    f"(Layer {WORKFLOW_LAYER_ORDER.index(next_layer) + 1})"
                 )
 
                 result = await next_workflow.execute_async(request, {})
@@ -300,9 +301,10 @@ class ToolClassifier:
                 next_workflow = self._get_workflow_executor(next_layer)
                 next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
 
+                layer_number = WORKFLOW_LAYER_ORDER.index(next_layer) + 1
                 logger.info(
                     f"[{chat_id}] Falling back to {next_name} streaming "
-                    f"(Layer {current_index + 2})"
+                    f"(Layer {layer_number})"
                 )
 
                 result = await next_workflow.execute_streaming(request, {})

@@ -205,7 +205,9 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                 data = response.json()
                 return data
         except httpx.TimeoutException:
-            logger.error(f"[{chat_id}] Service discovery timeout after 10s")
+            logger.error(
+                f"[{chat_id}] Service discovery timeout after {SERVICE_DISCOVERY_TIMEOUT}s"
+            )
             return None
         except httpx.HTTPStatusError as e:
             logger.error(
@@ -641,7 +643,6 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         # 3. Parse Ruuter response and extract result
         # 4. Return OrchestrationResponse with actual service result
         # 5. Handle errors (timeout, HTTP errors, malformed JSON)
-        # 6. Remove debug response code below (lines 589-601) after implementation
 
         # STEP 6: Return debug response (temporary until Step 7 - Ruuter call implemented)
         # REMOVE THIS BLOCK AFTER STEP 7 IMPLEMENTATION (START)
@@ -765,7 +766,6 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         # 3. Parse Ruuter response and extract result
         # 4. Format result as SSE and yield chunks
         # 5. Handle errors (timeout, HTTP errors, malformed JSON)
-        # 6. Remove debug response code below (lines 697-709) after implementation
 
         # STEP 6: Return debug response as async iterator (temporary until Step 7)
         # REMOVE THIS BLOCK AFTER STEP 7 IMPLEMENTATION (START)
