@@ -104,9 +104,9 @@ class OODWorkflowExecutor(BaseWorkflow):
         # Stream message for UX consistency (no guardrails needed - fixed message)
         async def stream_ood_message():
             for chunk in split_into_tokens(ood_message, chunk_size=5):
-                yield self._format_sse(request.chatId, chunk)
+                yield self.format_sse(request.chatId, chunk)
                 await asyncio.sleep(0.01)
-            yield self._format_sse(request.chatId, "END")
+            yield self.format_sse(request.chatId, "END")
 
         return stream_ood_message()
         ```

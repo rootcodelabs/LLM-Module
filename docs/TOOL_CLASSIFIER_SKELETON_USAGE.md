@@ -361,9 +361,9 @@ class MyCustomWorkflow(BaseWorkflow):
         # Stream result token-by-token
         async def stream_result():
             for chunk in self._split_into_tokens(result):
-                yield self._format_sse(request.chatId, chunk)
+                yield self.format_sse(request.chatId, chunk)
                 await asyncio.sleep(0.01)
-            yield self._format_sse(request.chatId, "END")
+            yield self.format_sse(request.chatId, "END")
         
         return stream_result()
 ```

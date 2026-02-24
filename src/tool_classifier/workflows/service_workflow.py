@@ -52,7 +52,7 @@ class LLMServiceProtocol(Protocol):
         """
         ...
 
-    def _format_sse(self, chat_id: str, content: str) -> str:
+    def format_sse(self, chat_id: str, content: str) -> str:
         """Format content as SSE message.
 
         Args:
@@ -64,7 +64,7 @@ class LLMServiceProtocol(Protocol):
         """
         ...
 
-    def _log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
+    def log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
         """Log cost information for tracking.
 
         Args:
@@ -656,7 +656,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
         # Log costs after service workflow completes (follows RAG workflow pattern)
         if self.orchestration_service:
-            self.orchestration_service._log_costs(costs_dict)
+            self.orchestration_service.log_costs(costs_dict)
 
         return OrchestrationResponse(
             chatId=request.chatId,
@@ -785,12 +785,12 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         orchestration_service = self.orchestration_service
 
         async def debug_stream() -> AsyncIterator[str]:
-            yield orchestration_service._format_sse(chat_id, debug_content)
-            yield orchestration_service._format_sse(chat_id, "END")
+            yield orchestration_service.format_sse(chat_id, debug_content)
+            yield orchestration_service.format_sse(chat_id, "END")
 
             # Log costs after streaming completes (follows RAG workflow pattern)
             # Must be inside generator because costs are accumulated during streaming
-            orchestration_service._log_costs(costs_dict)
+            orchestration_service.log_costs(costs_dict)
 
         return debug_stream()
         # REMOVE THIS BLOCK AFTER STEP 7 IMPLEMENTATION (END)

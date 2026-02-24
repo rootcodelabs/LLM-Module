@@ -87,7 +87,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         )
 
         # Log costs and timings
-        self.orchestration_service._log_costs(costs_dict)
+        self.orchestration_service.log_costs(costs_dict)
         from src.utils.time_tracker import log_step_timings
 
         log_step_timings(timing_dict, request.chatId)

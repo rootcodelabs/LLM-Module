@@ -246,7 +246,7 @@ intent_result = intent_module.forward(...)
 usage_info = get_lm_usage_since(history_length_before)
 costs_dict["intent_detection"] = usage_info
 
-# Later: orchestration_service._log_costs(costs_dict)
+# Later: orchestration_service.log_costs(costs_dict)
 ```
 
 ---
@@ -468,7 +468,7 @@ response = await httpx.post(
 # Streaming
 async with httpx.stream("POST", endpoint_url, json=payload) as stream:
     async for line in stream.aiter_lines():
-        yield orchestration_service._format_sse(chat_id, line)
+        yield orchestration_service.format_sse(chat_id, line)
 ```
 
 ---
@@ -564,7 +564,7 @@ intent_result, intent_usage = await _detect_service_intent(...)
 costs_dict["intent_detection"] = intent_usage
 
 # Log costs after workflow completes
-orchestration_service._log_costs(costs_dict)
+orchestration_service.log_costs(costs_dict)
 ```
 
 **Cost Breakdown Logged:**
