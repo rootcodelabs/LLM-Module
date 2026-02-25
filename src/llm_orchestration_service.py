@@ -274,7 +274,7 @@ class LLMOrchestrationService:
                 )
 
             # Log final costs and return response
-            self._log_costs(costs_dict)
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
 
             # Update budget for the LLM connection
@@ -331,7 +331,7 @@ class LLMOrchestrationService:
                     }
                 )
                 langfuse.flush()
-            self._log_costs(costs_dict)
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
 
             # Update budget even on error
@@ -405,8 +405,8 @@ class LLMOrchestrationService:
             )
 
             # Yield SSE format error + END marker
-            yield self._format_sse(request.chatId, validation_msg)
-            yield self._format_sse(request.chatId, "END")
+            yield self.format_sse(request.chatId, validation_msg)
+            yield self.format_sse(request.chatId, "END")
             return  # Stop processing
 
         # Use StreamManager for centralized tracking and guaranteed cleanup
@@ -441,11 +441,11 @@ class LLMOrchestrationService:
                             f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked by guardrails: "
                             f"{input_check_result.reason}"
                         )
-                        yield self._format_sse(
+                        yield self.format_sse(
                             request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
                         )
-                        yield self._format_sse(request.chatId, "END")
-                        self._log_costs(costs_dict)
+                        yield self.format_sse(request.chatId, "END")
+                        self.log_costs(costs_dict)
                         stream_ctx.mark_completed()
                         return
 
@@ -500,7 +500,7 @@ class LLMOrchestrationService:
                         )
 
                         # Log costs and timings
-                        self._log_costs(costs_dict)
+                        self.log_costs(costs_dict)
                         log_step_timings(timing_dict, request.chatId)
                         stream_ctx.mark_completed()
                         return  # Exit after successful classifier routing
@@ -546,10 +546,10 @@ class LLMOrchestrationService:
                     logger, error_id, "streaming_orchestration", request.chatId, e
                 )
 
-                yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
-                yield self._format_sse(request.chatId, "END")
+                yield self.format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+                yield self.format_sse(request.chatId, "END")
 
-                self._log_costs(costs_dict)
+                self.log_costs(costs_dict)
                 log_step_timings(timing_dict, request.chatId)
 
                 # Update budget even on outer exception
@@ -645,9 +645,9 @@ class LLMOrchestrationService:
             localized_msg = get_localized_message(
                 OUT_OF_SCOPE_MESSAGES, detected_language
             )
-            yield self._format_sse(request.chatId, localized_msg)
-            yield self._format_sse(request.chatId, "END")
-            self._log_costs(costs_dict)
+            yield self.format_sse(request.chatId, localized_msg)
+            yield self.format_sse(request.chatId, "END")
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
             stream_ctx.mark_completed()
             return
@@ -659,9 +659,9 @@ class LLMOrchestrationService:
             localized_msg = get_localized_message(
                 OUT_OF_SCOPE_MESSAGES, detected_language
             )
-            yield self._format_sse(request.chatId, localized_msg)
-            yield self._format_sse(request.chatId, "END")
-            self._log_costs(costs_dict)
+            yield self.format_sse(request.chatId, localized_msg)
+            yield self.format_sse(request.chatId, "END")
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
             stream_ctx.mark_completed()
             return
@@ -690,9 +690,9 @@ class LLMOrchestrationService:
             localized_msg = get_localized_message(
                 OUT_OF_SCOPE_MESSAGES, detected_language
             )
-            yield self._format_sse(request.chatId, localized_msg)
-            yield self._format_sse(request.chatId, "END")
-            self._log_costs(costs_dict)
+            yield self.format_sse(request.chatId, localized_msg)
+            yield self.format_sse(request.chatId, "END")
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
             stream_ctx.mark_completed()
             return
@@ -755,14 +755,14 @@ class LLMOrchestrationService:
                                 f"[{request.chatId}] [{stream_ctx.stream_id}] Token limit exceeded: "
                                 f"{stream_ctx.token_count} > {StreamConfig.MAX_TOKENS_PER_STREAM}"
                             )
-                            yield self._format_sse(
+                            yield self.format_sse(
                                 request.chatId, STREAM_TOKEN_LIMIT_MESSAGE
                             )
-                            yield self._format_sse(request.chatId, "END")
+                            yield self.format_sse(request.chatId, "END")
 
                             usage_info = get_lm_usage_since(history_length_before)
                             costs_dict["streaming_generation"] = usage_info
-                            self._log_costs(costs_dict)
+                            self.log_costs(costs_dict)
                             log_step_timings(timing_dict, request.chatId)
                             stream_ctx.mark_completed()
                             return
@@ -784,20 +784,20 @@ class LLMOrchestrationService:
                             logger.warning(
                                 f"[{request.chatId}] [{stream_ctx.stream_id}] Guardrails violation detected"
                             )
-                            yield self._format_sse(
+                            yield self.format_sse(
                                 request.chatId, OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
                             )
-                            yield self._format_sse(request.chatId, "END")
+                            yield self.format_sse(request.chatId, "END")
 
                             usage_info = get_lm_usage_since(history_length_before)
                             costs_dict["streaming_generation"] = usage_info
-                            self._log_costs(costs_dict)
+                            self.log_costs(costs_dict)
                             log_step_timings(timing_dict, request.chatId)
                             stream_ctx.mark_completed()
                             return
 
                         # Yield the validated chunk to client
-                        yield self._format_sse(request.chatId, validated_chunk)
+                        yield self.format_sse(request.chatId, validated_chunk)
                 except GeneratorExit:
                     stream_ctx.mark_cancelled()
                     logger.info(
@@ -816,9 +816,9 @@ class LLMOrchestrationService:
                         f"{i + 1}. [{ref.document_url}]({ref.document_url})"
                         for i, ref in enumerate(doc_references)
                     )
-                    yield self._format_sse(request.chatId, refs_text)
+                    yield self.format_sse(request.chatId, refs_text)
 
-                yield self._format_sse(request.chatId, "END")
+                yield self.format_sse(request.chatId, "END")
 
             else:
                 # No guardrails - stream directly
@@ -837,14 +837,14 @@ class LLMOrchestrationService:
                         logger.error(
                             f"[{request.chatId}] [{stream_ctx.stream_id}] Token limit exceeded (no guardrails)"
                         )
-                        yield self._format_sse(
+                        yield self.format_sse(
                             request.chatId, STREAM_TOKEN_LIMIT_MESSAGE
                         )
-                        yield self._format_sse(request.chatId, "END")
+                        yield self.format_sse(request.chatId, "END")
                         stream_ctx.mark_completed()
                         return
 
-                    yield self._format_sse(request.chatId, token)
+                    yield self.format_sse(request.chatId, token)
 
                 # Send document references before END token
                 doc_references = self._extract_document_references(relevant_chunks)
@@ -853,9 +853,9 @@ class LLMOrchestrationService:
                         f"{i + 1}. [{ref.document_url}]({ref.document_url})"
                         for i, ref in enumerate(doc_references)
                     )
-                    yield self._format_sse(request.chatId, refs_text)
+                    yield self.format_sse(request.chatId, refs_text)
 
-                yield self._format_sse(request.chatId, "END")
+                yield self.format_sse(request.chatId, "END")
 
             # Extract usage information after streaming completes
             usage_info = get_lm_usage_since(history_length_before)
@@ -872,7 +872,7 @@ class LLMOrchestrationService:
             )
 
             # Log costs and trace
-            self._log_costs(costs_dict)
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
 
             # Update budget
@@ -935,7 +935,7 @@ class LLMOrchestrationService:
             )
             usage_info = get_lm_usage_since(history_length_before)
             costs_dict["streaming_generation"] = usage_info
-            self._log_costs(costs_dict)
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
 
             # Update budget even on client disconnect
@@ -953,12 +953,12 @@ class LLMOrchestrationService:
                 request.chatId,
                 stream_error,
             )
-            yield self._format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
-            yield self._format_sse(request.chatId, "END")
+            yield self.format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+            yield self.format_sse(request.chatId, "END")
 
             usage_info = get_lm_usage_since(history_length_before)
             costs_dict["streaming_generation"] = usage_info
-            self._log_costs(costs_dict)
+            self.log_costs(costs_dict)
             log_step_timings(timing_dict, request.chatId)
 
             # Update budget even on streaming error
@@ -966,7 +966,7 @@ class LLMOrchestrationService:
                 request.connection_id, costs_dict, request.environment
             )
 
-    def _format_sse(self, chat_id: str, content: str) -> str:
+    def format_sse(self, chat_id: str, content: str) -> str:
         """
         Format SSE message with exact specification.
 
@@ -1885,7 +1885,7 @@ class LLMOrchestrationService:
                 usage={},
             )
 
-    def _log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
+    def log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
         """
         Log cost information for tracking.
 

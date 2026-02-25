@@ -91,12 +91,35 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
             context = await api_client.generate_context(service_data)
             logger.success(f"Context generated: {len(context)} characters")
 
-            # Step 2: Create embedding for the context
-            logger.info("Step 2: Creating embedding vector")
-            embedding = await api_client.create_embedding(context)
+            # Step 2: Combine generated context with original metadata for embedding
+            logger.info("Step 2: Combining context with original service metadata")
+            combined_text_parts = [
+                f"Service Name: {service_data.name}",
+                f"Description: {service_data.description}",
+            ]
+
+            if service_data.examples:
+                combined_text_parts.append(
+                    f"Example Queries: {' | '.join(service_data.examples)}"
+                )
+
+            if service_data.entities:
+                combined_text_parts.append(
+                    f"Required Entities: {', '.join(service_data.entities)}"
+                )
+
+            # Add generated context last (enriched understanding)
+            combined_text_parts.append(f"Enriched Context: {context}")
+
+            combined_text = "\n".join(combined_text_parts)
+            logger.info(f"Combined text length: {len(combined_text)} characters")
+
+            # Step 3: Create embedding for combined text
+            logger.info("Step 3: Creating embedding vector for combined text")
+            embedding = await api_client.create_embedding(combined_text)
             logger.success(f"Embedding created: {len(embedding)}-dimensional vector")
 
-        # Step 3: Prepare enriched service
+        # Step 4: Prepare enriched service
         enriched_service = EnrichedService(
             id=service_data.service_id,
             name=service_data.name,
@@ -107,8 +130,8 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
             embedding=embedding,
         )
 
-        # Step 4: Store in Qdrant
-        logger.info("Step 3: Storing in Qdrant")
+        # Step 5: Store in Qdrant
+        logger.info("Step 5: Storing in Qdrant")
         qdrant = QdrantManager()
         try:
             qdrant.connect()

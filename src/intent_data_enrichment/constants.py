@@ -43,4 +43,6 @@ Include information about:
 - Related concepts
 - Common ways users might express this intent
 
+IMPORTANT: Generate the context in the SAME LANGUAGE as the service description above. If the description is in Estonian, respond in Estonian. If in English, respond in English. If in Russian, respond in Russian.
+
 Answer only with the enriched context and nothing else."""
