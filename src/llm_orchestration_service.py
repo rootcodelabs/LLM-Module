@@ -26,7 +26,6 @@ from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.response_generator.response_generate import stream_response_native
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
-    OUT_OF_SCOPE_MESSAGE,
     OUT_OF_SCOPE_MESSAGES,
     TECHNICAL_ISSUE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGES,
@@ -67,7 +66,7 @@ from src.tool_classifier import ToolClassifier
 class LangfuseConfig:
     """Configuration for Langfuse integration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.langfuse_client: Optional[Langfuse] = None
         self._initialize_langfuse()
 
@@ -496,10 +495,8 @@ class LLMOrchestrationService:
                 components = self._initialize_service_components(request)
                 timing_dict["initialization"] = time.time() - start_time
 
-                # PRIORITY 1 OPTIMIZATION: Input Guardrails Check BEFORE Classifier
                 # This implements fail-fast principle - block malicious/policy-violating inputs
                 # before expensive operations (service discovery, LLM calls, streaming setup)
-                # Saves 6.4s + $0.002 per blocked request!
                 logger.info(
                     f"[{request.chatId}] [{stream_ctx.stream_id}] Checking input guardrails (before classifier)"
                 )
@@ -1086,12 +1083,12 @@ class LLMOrchestrationService:
         # Falls back to per-request initialization if shared instance unavailable
         if self.shared_guardrails_adapter is not None:
             logger.debug(
-                f"Using shared guardrails adapter (startup-initialized, zero overhead)"
+                "Using shared guardrails adapter (startup-initialized, zero overhead)"
             )
             components["guardrails_adapter"] = self.shared_guardrails_adapter
         else:
             logger.warning(
-                f"Shared guardrails unavailable, initializing per-request (slower)"
+                "Shared guardrails unavailable, initializing per-request (slower)"
             )
             components["guardrails_adapter"] = self._safe_initialize_guardrails(
                 request.environment, request.connection_id
