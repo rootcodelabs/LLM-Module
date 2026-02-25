@@ -42,9 +42,9 @@ class IntentDetectionModule(dspy.Module):
     """DSPy Module for service intent detection."""
 
     def __init__(self) -> None:
-        """Initialize intent detection module with ChainOfThought."""
+        """Initialize intent detection module with Predict (direct prediction)."""
         super().__init__()
-        self.detector = dspy.ChainOfThought(ServiceIntentDetector)
+        self.detector = dspy.Predict(ServiceIntentDetector)
 
     def forward(
         self,

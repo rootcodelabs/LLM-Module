@@ -26,7 +26,6 @@ from prompt_refine_manager.prompt_refiner import PromptRefinerAgent
 from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.response_generator.response_generate import stream_response_native
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
-    OUT_OF_SCOPE_MESSAGE,
     OUT_OF_SCOPE_MESSAGES,
     TECHNICAL_ISSUE_MESSAGE,
     TECHNICAL_ISSUE_MESSAGES,
@@ -67,7 +66,7 @@ from src.tool_classifier import ToolClassifier
 class LangfuseConfig:
     """Configuration for Langfuse integration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.langfuse_client: Optional[Langfuse] = None
         self._initialize_langfuse()
 
@@ -134,8 +133,45 @@ class LLMOrchestrationService:
         # This allows components to be initialized per-request with proper context
         self.tool_classifier = None
 
+        # Initialize shared guardrails adapter at startup
+        self.shared_guardrails_adapter = self._initialize_shared_guardrails_at_startup()
+
         # Log feature flag configuration
         FeatureFlags.log_configuration()
+
+    def _initialize_shared_guardrails_at_startup(self) -> Optional[NeMoRailsAdapter]:
+        """
+        Initialize shared guardrails at startup.
+
+        Returns:
+            NeMoRailsAdapter if successful, None on failure (graceful degradation)
+        """
+        try:
+            logger.info("  Initializing shared guardrails at startup...")
+            start_time = time.time()
+
+            # Initialize with production environment and no specific connection
+            # This creates a shared guardrails instance using default/production config
+            guardrails_adapter = self._initialize_guardrails(
+                environment="production",
+                connection_id=None,  # Shared configuration, not user-specific
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f" Shared guardrails initialized successfully in {elapsed_time:.3f}s"
+            )
+
+            return guardrails_adapter
+
+        except Exception as e:
+            logger.error(f" Failed to initialize shared guardrails at startup: {e}")
+            logger.error(
+                "  Service will continue without guardrails (graceful degradation)"
+            )
+            # Return None - service continues without guardrails
+            # Per-request fallback will be attempted if needed
+            return None
 
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
@@ -170,9 +206,11 @@ class LLMOrchestrationService:
                 f"authorId: {request.authorId}, environment: {request.environment}"
             )
 
-            # STEP 0: Detect language from user message
+            # STEP 0: Detect language from user message (with timing)
+            start_time = time.time()
             detected_language = detect_language(request.message)
             language_name = get_language_name(detected_language)
+            timing_dict["language_detection"] = time.time() - start_time
             logger.info(
                 f"[{request.chatId}] Detected language: {language_name} ({detected_language})"
             )
@@ -182,7 +220,9 @@ class LLMOrchestrationService:
             setattr(request, "_detected_language", detected_language)
 
             # STEP 0.5: Basic Query Validation (before expensive component initialization)
+            start_time = time.time()
             validation_result = validate_query_basic(request.message)
+            timing_dict["query_validation"] = time.time() - start_time
             if not validation_result.is_valid:
                 logger.info(
                     f"[{request.chatId}] Query validation failed: {validation_result.rejection_reason}"
@@ -210,8 +250,30 @@ class LLMOrchestrationService:
                         content=validation_msg,
                     )
 
-            # Initialize all service components (only for valid queries)
+            # Initialize all service components (only for valid queries, with timing)
+            start_time = time.time()
             components = self._initialize_service_components(request)
+            timing_dict["initialization"] = time.time() - start_time
+
+            if components["guardrails_adapter"]:
+                start_time = time.time()
+                input_blocked_response = await self.handle_input_guardrails(
+                    components["guardrails_adapter"], request, {}
+                )
+                timing_dict["input_guardrails_check"] = time.time() - start_time
+
+                if input_blocked_response:
+                    logger.warning(
+                        f"[{request.chatId}] Input blocked before classifier - "
+                        f"saved expensive service discovery"
+                    )
+                    log_step_timings(timing_dict, request.chatId)
+                    return input_blocked_response
+            else:
+                logger.info(
+                    f"[{request.chatId}] Guardrails not available - "
+                    f"proceeding without input validation"
+                )
 
             # TOOL CLASSIFIER INTEGRATION
             # Route through tool classifier if enabled, otherwise use existing RAG pipeline
@@ -229,24 +291,29 @@ class LLMOrchestrationService:
                         )
                         logger.info("Tool classifier initialized")
 
-                    # Classify query to determine workflow
+                    # Classify query to determine workflow (with timing)
+                    start_time = time.time()
                     classification = await self.tool_classifier.classify(
                         query=request.message,
                         conversation_history=request.conversationHistory,
                         language=detected_language,
                     )
+                    timing_dict["classifier.classify"] = time.time() - start_time
 
                     logger.info(
                         f"[{request.chatId}] Classification: {classification.workflow.value} "
                         f"(confidence: {classification.confidence:.2f})"
                     )
 
-                    # Route to appropriate workflow
+                    # Route to appropriate workflow (with timing)
+                    start_time = time.time()
                     response = await self.tool_classifier.route_to_workflow(
                         classification=classification,
                         request=request,
                         is_streaming=False,
+                        timing_dict=timing_dict,
                     )
+                    timing_dict["classifier.route"] = time.time() - start_time
 
                 except Exception as classifier_error:
                     logger.error(
@@ -382,9 +449,11 @@ class LLMOrchestrationService:
         costs_dict: Dict[str, Dict[str, Any]] = {}
         timing_dict: Dict[str, float] = {}
 
-        # STEP 0: Detect language from user message
+        # STEP 0: Detect language from user message (with timing)
+        start_time = time.time()
         detected_language = detect_language(request.message)
         language_name = get_language_name(detected_language)
+        timing_dict["language_detection"] = time.time() - start_time
         logger.info(
             f"[{request.chatId}] Streaming request - Detected language: {language_name} ({detected_language})"
         )
@@ -393,8 +462,10 @@ class LLMOrchestrationService:
         # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
         setattr(request, "_detected_language", detected_language)
 
-        # Step 0.5: Basic Query Validation (before guardrails)
+        # Step 0.5: Basic Query Validation (before guardrails, with timing)
+        start_time = time.time()
         validation_result = validate_query_basic(request.message)
+        timing_dict["query_validation"] = time.time() - start_time
         if not validation_result.is_valid:
             logger.info(
                 f"[{request.chatId}] Streaming - Query validation failed: {validation_result.rejection_reason}"
@@ -419,12 +490,15 @@ class LLMOrchestrationService:
                     f"(environment: {request.environment})"
                 )
 
-                # Initialize all service components
+                # Initialize all service components (with timing)
+                start_time = time.time()
                 components = self._initialize_service_components(request)
+                timing_dict["initialization"] = time.time() - start_time
 
-                # STEP 1: CHECK INPUT GUARDRAILS (blocking)
+                # This implements fail-fast principle - block malicious/policy-violating inputs
+                # before expensive operations (service discovery, LLM calls, streaming setup)
                 logger.info(
-                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 1: Checking input guardrails"
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Checking input guardrails (before classifier)"
                 )
 
                 if components["guardrails_adapter"]:
@@ -438,19 +512,26 @@ class LLMOrchestrationService:
 
                     if not input_check_result.allowed:
                         logger.warning(
-                            f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked by guardrails: "
-                            f"{input_check_result.reason}"
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked before classifier - "
+                            f"saved expensive service discovery. Reason: {input_check_result.reason}"
                         )
                         yield self.format_sse(
                             request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
                         )
                         yield self.format_sse(request.chatId, "END")
                         self.log_costs(costs_dict)
+                        # Log timings before returning (for visibility)
+                        log_step_timings(timing_dict, request.chatId)
                         stream_ctx.mark_completed()
                         return
+                else:
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Guardrails not available - "
+                        f"proceeding without input validation"
+                    )
 
                 logger.info(
-                    f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed "
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed"
                 )
 
                 # TOOL CLASSIFIER INTEGRATION (STREAMING)
@@ -998,10 +1079,20 @@ class LLMOrchestrationService:
             environment=request.environment, connection_id=request.connection_id
         )
 
-        # Initialize Guardrails Adapter (optional)
-        components["guardrails_adapter"] = self._safe_initialize_guardrails(
-            request.environment, request.connection_id
-        )
+        # Use shared guardrails adapter (initialized at startup)
+        # Falls back to per-request initialization if shared instance unavailable
+        if self.shared_guardrails_adapter is not None:
+            logger.debug(
+                "Using shared guardrails adapter (startup-initialized, zero overhead)"
+            )
+            components["guardrails_adapter"] = self.shared_guardrails_adapter
+        else:
+            logger.warning(
+                "Shared guardrails unavailable, initializing per-request (slower)"
+            )
+            components["guardrails_adapter"] = self._safe_initialize_guardrails(
+                request.environment, request.connection_id
+            )
 
         # Initialize Contextual Retriever (replaces hybrid retriever)
         components["contextual_retriever"] = self._safe_initialize_contextual_retriever(
@@ -1114,38 +1205,42 @@ class LLMOrchestrationService:
         components: Dict[str, Any],
         costs_dict: Dict[str, Dict[str, Any]],
         timing_dict: Dict[str, float],
+        prefix: str = "",
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
-        """Execute the main orchestration pipeline with all components."""
-        # Note: Query validation now happens in process_orchestration_request()
-        # before component initialization for true early rejection
+        """Execute the main orchestration pipeline with all components.
 
-        # Step 1: Input Guardrails Check
-        if components["guardrails_adapter"]:
-            start_time = time.time()
-            input_blocked_response = await self.handle_input_guardrails(
-                components["guardrails_adapter"], request, costs_dict
-            )
-            timing_dict["input_guardrails_check"] = time.time() - start_time
-            if input_blocked_response:
-                return input_blocked_response
+        Args:
+            request: Orchestration request
+            components: Initialized service components
+            costs_dict: Dictionary for cost tracking
+            timing_dict: Dictionary for timing tracking
+            prefix: Optional prefix for timing keys (e.g., "rag" for workflow namespacing)
+        """
+        # Note: Query validation AND input guardrails check now happen at orchestration level
+        # (in process_orchestration_request) BEFORE classifier routing for true early rejection.
+        # This saves ~3.5s on blocked requests by failing fast before expensive workflow operations.
 
-        # Step 2: Refine user prompt
+        # Step 1: Refine user prompt
         start_time = time.time()
         refined_output, refiner_usage = self._refine_user_prompt(
             llm_manager=components["llm_manager"],
             original_message=request.message,
             conversation_history=request.conversationHistory,
         )
-        timing_dict["prompt_refiner"] = time.time() - start_time
+        timing_key = f"{prefix}.prompt_refiner" if prefix else "prompt_refiner"
+        timing_dict[timing_key] = time.time() - start_time
         costs_dict["prompt_refiner"] = refiner_usage
 
-        # Step 3: Retrieve relevant chunks using contextual retrieval
+        # Step 2: Retrieve relevant chunks using contextual retrieval
         try:
             start_time = time.time()
             relevant_chunks = await self._safe_retrieve_contextual_chunks(
                 components["contextual_retriever"], refined_output, request
             )
-            timing_dict["contextual_retrieval"] = time.time() - start_time
+            timing_key = (
+                f"{prefix}.contextual_retrieval" if prefix else "contextual_retrieval"
+            )
+            timing_dict[timing_key] = time.time() - start_time
         except (
             ContextualRetrieverInitializationError,
             ContextualRetrievalFailureError,
@@ -1158,7 +1253,7 @@ class LLMOrchestrationService:
             logger.info("No relevant chunks found - returning out-of-scope response")
             return self._create_out_of_scope_response(request)
 
-        # Step 4: Generate response
+        # Step 3: Generate response
         start_time = time.time()
         generated_response = self._generate_rag_response(
             llm_manager=components["llm_manager"],
@@ -1168,9 +1263,12 @@ class LLMOrchestrationService:
             response_generator=components["response_generator"],
             costs_dict=costs_dict,
         )
-        timing_dict["response_generation"] = time.time() - start_time
+        timing_key = (
+            f"{prefix}.response_generation" if prefix else "response_generation"
+        )
+        timing_dict[timing_key] = time.time() - start_time
 
-        # Step 5: Output Guardrails Check
+        # Step 4: Output Guardrails Check
         # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
         output_guardrails_response = await self.handle_output_guardrails(
@@ -1179,9 +1277,12 @@ class LLMOrchestrationService:
             request,
             costs_dict,
         )
-        timing_dict["output_guardrails_check"] = time.time() - start_time
+        timing_key = (
+            f"{prefix}.output_guardrails_check" if prefix else "output_guardrails_check"
+        )
+        timing_dict[timing_key] = time.time() - start_time
 
-        # Step 6: Store inference data (for production and testing environments)
+        # Step 5: Store inference data (for production and testing environments)
         # Only store OrchestrationResponse (has chatId), not TestOrchestrationResponse
         if request.environment in [
             PRODUCTION_DEPLOYMENT_ENVIRONMENT,

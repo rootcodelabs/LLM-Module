@@ -50,6 +50,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """
         Execute RAG workflow in non-streaming mode.
@@ -64,6 +65,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query
             context: Unused (RAG doesn't need classification metadata)
+            timing_dict: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
             OrchestrationResponse with RAG-generated answer
@@ -73,24 +75,24 @@ class RAGWorkflowExecutor(BaseWorkflow):
 
         # Initialize components needed for RAG pipeline
         costs_dict: Dict[str, Any] = {}
-        timing_dict: Dict[str, float] = {}
+        # Use parent timing_dict or create new one
+        if timing_dict is None:
+            timing_dict = {}
 
         # Initialize service components
         components = self.orchestration_service._initialize_service_components(request)
 
-        # Call existing RAG pipeline
+        # Call existing RAG pipeline with "rag" prefix for namespacing
         response = await self.orchestration_service._execute_orchestration_pipeline(
             request=request,
             components=components,
             costs_dict=costs_dict,
             timing_dict=timing_dict,
+            prefix="rag",
         )
 
-        # Log costs and timings
+        # Log costs (timing is logged by parent orchestration service)
         self.orchestration_service.log_costs(costs_dict)
-        from src.utils.time_tracker import log_step_timings
-
-        log_step_timings(timing_dict, request.chatId)
 
         return response
 
@@ -98,6 +100,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """
         Execute RAG workflow in streaming mode.
@@ -116,6 +119,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query
             context: Unused (RAG doesn't need classification metadata)
+            timing_dict: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
             AsyncIterator yielding SSE-formatted strings
@@ -125,7 +129,9 @@ class RAGWorkflowExecutor(BaseWorkflow):
 
         # Initialize tracking dictionaries
         costs_dict: Dict[str, Any] = {}
-        timing_dict: Dict[str, float] = {}
+        # Use parent timing_dict or create new one
+        if timing_dict is None:
+            timing_dict = {}
 
         # Get components from context if provided, otherwise initialize
         components = context.get("components")
