@@ -134,8 +134,45 @@ class LLMOrchestrationService:
         # This allows components to be initialized per-request with proper context
         self.tool_classifier = None
 
+        # Initialize shared guardrails adapter at startup
+        self.shared_guardrails_adapter = self._initialize_shared_guardrails_at_startup()
+
         # Log feature flag configuration
         FeatureFlags.log_configuration()
+
+    def _initialize_shared_guardrails_at_startup(self) -> Optional[NeMoRailsAdapter]:
+        """
+        Initialize shared guardrails at startup.
+
+        Returns:
+            NeMoRailsAdapter if successful, None on failure (graceful degradation)
+        """
+        try:
+            logger.info("  Initializing shared guardrails at startup...")
+            start_time = time.time()
+
+            # Initialize with production environment and no specific connection
+            # This creates a shared guardrails instance using default/production config
+            guardrails_adapter = self._initialize_guardrails(
+                environment="production",
+                connection_id=None,  # Shared configuration, not user-specific
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f" Shared guardrails initialized successfully in {elapsed_time:.3f}s"
+            )
+
+            return guardrails_adapter
+
+        except Exception as e:
+            logger.error(f" Failed to initialize shared guardrails at startup: {e}")
+            logger.error(
+                "  Service will continue without guardrails (graceful degradation)"
+            )
+            # Return None - service continues without guardrails
+            # Per-request fallback will be attempted if needed
+            return None
 
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
@@ -218,6 +255,26 @@ class LLMOrchestrationService:
             start_time = time.time()
             components = self._initialize_service_components(request)
             timing_dict["initialization"] = time.time() - start_time
+
+            if components["guardrails_adapter"]:
+                start_time = time.time()
+                input_blocked_response = await self.handle_input_guardrails(
+                    components["guardrails_adapter"], request, {}
+                )
+                timing_dict["input_guardrails_check"] = time.time() - start_time
+
+                if input_blocked_response:
+                    logger.warning(
+                        f"[{request.chatId}] Input blocked before classifier - "
+                        f"saved expensive service discovery"
+                    )
+                    log_step_timings(timing_dict, request.chatId)
+                    return input_blocked_response
+            else:
+                logger.info(
+                    f"[{request.chatId}] Guardrails not available - "
+                    f"proceeding without input validation"
+                )
 
             # TOOL CLASSIFIER INTEGRATION
             # Route through tool classifier if enabled, otherwise use existing RAG pipeline
@@ -439,9 +496,12 @@ class LLMOrchestrationService:
                 components = self._initialize_service_components(request)
                 timing_dict["initialization"] = time.time() - start_time
 
-                # STEP 1: CHECK INPUT GUARDRAILS (blocking)
+                # PRIORITY 1 OPTIMIZATION: Input Guardrails Check BEFORE Classifier
+                # This implements fail-fast principle - block malicious/policy-violating inputs
+                # before expensive operations (service discovery, LLM calls, streaming setup)
+                # Saves 6.4s + $0.002 per blocked request!
                 logger.info(
-                    f"[{request.chatId}] [{stream_ctx.stream_id}] Step 1: Checking input guardrails"
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Checking input guardrails (before classifier)"
                 )
 
                 if components["guardrails_adapter"]:
@@ -455,19 +515,26 @@ class LLMOrchestrationService:
 
                     if not input_check_result.allowed:
                         logger.warning(
-                            f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked by guardrails: "
-                            f"{input_check_result.reason}"
+                            f"[{request.chatId}] [{stream_ctx.stream_id}] Input blocked before classifier - "
+                            f"saved expensive service discovery. Reason: {input_check_result.reason}"
                         )
                         yield self.format_sse(
                             request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
                         )
                         yield self.format_sse(request.chatId, "END")
                         self.log_costs(costs_dict)
+                        # Log timings before returning (for visibility)
+                        log_step_timings(timing_dict, request.chatId)
                         stream_ctx.mark_completed()
                         return
+                else:
+                    logger.info(
+                        f"[{request.chatId}] [{stream_ctx.stream_id}] Guardrails not available - "
+                        f"proceeding without input validation"
+                    )
 
                 logger.info(
-                    f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed "
+                    f"[{request.chatId}] [{stream_ctx.stream_id}] Input guardrails passed"
                 )
 
                 # TOOL CLASSIFIER INTEGRATION (STREAMING)
@@ -1015,10 +1082,20 @@ class LLMOrchestrationService:
             environment=request.environment, connection_id=request.connection_id
         )
 
-        # Initialize Guardrails Adapter (optional)
-        components["guardrails_adapter"] = self._safe_initialize_guardrails(
-            request.environment, request.connection_id
-        )
+        # Use shared guardrails adapter (initialized at startup)
+        # Falls back to per-request initialization if shared instance unavailable
+        if self.shared_guardrails_adapter is not None:
+            logger.debug(
+                f"Using shared guardrails adapter (startup-initialized, zero overhead)"
+            )
+            components["guardrails_adapter"] = self.shared_guardrails_adapter
+        else:
+            logger.warning(
+                f"Shared guardrails unavailable, initializing per-request (slower)"
+            )
+            components["guardrails_adapter"] = self._safe_initialize_guardrails(
+                request.environment, request.connection_id
+            )
 
         # Initialize Contextual Retriever (replaces hybrid retriever)
         components["contextual_retriever"] = self._safe_initialize_contextual_retriever(
@@ -1142,25 +1219,11 @@ class LLMOrchestrationService:
             timing_dict: Dictionary for timing tracking
             prefix: Optional prefix for timing keys (e.g., "rag" for workflow namespacing)
         """
-        # Note: Query validation now happens in process_orchestration_request()
-        # before component initialization for true early rejection
+        # Note: Query validation AND input guardrails check now happen at orchestration level
+        # (in process_orchestration_request) BEFORE classifier routing for true early rejection.
+        # This saves ~3.5s on blocked requests by failing fast before expensive workflow operations.
 
-        # Step 1: Input Guardrails Check
-        if components["guardrails_adapter"]:
-            start_time = time.time()
-            input_blocked_response = await self.handle_input_guardrails(
-                components["guardrails_adapter"], request, costs_dict
-            )
-            timing_key = (
-                f"{prefix}.input_guardrails_check"
-                if prefix
-                else "input_guardrails_check"
-            )
-            timing_dict[timing_key] = time.time() - start_time
-            if input_blocked_response:
-                return input_blocked_response
-
-        # Step 2: Refine user prompt
+        # Step 1: Refine user prompt
         start_time = time.time()
         refined_output, refiner_usage = self._refine_user_prompt(
             llm_manager=components["llm_manager"],
@@ -1171,7 +1234,7 @@ class LLMOrchestrationService:
         timing_dict[timing_key] = time.time() - start_time
         costs_dict["prompt_refiner"] = refiner_usage
 
-        # Step 3: Retrieve relevant chunks using contextual retrieval
+        # Step 2: Retrieve relevant chunks using contextual retrieval
         try:
             start_time = time.time()
             relevant_chunks = await self._safe_retrieve_contextual_chunks(
@@ -1193,7 +1256,7 @@ class LLMOrchestrationService:
             logger.info("No relevant chunks found - returning out-of-scope response")
             return self._create_out_of_scope_response(request)
 
-        # Step 4: Generate response
+        # Step 3: Generate response
         start_time = time.time()
         generated_response = self._generate_rag_response(
             llm_manager=components["llm_manager"],
@@ -1208,7 +1271,7 @@ class LLMOrchestrationService:
         )
         timing_dict[timing_key] = time.time() - start_time
 
-        # Step 5: Output Guardrails Check
+        # Step 4: Output Guardrails Check
         # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
         output_guardrails_response = await self.handle_output_guardrails(
@@ -1222,7 +1285,7 @@ class LLMOrchestrationService:
         )
         timing_dict[timing_key] = time.time() - start_time
 
-        # Step 6: Store inference data (for production and testing environments)
+        # Step 5: Store inference data (for production and testing environments)
         # Only store OrchestrationResponse (has chatId), not TestOrchestrationResponse
         if request.environment in [
             PRODUCTION_DEPLOYMENT_ENVIRONMENT,

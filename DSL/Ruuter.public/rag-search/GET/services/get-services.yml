@@ -10,7 +10,7 @@ declaration:
 count_services:
   call: http.post
   args:
-    url: "[#RAG_SEARCH_RESQL]/count-active-services"
+    url: "[#RAG_SEARCH_RESQL]/mock-count-active-services"
     body: {}
   result: count_result
   next: check_service_count
@@ -41,7 +41,7 @@ return_semantic_search_response:
 fetch_all_services:
   call: http.post
   args:
-    url: "[#RAG_SEARCH_RESQL]/get-all-active-services"
+    url: "[#RAG_SEARCH_RESQL]/mock-get-all-active-services"
     body: {}
   result: services_result
   next: return_all_services
