@@ -133,45 +133,69 @@ class LLMOrchestrationService:
         # This allows components to be initialized per-request with proper context
         self.tool_classifier = None
 
-        # Initialize shared guardrails adapter at startup
-        self.shared_guardrails_adapter = self._initialize_shared_guardrails_at_startup()
+        # Initialize shared guardrails adapters at startup (production and testing)
+        self.shared_guardrails_adapters = (
+            self._initialize_shared_guardrails_at_startup()
+        )
 
         # Log feature flag configuration
         FeatureFlags.log_configuration()
 
-    def _initialize_shared_guardrails_at_startup(self) -> Optional[NeMoRailsAdapter]:
+    def _initialize_shared_guardrails_at_startup(self) -> Dict[str, NeMoRailsAdapter]:
         """
-        Initialize shared guardrails at startup.
+        Initialize shared guardrails adapters at startup for production and testing environments.
 
         Returns:
-            NeMoRailsAdapter if successful, None on failure (graceful degradation)
+            Dictionary mapping environment names to NeMoRailsAdapter instances.
+            Empty dict on failure (graceful degradation).
         """
-        try:
-            logger.info("  Initializing shared guardrails at startup...")
-            start_time = time.time()
+        adapters: Dict[str, NeMoRailsAdapter] = {}
 
-            # Initialize with production environment and no specific connection
-            # This creates a shared guardrails instance using default/production config
-            guardrails_adapter = self._initialize_guardrails(
-                environment="production",
-                connection_id=None,  # Shared configuration, not user-specific
-            )
+        # Initialize adapters for commonly-used environments
+        environments_to_initialize = ["production", "testing"]
 
-            elapsed_time = time.time() - start_time
+        logger.info("  Initializing shared guardrails at startup...")
+        total_start_time = time.time()
+
+        for env in environments_to_initialize:
+            try:
+                logger.info(f"  Initializing guardrails for environment: {env}")
+                start_time = time.time()
+
+                # Initialize with specific environment and no connection (shared config)
+                guardrails_adapter = self._initialize_guardrails(
+                    environment=env,
+                    connection_id=None,  # Shared configuration, not user-specific
+                )
+
+                elapsed_time = time.time() - start_time
+                adapters[env] = guardrails_adapter
+                logger.info(
+                    f" Guardrails for '{env}' initialized successfully in {elapsed_time:.3f}s"
+                )
+
+            except Exception as e:
+                logger.error(f" Failed to initialize guardrails for '{env}': {e}")
+                logger.warning(
+                    f"  Service will fall back to per-request initialization for '{env}' environment"
+                )
+                # Continue with other environments - partial success is acceptable
+                continue
+
+        total_elapsed = time.time() - total_start_time
+
+        if adapters:
             logger.info(
-                f" Shared guardrails initialized successfully in {elapsed_time:.3f}s"
+                f" Shared guardrails initialized for {len(adapters)} environment(s) "
+                f"in {total_elapsed:.3f}s total"
             )
-
-            return guardrails_adapter
-
-        except Exception as e:
-            logger.error(f" Failed to initialize shared guardrails at startup: {e}")
+        else:
             logger.error(
-                "  Service will continue without guardrails (graceful degradation)"
+                "  Failed to initialize any shared guardrails - "
+                "service will use per-request initialization (slower)"
             )
-            # Return None - service continues without guardrails
-            # Per-request fallback will be attempted if needed
-            return None
+
+        return adapters
 
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
@@ -1079,16 +1103,18 @@ class LLMOrchestrationService:
             environment=request.environment, connection_id=request.connection_id
         )
 
-        # Use shared guardrails adapter (initialized at startup)
-        # Falls back to per-request initialization if shared instance unavailable
-        if self.shared_guardrails_adapter is not None:
-            logger.debug(
-                "Using shared guardrails adapter (startup-initialized, zero overhead)"
+        if request.environment in self.shared_guardrails_adapters:
+            logger.info(
+                f" Using shared guardrails adapter for environment='{request.environment}' "
+                f"(startup-initialized, zero overhead)"
             )
-            components["guardrails_adapter"] = self.shared_guardrails_adapter
+            components["guardrails_adapter"] = self.shared_guardrails_adapters[
+                request.environment
+            ]
         else:
             logger.warning(
-                "Shared guardrails unavailable, initializing per-request (slower)"
+                f" Shared guardrails unavailable for environment='{request.environment}', "
+                f"initializing per-request (slower)"
             )
             components["guardrails_adapter"] = self._safe_initialize_guardrails(
                 request.environment, request.connection_id
