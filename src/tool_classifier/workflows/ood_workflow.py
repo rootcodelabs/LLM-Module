@@ -39,6 +39,7 @@ class OODWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """
         Execute OOD workflow in non-streaming mode.
@@ -68,6 +69,7 @@ class OODWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query
             context: Unused (OOD doesn't need metadata)
+            timing_dict: Optional timing dictionary for future timing tracking
 
         Returns:
             OrchestrationResponse with OOD message
@@ -86,6 +88,7 @@ class OODWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """
         Execute OOD workflow in streaming mode.

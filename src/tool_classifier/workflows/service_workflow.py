@@ -549,17 +549,31 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
-        """Execute service workflow in non-streaming mode."""
+        """Execute service workflow in non-streaming mode.
+
+        Args:
+            request: Orchestration request
+            context: Workflow context
+            timing_dict: Optional timing dictionary for unified tracking
+        """
+        import time
+
         chat_id = request.chatId
 
         # Create costs tracking dictionary (follows RAG workflow pattern)
         costs_dict: Dict[str, Dict[str, Any]] = {}
+        # Use parent timing_dict or create new one
+        if timing_dict is None:
+            timing_dict = {}
 
-        # Log comprehensive request details and perform service discovery
+        # Service discovery with timing
+        start_time = time.time()
         await self._log_request_details(
             request, context, mode="non-streaming", costs_dict=costs_dict
         )
+        timing_dict["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
@@ -573,6 +587,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         logger.info(f"[{chat_id}] Entity Transformation:")
 
         # Step 1: Extract service metadata from context
+        start_time = time.time()
         service_metadata = self._extract_service_metadata(context, chat_id)
         if not service_metadata:
             logger.error(
@@ -596,6 +611,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             service_name=service_metadata["service_name"],
             chat_id=chat_id,
         )
+        timing_dict["service.entity_validation"] = time.time() - start_time
 
         logger.info(
             f"[{chat_id}]   - Validation status: "
@@ -672,17 +688,31 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        timing_dict: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
-        """Execute service workflow in streaming mode."""
+        """Execute service workflow in streaming mode.
+
+        Args:
+            request: Orchestration request
+            context: Workflow context
+            timing_dict: Optional timing dictionary for unified tracking
+        """
+        import time
+
         chat_id = request.chatId
 
         # Create costs tracking dictionary (follows RAG workflow pattern)
         costs_dict: Dict[str, Dict[str, Any]] = {}
+        # Use parent timing_dict or create new one
+        if timing_dict is None:
+            timing_dict = {}
 
-        # Log comprehensive request details and perform service discovery
+        # Service discovery with timing
+        start_time = time.time()
         await self._log_request_details(
             request, context, mode="streaming", costs_dict=costs_dict
         )
+        timing_dict["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
