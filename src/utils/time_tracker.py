@@ -5,23 +5,31 @@ from loguru import logger
 
 
 def log_step_timings(
-    timing_dict: Dict[str, float], chat_id: Optional[str] = None
+    time_metric: Dict[str, float], chat_id: Optional[str] = None
 ) -> None:
     """
     Log all step timings in a clean format.
 
     Args:
-        timing_dict: Dictionary containing step names and their execution times
+        time_metric: Dictionary containing step names and their execution times
         chat_id: Optional chat ID for context
     """
-    if not timing_dict:
+    if not time_metric:
         return
+
+    # Parent/composite timings that should be hidden from logs
+    # These are aggregate timings that already include their sub-steps
+    PARENT_TIMINGS = {"classifier.route"}
 
     prefix = f"[{chat_id}] " if chat_id else ""
     logger.info(f"{prefix}STEP EXECUTION TIMES:")
 
     total_time = 0.0
-    for step_name, elapsed_time in timing_dict.items():
+    for step_name, elapsed_time in time_metric.items():
+        # Skip parent/composite timings entirely
+        if step_name in PARENT_TIMINGS:
+            continue
+
         # Special handling for inline streaming guardrails
         if step_name == "output_guardrails" and elapsed_time < 0.001:
             logger.info(f"  {step_name:25s}: (inline during streaming)")

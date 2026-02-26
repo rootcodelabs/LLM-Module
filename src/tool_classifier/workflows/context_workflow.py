@@ -35,6 +35,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """
         Execute context workflow in non-streaming mode.
@@ -45,6 +46,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query and history
             context: Metadata with is_greeting, can_answer_from_history flags
+            time_metric: Optional timing dictionary for future timing tracking
 
         Returns:
             OrchestrationResponse with context-based answer or None to fallback
@@ -62,6 +64,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """
         Execute context workflow in streaming mode.
@@ -72,6 +75,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query and history
             context: Metadata with is_greeting, can_answer_from_history flags
+            time_metric: Optional timing dictionary for future timing tracking
 
         Returns:
             AsyncIterator yielding SSE strings or None to fallback
