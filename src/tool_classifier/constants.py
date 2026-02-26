@@ -58,3 +58,22 @@ If service count exceeds this, semantic search is used to filter to top-K."""
 SERVICE_COUNT_THRESHOLD = 10
 """Threshold for triggering semantic search. If service count > this value,
 semantic search is used instead of sending all services to LLM."""
+
+
+# ============================================================================
+# Hybrid Search Classification Thresholds
+# ============================================================================
+
+HYBRID_SEARCH_TOP_K = 5
+"""Number of top results from hybrid search for classification."""
+
+HYBRID_SEARCH_MIN_THRESHOLD = 0.01
+"""Minimum RRF score to consider a result as a potential match."""
+
+SCORE_RATIO_THRESHOLD = 2.0
+"""Score ratio (top/second) for confident service classification.
+If the top result's RRF score is > 2x the second result, it's a high-confidence match."""
+
+SCORE_GAP_THRESHOLD = 0.005
+"""Absolute score gap for confident classification.
+Prevents false positives when both scores are very low."""
