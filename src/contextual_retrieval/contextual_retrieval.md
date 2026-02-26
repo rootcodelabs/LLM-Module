@@ -788,7 +788,7 @@ def _initialize_contextual_retriever(
 #### 2. Request Processing
 ```python
 # Main orchestration pipeline
-def _execute_orchestration_pipeline(self, request, components, costs_dict):
+def _execute_orchestration_pipeline(self, request, components, costs_metric):
     # Step 1: Refine user prompt
     refined_output = self._refine_user_prompt(...)
     

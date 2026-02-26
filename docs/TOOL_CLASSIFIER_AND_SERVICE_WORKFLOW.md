@@ -244,9 +244,9 @@ intent_result = intent_module.forward(...)
 
 # After LLM call
 usage_info = get_lm_usage_since(history_length_before)
-costs_dict["intent_detection"] = usage_info
+costs_metric["intent_detection"] = usage_info
 
-# Later: orchestration_service.log_costs(costs_dict)
+# Later: orchestration_service.log_costs(costs_metric)
 ```
 
 ---
@@ -557,14 +557,14 @@ Service workflow tracks LLM costs following the RAG workflow pattern:
 
 ```python
 # Create costs dict at workflow level
-costs_dict: Dict[str, Dict[str, Any]] = {}
+costs_metric: Dict[str, Dict[str, Any]] = {}
 
 # Intent detection captures costs
 intent_result, intent_usage = await _detect_service_intent(...)
-costs_dict["intent_detection"] = intent_usage
+costs_metric["intent_detection"] = intent_usage
 
 # Log costs after workflow completes
-orchestration_service.log_costs(costs_dict)
+orchestration_service.log_costs(costs_metric)
 ```
 
 **Cost Breakdown Logged:**

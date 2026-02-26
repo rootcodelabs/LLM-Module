@@ -106,7 +106,7 @@ class ToolClassifier:
         classification: ClassificationResult,
         request: OrchestrationRequest,
         is_streaming: Literal[False] = False,
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> OrchestrationResponse: ...
 
     @overload
@@ -115,7 +115,7 @@ class ToolClassifier:
         classification: ClassificationResult,
         request: OrchestrationRequest,
         is_streaming: Literal[True],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> AsyncIterator[str]: ...
 
     async def route_to_workflow(
@@ -123,7 +123,7 @@ class ToolClassifier:
         classification: ClassificationResult,
         request: OrchestrationRequest,
         is_streaming: bool = False,
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Union[OrchestrationResponse, AsyncIterator[str]]:
         """
         Route request to appropriate workflow based on classification.
@@ -135,7 +135,7 @@ class ToolClassifier:
             classification: Classification result from classify()
             request: Original orchestration request
             is_streaming: Whether to use streaming mode (for /orchestrate/stream)
-            timing_dict: Optional timing dictionary for workflow step tracking
+            time_metric: Optional timing dictionary for workflow step tracking
 
         Returns:
             OrchestrationResponse for non-streaming mode
@@ -166,7 +166,7 @@ class ToolClassifier:
                 request=request,
                 context=classification.metadata,
                 start_layer=classification.workflow,
-                timing_dict=timing_dict,
+                time_metric=time_metric,
             )
         else:
             # NON-STREAMING MODE: For /orchestrate and /orchestrate/test endpoints
@@ -175,7 +175,7 @@ class ToolClassifier:
                 request=request,
                 context=classification.metadata,
                 start_layer=classification.workflow,
-                timing_dict=timing_dict,
+                time_metric=time_metric,
             )
 
     def _get_workflow_executor(self, workflow_type: WorkflowType) -> Any:
@@ -194,7 +194,7 @@ class ToolClassifier:
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> OrchestrationResponse:
         """
         Execute workflow with fallback to subsequent layers (non-streaming).
@@ -210,7 +210,7 @@ class ToolClassifier:
             request: Orchestration request
             context: Workflow context/metadata
             start_layer: Starting workflow type
-            timing_dict: Optional timing dictionary for tracking
+            time_metric: Optional timing dictionary for tracking
         """
         chat_id = request.chatId
         workflow_name = WORKFLOW_DISPLAY_NAMES.get(start_layer, start_layer.value)
@@ -218,7 +218,7 @@ class ToolClassifier:
         logger.info(f"[{chat_id}] Executing {workflow_name} (non-streaming)")
 
         try:
-            result = await workflow.execute_async(request, context, timing_dict)
+            result = await workflow.execute_async(request, context, time_metric)
 
             if result is not None:
                 logger.info(f"[{chat_id}] {workflow_name} handled successfully")
@@ -246,7 +246,7 @@ class ToolClassifier:
                     f"(Layer {WORKFLOW_LAYER_ORDER.index(next_layer) + 1})"
                 )
 
-                result = await next_workflow.execute_async(request, {}, timing_dict)
+                result = await next_workflow.execute_async(request, {}, time_metric)
 
                 if result is not None:
                     logger.info(f"[{chat_id}] {next_name} handled successfully")
@@ -262,7 +262,7 @@ class ToolClassifier:
             logger.error(f"[{chat_id}] Error executing {workflow_name}: {e}")
             # Fallback to RAG on error
             logger.info(f"[{chat_id}] Falling back to RAG due to error")
-            rag_result = await self.rag_workflow.execute_async(request, {}, timing_dict)
+            rag_result = await self.rag_workflow.execute_async(request, {}, time_metric)
             if rag_result is not None:
                 return rag_result
             else:
@@ -274,7 +274,7 @@ class ToolClassifier:
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> AsyncIterator[str]:
         """
         Execute workflow with fallback to subsequent layers (streaming).
@@ -290,7 +290,7 @@ class ToolClassifier:
             request: Orchestration request
             context: Workflow context/metadata
             start_layer: Starting workflow type
-            timing_dict: Optional timing dictionary for tracking
+            time_metric: Optional timing dictionary for tracking
         """
         chat_id = request.chatId
         workflow_name = WORKFLOW_DISPLAY_NAMES.get(start_layer, start_layer.value)
@@ -298,7 +298,7 @@ class ToolClassifier:
         logger.info(f"[{chat_id}] Executing {workflow_name} (streaming)")
 
         try:
-            result = await workflow.execute_streaming(request, context, timing_dict)
+            result = await workflow.execute_streaming(request, context, time_metric)
 
             if result is not None:
                 logger.info(f"[{chat_id}] {workflow_name} streaming started")
@@ -329,7 +329,7 @@ class ToolClassifier:
                     f"(Layer {layer_number})"
                 )
 
-                result = await next_workflow.execute_streaming(request, {}, timing_dict)
+                result = await next_workflow.execute_streaming(request, {}, time_metric)
 
                 if result is not None:
                     logger.info(f"[{chat_id}] {next_name} streaming started")
@@ -348,7 +348,7 @@ class ToolClassifier:
             # Fallback to RAG on error
             logger.info(f"[{chat_id}] Falling back to RAG streaming due to error")
             streaming_result = await self.rag_workflow.execute_streaming(
-                request, {}, timing_dict
+                request, {}, time_metric
             )
             if streaming_result is not None:
                 async for chunk in streaming_result:

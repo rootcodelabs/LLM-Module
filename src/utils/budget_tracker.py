@@ -186,26 +186,26 @@ class BudgetTracker:
             return {"success": False, "reason": "unexpected_error", "error": str(e)}
 
     def update_budget_from_costs(
-        self, connection_id: Optional[str], costs_dict: Dict[str, Dict[str, Any]]
+        self, connection_id: Optional[str], costs_metric: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Update budget from a costs dictionary containing component costs.
 
         Args:
             connection_id: The LLM connection ID (optional)
-            costs_dict: Dictionary of component costs with total_cost values
+            costs_metric: Dictionary of component costs with total_cost values
 
         Returns:
             Dictionary containing the response from the update endpoint
         """
         # Calculate total cost from all components
         total_cost = 0.0
-        for component_costs in costs_dict.values():
+        for component_costs in costs_metric.values():
             total_cost += component_costs.get("total_cost", 0.0)
 
         logger.debug(
             f"Total cost calculated from components: ${total_cost:.6f} "
-            f"(components: {list(costs_dict.keys())})"
+            f"(components: {list(costs_metric.keys())})"
         )
 
         return self.update_budget(connection_id, total_cost)
