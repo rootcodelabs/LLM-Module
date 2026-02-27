@@ -38,4 +38,5 @@ export const vaultEndpoints = {
 export const promptConfigurationEndpoints = {
   GET_PROMPT_CONFIGURATION: (): string => `/rag-search/prompt-configuration/get`,
   SAVE_PROMPT_CONFIGURATION: (): string => `/rag-search/prompt-configuration/save`,
+  DELETE_PROMPT_CONFIGURATION: (): string => `/rag-search/prompt-configuration/delete`,
 }

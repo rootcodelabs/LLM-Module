@@ -418,12 +418,15 @@
     "title": "Prompt Configurations",
     "subtitle": "Configure and manage your prompt templates",
     "promptLabel": "Prompt Template",
+    "enableToggleLabel": "Enable Custom Prompt Configuration",
     "promptPlaceholder": "Enter your prompt template here...",
     "submitButton": "Save",
     "updateButton": "Update",
     "saving": "Saving...",
     "updating": "Updating...",
     "submitSuccess": "Prompt configuration saved successfully",
-    "submitError": "Failed to save prompt configuration. Please try again."
+    "submitError": "Failed to save prompt configuration. Please try again.",
+    "deleteSuccess": "Prompt configuration deleted successfully",
+    "deleteError": "Failed to delete prompt configuration. Please try again."
   }
 }

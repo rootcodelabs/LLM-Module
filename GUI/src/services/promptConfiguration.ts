@@ -21,3 +21,8 @@ export const savePromptConfiguration = async (prompt: string): Promise<PromptCon
     });
     return data?.response;
 };
+
+export const deletePromptConfiguration = async (): Promise<void> => {
+    console.log('Deleting prompt configuration');
+    await apiDev.post(promptConfigurationEndpoints.DELETE_PROMPT_CONFIGURATION(), {});
+};

@@ -1,10 +1,10 @@
 import { FC, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, FormTextarea } from 'components';
+import { Button, FormTextarea, Switch } from 'components';
 import { ButtonAppearanceTypes, ToastTypes } from 'enums/commonEnums';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
-import { getPromptConfiguration, savePromptConfiguration } from 'services/promptConfiguration';
+import { getPromptConfiguration, savePromptConfiguration, deletePromptConfiguration } from 'services/promptConfiguration';
 import { promptConfigurationQueryKeys } from 'utils/queryKeys';
 import { useToast } from 'hooks/useToast';
 import './PromptConfigurations.scss';
@@ -15,6 +15,7 @@ const PromptConfigurations: FC = () => {
     const queryClient = useQueryClient();
     const [promptText, setPromptText] = useState('');
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isEnabled, setIsEnabled] = useState(false);
 
     // Fetch prompt configuration
     const { data: promptConfig, isLoading } = useQuery({
@@ -28,6 +29,11 @@ const PromptConfigurations: FC = () => {
         if (promptConfig && promptConfig.length > 0) {
             setPromptText(promptConfig[0].prompt || '');
             setIsUpdating(true);
+            setIsEnabled(true);
+        } else {
+            setPromptText('');
+            setIsUpdating(false);
+            setIsEnabled(false);
         }
     }, [promptConfig]);
 
@@ -52,11 +58,46 @@ const PromptConfigurations: FC = () => {
         },
     });
 
+    // Delete prompt mutation
+    const deleteMutation = useMutation({
+        mutationFn: deletePromptConfiguration,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: promptConfigurationQueryKeys.current() });
+            setPromptText('');
+            setIsUpdating(false);
+            setIsEnabled(false);
+            toast.open({
+                type: ToastTypes.SUCCESS,
+                title: t('toast.success.title'),
+                message: t('promptConfigurations.deleteSuccess'),
+            });
+        },
+        onError: (error: any) => {
+            console.error('Error deleting prompt:', error);
+            toast.open({
+                type: ToastTypes.ERROR,
+                title: t('toast.error.title'),
+                message: t('promptConfigurations.deleteError'),
+            });
+        },
+    });
+
     const handleSubmit = () => {
         if (!promptText.trim()) {
             return;
         }
         saveMutation.mutate(promptText);
+    };
+
+    const handleToggleChange = (checked: boolean) => {
+        if (!checked) {
+            // Disable: delete the prompt if it exists, and clear textarea
+            setPromptText('');
+            if (isUpdating) {
+                deleteMutation.mutate();
+            }
+        }
+        setIsEnabled(checked);
     };
 
     if (isLoading) {
@@ -71,19 +112,34 @@ const PromptConfigurations: FC = () => {
                 </div>
 
                 <div className="prompt-form">
+                    <div className="toggle-header">
+                        <span>{t('promptConfigurations.enableToggleLabel')}</span>
+                        <Switch
+                            label=""
+                            hideLabel={true}
+                            checked={isEnabled}
+                            onCheckedChange={handleToggleChange}
+                            name="enableCustomPrompt"
+                            onLabel=""
+                            offLabel=""
+                        />
+                    </div>
+                    <div className="separator"></div>
+
                     <FormTextarea
                         label={t('promptConfigurations.promptLabel')}
                         name="promptText"
                         value={promptText}
                         onChange={(e) => setPromptText(e.target.value)}
                         minRows={10}
+                        disabled={!isEnabled}
                     />
 
                     <div className="form-actions">
                         <Button
                             appearance={ButtonAppearanceTypes.PRIMARY}
                             onClick={handleSubmit}
-                            disabled={saveMutation.isLoading || !promptText.trim()}
+                            disabled={!isEnabled || saveMutation.isLoading || !promptText.trim()}
                         >
                             {saveMutation.isLoading 
                                 ? (isUpdating ? t('promptConfigurations.updating') : t('promptConfigurations.saving'))

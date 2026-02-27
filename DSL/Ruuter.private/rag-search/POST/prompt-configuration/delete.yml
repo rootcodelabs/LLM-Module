@@ -1,0 +1,33 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Delete prompt configuration"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+
+delete_prompt_configuration:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_RESQL]/delete-prompt-configuration"
+    body: {}
+  result: delete_result
+  next: refresh_llm_cache
+
+refresh_llm_cache:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_PROMPT_REFRESH]"
+    body: {}
+  result: refresh_result
+  next: return_success
+  on_error: handle_refresh_error
+
+handle_refresh_error:
+  log: "Prompt refresh failed, will use TTL cache fallback"
+  next: return_success
+
+return_success:
+  return: ${delete_result.response.body}
+  next: end

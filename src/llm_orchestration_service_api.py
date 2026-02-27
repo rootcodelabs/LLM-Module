@@ -769,16 +769,13 @@ def refresh_prompt_config(http_request: Request) -> Dict[str, Any]:
             }
 
         elif refresh_status == RefreshStatus.NOT_FOUND:
-            # Configuration absent in database
-            error_id = generate_error_id()
-            logger.warning(f"[{error_id}] Prompt configuration not found in database")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={
-                    "error": refresh_result.get("message"),
-                    "error_id": error_id,
-                },
-            )
+             # Configuration absent in database - treat as valid empty state
+            logger.info("Prompt configuration not found in database, cache cleared")
+            return {
+                "refreshed": True,
+                "message": refresh_result.get("message"),
+                "prompt_length": 0,
+            }
 
         elif refresh_status == RefreshStatus.FETCH_FAILED:
             # Upstream service failure (network/HTTP/timeout errors)
