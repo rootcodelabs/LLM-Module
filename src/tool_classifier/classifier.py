@@ -9,7 +9,7 @@ from models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
 )
-from tool_classifier.enums import WorkflowType, WORKFLOW_DISPLAY_NAMES
+from tool_classifier.enums import WorkflowType, WORKFLOW_DISPLAY_NAMES, WORKFLOW_LAYER_ORDER
 from tool_classifier.models import ClassificationResult
 from tool_classifier.constants import (
     QDRANT_HOST,
@@ -17,9 +17,10 @@ from tool_classifier.constants import (
     QDRANT_COLLECTION,
     QDRANT_TIMEOUT,
     HYBRID_SEARCH_TOP_K,
-    HYBRID_SEARCH_MIN_THRESHOLD,
-    SCORE_RATIO_THRESHOLD,
-    SCORE_GAP_THRESHOLD,
+    DENSE_SEARCH_TOP_K,
+    DENSE_MIN_THRESHOLD,
+    DENSE_HIGH_CONFIDENCE_THRESHOLD,
+    DENSE_SCORE_GAP_THRESHOLD,
 )
 from tool_classifier.sparse_encoder import compute_sparse_vector
 from tool_classifier.workflows import (
@@ -34,7 +35,11 @@ class ToolClassifier:
     """
     Main classifier that determines which workflow should handle user queries.
 
-    Uses Qdrant hybrid search (dense + sparse + RRF fusion) to classify queries:
+    Uses a two-step search approach for classification:
+    1. Dense-only search → real cosine similarity scores for relevance check
+    2. Hybrid search (dense + sparse + RRF) → best service identification
+
+    Routing decisions:
     - High-confidence service match → SERVICE workflow (skip discovery + intent detection)
     - Ambiguous match → SERVICE workflow with LLM confirmation
     - No match → CONTEXT/RAG workflow (skip SERVICE entirely)
@@ -97,16 +102,15 @@ class ToolClassifier:
         language: str,
     ) -> ClassificationResult:
         """
-        Classify a user query using Qdrant hybrid search (dense + sparse + RRF).
+        Classify a user query using a two-step search approach.
 
-        Classification flow:
-        1. Generate dense embedding for the query
-        2. Generate sparse vector for the query (BM25-style)
-        3. Run hybrid search on intent_collections (prefetch dense + sparse → RRF fusion)
-        4. Apply score-gap analysis:
-           - Clear winner (high ratio + gap) → SERVICE with high confidence
-           - Ambiguous (scores exist but close) → SERVICE with LLM confirmation flag
-           - No match (low/no scores) → CONTEXT (skip SERVICE entirely)
+        Step 1: Dense-only search → cosine similarity for relevance check
+        Step 2: Hybrid search (dense + sparse + RRF) → service identification
+
+        Routing:
+        - cosine < DENSE_MIN_THRESHOLD → CONTEXT/RAG (skip SERVICE)
+        - cosine ≥ HIGH_CONFIDENCE + large gap → SERVICE (no LLM needed)
+        - else → SERVICE with LLM confirmation
 
         Args:
             query: User's query string
@@ -130,107 +134,126 @@ class ToolClassifier:
                     reasoning="Could not generate embedding - skip to Context/RAG",
                 )
 
-            # Step 2: Generate sparse vector for query
-            query_sparse = compute_sparse_vector(query)
+            # Step 2: Dense-only search → get actual cosine similarity scores
+            dense_results = await self._dense_search(
+                dense_vector=query_embedding,
+                top_k=DENSE_SEARCH_TOP_K,
+            )
 
-            # Step 3: Qdrant hybrid search with RRF fusion
-            results = await self._hybrid_search(
+            if not dense_results:
+                logger.info("No dense search results - routing to CONTEXT/RAG")
+                return ClassificationResult(
+                    workflow=WorkflowType.CONTEXT,
+                    confidence=1.0,
+                    metadata={"reason": "no_service_match"},
+                    reasoning="No services matched the query (dense search empty)",
+                )
+
+            top_cosine = dense_results[0].get("cosine_score", 0.0)
+            top_service_name = dense_results[0].get("name", "unknown")
+            second_cosine = dense_results[1].get("cosine_score", 0.0) if len(dense_results) > 1 else 0.0
+            cosine_gap = top_cosine - second_cosine
+
+            logger.info(
+                f"Dense search: top={top_service_name} "
+                f"(cosine={top_cosine:.4f}), "
+                f"second={dense_results[1].get('name', 'none') if len(dense_results) > 1 else 'none'} "
+                f"(cosine={second_cosine:.4f}), "
+                f"gap={cosine_gap:.4f}"
+            )
+
+            # Decision: Is this a service query at all?
+            if top_cosine < DENSE_MIN_THRESHOLD:
+                logger.info(
+                    f"Low relevance (cosine={top_cosine:.4f} < {DENSE_MIN_THRESHOLD}) "
+                    f"- routing to CONTEXT/RAG, skipping SERVICE"
+                )
+                return ClassificationResult(
+                    workflow=WorkflowType.CONTEXT,
+                    confidence=1.0,
+                    metadata={
+                        "reason": "below_dense_threshold",
+                        "top_cosine": top_cosine,
+                        "top_service": top_service_name,
+                    },
+                    reasoning=(
+                        f"Dense cosine {top_cosine:.4f} below threshold "
+                        f"{DENSE_MIN_THRESHOLD} - skip to Context/RAG"
+                    ),
+                )
+
+            # Step 3: Hybrid search → identify best service using RRF
+            query_sparse = compute_sparse_vector(query)
+            hybrid_results = await self._hybrid_search(
                 dense_vector=query_embedding,
                 sparse_vector=query_sparse,
                 top_k=HYBRID_SEARCH_TOP_K,
             )
 
-            if not results:
-                logger.info("No hybrid search results - routing to CONTEXT/RAG")
-                return ClassificationResult(
-                    workflow=WorkflowType.CONTEXT,
-                    confidence=1.0,
-                    metadata={"reason": "no_service_match"},
-                    reasoning="No services matched the query",
-                )
+            # Use hybrid results for service identification, dense scores for confidence
+            if not hybrid_results:
+                # Dense matched but hybrid didn't — use dense results
+                hybrid_results = dense_results
 
-            # Step 4: Score-gap analysis
-            top = results[0]
-            top_score = top.get("rrf_score", 0.0)
-            top_service_id = top.get("service_id", "unknown")
-            top_service_name = top.get("name", "unknown")
-
-            second_score = results[1].get("rrf_score", 0.0) if len(results) > 1 else 0.0
-
-            score_ratio = top_score / max(second_score, 0.0001)
-            score_gap = top_score - second_score
+            top_result = hybrid_results[0]
+            top_service_id = top_result.get("service_id", "unknown")
+            top_service_name_hybrid = top_result.get("name", "unknown")
 
             logger.info(
-                f"Hybrid search results - "
-                f"top: {top_service_name} (score={top_score:.6f}), "
-                f"second: {results[1].get('name', 'none') if len(results) > 1 else 'none'} "
-                f"(score={second_score:.6f}), "
-                f"ratio={score_ratio:.2f}, gap={score_gap:.6f}"
+                f"Hybrid search: best service={top_service_name_hybrid} "
+                f"(service_id={top_service_id})"
             )
 
-            # High confidence: clear winner → SERVICE (skip discovery + intent detection)
-            if score_ratio > SCORE_RATIO_THRESHOLD and score_gap > SCORE_GAP_THRESHOLD:
+            # High confidence: cosine is high AND clear gap to second result
+            if (
+                top_cosine >= DENSE_HIGH_CONFIDENCE_THRESHOLD
+                and cosine_gap >= DENSE_SCORE_GAP_THRESHOLD
+            ):
                 logger.info(
-                    f"High-confidence service match: {top_service_name} "
-                    f"(ratio={score_ratio:.2f}, gap={score_gap:.6f})"
+                    f"HIGH-CONFIDENCE match: {top_service_name_hybrid} "
+                    f"(cosine={top_cosine:.4f}, gap={cosine_gap:.4f})"
                 )
                 return ClassificationResult(
                     workflow=WorkflowType.SERVICE,
-                    confidence=min(score_ratio / 5.0, 1.0),
+                    confidence=min(top_cosine, 1.0),
                     metadata={
                         "matched_service_id": top_service_id,
-                        "matched_service_name": top_service_name,
-                        "rrf_score": top_score,
-                        "score_gap": score_gap,
-                        "score_ratio": score_ratio,
+                        "matched_service_name": top_service_name_hybrid,
+                        "cosine_score": top_cosine,
+                        "cosine_gap": cosine_gap,
                         "needs_llm_confirmation": False,
-                        "top_results": results[:3],
+                        "top_results": hybrid_results[:3],
                     },
                     reasoning=(
-                        f"High-confidence match: {top_service_name} "
-                        f"(ratio={score_ratio:.2f}, gap={score_gap:.6f})"
+                        f"High-confidence match: {top_service_name_hybrid} "
+                        f"(cosine={top_cosine:.4f}, gap={cosine_gap:.4f})"
                     ),
                 )
 
-            # Medium confidence: ambiguous → SERVICE with LLM confirmation
-            if top_score > HYBRID_SEARCH_MIN_THRESHOLD:
-                logger.info(
-                    f"Ambiguous service match: {top_service_name} "
-                    f"(score={top_score:.6f}, ratio={score_ratio:.2f}) - needs LLM confirmation"
-                )
-                return ClassificationResult(
-                    workflow=WorkflowType.SERVICE,
-                    confidence=0.5,
-                    metadata={
-                        "matched_service_id": top_service_id,
-                        "matched_service_name": top_service_name,
-                        "rrf_score": top_score,
-                        "score_gap": score_gap,
-                        "score_ratio": score_ratio,
-                        "needs_llm_confirmation": True,
-                        "top_results": results[:3],
-                    },
-                    reasoning=(
-                        f"Ambiguous match: {top_service_name} "
-                        f"(score={top_score:.6f}) - LLM confirmation needed"
-                    ),
-                )
-
-            # No confidence: skip SERVICE entirely → CONTEXT/RAG
+            # Medium confidence: above min threshold but ambiguous
             logger.info(
-                f"No service match (top_score={top_score:.6f} below threshold "
-                f"{HYBRID_SEARCH_MIN_THRESHOLD}) - routing to CONTEXT/RAG"
+                f"AMBIGUOUS match: {top_service_name_hybrid} "
+                f"(cosine={top_cosine:.4f}, gap={cosine_gap:.4f}) - needs LLM confirmation"
             )
             return ClassificationResult(
-                workflow=WorkflowType.CONTEXT,
-                confidence=1.0,
-                metadata={"reason": "below_threshold", "top_score": top_score},
-                reasoning=f"Top score {top_score:.6f} below threshold - skip to Context/RAG",
+                workflow=WorkflowType.SERVICE,
+                confidence=0.5,
+                metadata={
+                    "matched_service_id": top_service_id,
+                    "matched_service_name": top_service_name_hybrid,
+                    "cosine_score": top_cosine,
+                    "cosine_gap": cosine_gap,
+                    "needs_llm_confirmation": True,
+                    "top_results": hybrid_results[:3],
+                },
+                reasoning=(
+                    f"Ambiguous match: {top_service_name_hybrid} "
+                    f"(cosine={top_cosine:.4f}) - LLM confirmation needed"
+                ),
             )
 
         except Exception as e:
             logger.error(f"Hybrid classification failed: {e}", exc_info=True)
-            # Fallback: route to CONTEXT/RAG on any error
             return ClassificationResult(
                 workflow=WorkflowType.CONTEXT,
                 confidence=1.0,
@@ -268,6 +291,92 @@ class ToolClassifier:
         except Exception as e:
             logger.error(f"Failed to generate query embedding: {e}")
             return None
+
+    async def _dense_search(
+        self,
+        dense_vector: List[float],
+        top_k: int = DENSE_SEARCH_TOP_K,
+    ) -> List[Dict[str, Any]]:
+        """Execute dense-only search on Qdrant to get actual cosine similarity scores.
+
+        This is used as a pre-filter: the cosine scores tell us HOW RELEVANT
+        the top results actually are, unlike RRF scores which are purely rank-based.
+
+        Args:
+            dense_vector: Dense embedding vector (3072-dim)
+            top_k: Number of results to return
+
+        Returns:
+            List of result dicts with service metadata and cosine_score,
+            deduplicated by service_id (best score per service)
+        """
+        try:
+            search_payload = {
+                "query": dense_vector,
+                "using": "dense",
+                "limit": top_k * 2,  # Get more to allow dedup by service
+                "with_payload": True,
+            }
+
+            response = await self._qdrant_client.post(
+                f"/collections/{QDRANT_COLLECTION}/points/query",
+                json=search_payload,
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Qdrant dense search failed: HTTP {response.status_code} - "
+                    f"{response.text}"
+                )
+                return []
+
+            search_results = response.json()
+            points = search_results.get("result", {}).get("points", [])
+
+            if not points:
+                logger.info("No results from dense search")
+                return []
+
+            # Deduplicate by service_id (keep best cosine score per service)
+            service_results: Dict[str, Dict[str, Any]] = {}
+            for point in points:
+                payload = point.get("payload", {})
+                score = float(point.get("score", 0))
+                service_id = payload.get("service_id", "unknown")
+
+                if service_id not in service_results or score > service_results[service_id].get("cosine_score", 0):
+                    service_results[service_id] = {
+                        "service_id": service_id,
+                        "name": payload.get("name", ""),
+                        "description": payload.get("description", ""),
+                        "examples": payload.get("examples", []),
+                        "entities": payload.get("entities", []),
+                        "context": payload.get("context", ""),
+                        "point_type": payload.get("point_type", "unknown"),
+                        "example_text": payload.get("example_text"),
+                        "cosine_score": score,
+                    }
+
+            # Sort by cosine score descending
+            sorted_results = sorted(
+                service_results.values(),
+                key=lambda x: x["cosine_score"],
+                reverse=True,
+            )
+
+            logger.info(
+                f"Dense search found {len(sorted_results)} unique services "
+                f"(top cosine: {sorted_results[0]['cosine_score']:.4f})"
+            )
+
+            return sorted_results
+
+        except httpx.TimeoutException:
+            logger.error(f"Qdrant dense search timeout after {QDRANT_TIMEOUT}s")
+            return []
+        except Exception as e:
+            logger.error(f"Dense search failed: {e}", exc_info=True)
+            return []
 
     async def _hybrid_search(
         self,
@@ -535,7 +644,6 @@ class ToolClassifier:
             )
 
             # Get the layer order starting from current layer
-            from tool_classifier.enums import WORKFLOW_LAYER_ORDER
 
             current_index = WORKFLOW_LAYER_ORDER.index(start_layer)
             remaining_layers = WORKFLOW_LAYER_ORDER[current_index + 1 :]
@@ -557,7 +665,6 @@ class ToolClassifier:
                     return result
 
                 logger.info(f"[{chat_id}] {next_name} returned None, continuing...")
-                current_index += 1
 
             # This should never happen since RAG/OOD should always return result
             raise RuntimeError("All workflows returned None (unexpected)")
@@ -617,7 +724,6 @@ class ToolClassifier:
             )
 
             # Get the layer order starting from current layer
-            from tool_classifier.enums import WORKFLOW_LAYER_ORDER
 
             current_index = WORKFLOW_LAYER_ORDER.index(start_layer)
             remaining_layers = WORKFLOW_LAYER_ORDER[current_index + 1 :]
@@ -642,7 +748,6 @@ class ToolClassifier:
                     return
 
                 logger.info(f"[{chat_id}] {next_name} returned None, continuing...")
-                current_index += 1
 
             # This should never happen
             raise RuntimeError("All workflows returned None in streaming (unexpected)")

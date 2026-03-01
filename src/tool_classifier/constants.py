@@ -65,15 +65,21 @@ semantic search is used instead of sending all services to LLM."""
 # ============================================================================
 
 HYBRID_SEARCH_TOP_K = 5
-"""Number of top results from hybrid search for classification."""
+"""Number of top results from hybrid search for service identification."""
 
-HYBRID_SEARCH_MIN_THRESHOLD = 0.01
-"""Minimum RRF score to consider a result as a potential match."""
+DENSE_SEARCH_TOP_K = 3
+"""Number of top results from dense-only search for relevance scoring."""
 
-SCORE_RATIO_THRESHOLD = 2.0
-"""Score ratio (top/second) for confident service classification.
-If the top result's RRF score is > 2x the second result, it's a high-confidence match."""
+DENSE_MIN_THRESHOLD = 0.20
+"""Minimum dense cosine similarity to consider a result as a potential match.
+Below this → skip SERVICE entirely, go to CONTEXT/RAG.
+Note: Multilingual embeddings (Estonian/short queries) typically yield
+lower cosine scores (0.25-0.40) than English. Tune based on observed scores."""
 
-SCORE_GAP_THRESHOLD = 0.005
-"""Absolute score gap for confident classification.
-Prevents false positives when both scores are very low."""
+DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40
+"""Dense cosine similarity for high-confidence service classification.
+Above this AND score gap is large → SERVICE without LLM confirmation."""
+
+DENSE_SCORE_GAP_THRESHOLD = 0.05
+"""Cosine score gap (top - second) for high-confidence classification.
+Ensures the top result is significantly better than the runner-up."""
