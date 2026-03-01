@@ -27,6 +27,7 @@ from tool_classifier.constants import (
     SERVICE_DISCOVERY_TIMEOUT,
 )
 from tool_classifier.intent_detector import IntentDetectionModule
+import time
 
 
 class LLMServiceProtocol(Protocol):
@@ -64,11 +65,11 @@ class LLMServiceProtocol(Protocol):
         """
         ...
 
-    def log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
+    def log_costs(self, costs_metric: Dict[str, Dict[str, Any]]) -> None:
         """Log cost information for tracking.
 
         Args:
-            costs_dict: Dictionary of costs per component
+            costs_metric: Dictionary of costs per component
         """
         ...
 
@@ -296,7 +297,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         request: OrchestrationRequest,
         chat_id: str,
         context: Dict[str, Any],
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> None:
         """Detect intent, validate service, and populate context.
 
@@ -311,7 +312,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             request: Orchestration request
             chat_id: Chat ID for logging
             context: Context dict to populate with results
-            costs_dict: Dictionary to track LLM costs
+            costs_metric: Dictionary to track LLM costs
         """
         intent_result, intent_usage = await self._detect_service_intent(
             user_query=request.message,
@@ -319,7 +320,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             conversation_history=request.conversationHistory,
             chat_id=chat_id,
         )
-        costs_dict["intent_detection"] = intent_usage
+        costs_metric["intent_detection"] = intent_usage
 
         if intent_result and intent_result.get("matched_service_id"):
             service_id = intent_result["matched_service_id"]
@@ -463,7 +464,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         request: OrchestrationRequest,
         context: Dict[str, Any],
         mode: str,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> None:
         """Log request details and perform service discovery.
 
@@ -471,7 +472,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             request: The orchestration request
             context: Workflow context dictionary
             mode: Execution mode ("streaming" or "non-streaming")
-            costs_dict: Dictionary to accumulate cost tracking information
+            costs_metric: Dictionary to accumulate cost tracking information
         """
         chat_id = request.chatId
         logger.info(f"[{chat_id}] SERVICE WORKFLOW ({mode}): {request.message}")
@@ -529,7 +530,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                         request=request,
                         chat_id=chat_id,
                         context=context,
-                        costs_dict=costs_dict,
+                        costs_metric=costs_metric,
                     )
             else:
                 services = response_data.get("services", [])
@@ -540,7 +541,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                         request=request,
                         chat_id=chat_id,
                         context=context,
-                        costs_dict=costs_dict,
+                        costs_metric=costs_metric,
                     )
         else:
             logger.warning(f"[{chat_id}] Service discovery failed")
@@ -549,31 +550,30 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """Execute service workflow in non-streaming mode.
 
         Args:
             request: Orchestration request
             context: Workflow context
-            timing_dict: Optional timing dictionary for unified tracking
+            time_metric: Optional timing dictionary for unified tracking
         """
-        import time
 
         chat_id = request.chatId
 
         # Create costs tracking dictionary (follows RAG workflow pattern)
-        costs_dict: Dict[str, Dict[str, Any]] = {}
-        # Use parent timing_dict or create new one
-        if timing_dict is None:
-            timing_dict = {}
+        costs_metric: Dict[str, Dict[str, Any]] = {}
+        # Use parent time_metric or create new one
+        if time_metric is None:
+            time_metric = {}
 
         # Service discovery with timing
         start_time = time.time()
         await self._log_request_details(
-            request, context, mode="non-streaming", costs_dict=costs_dict
+            request, context, mode="non-streaming", costs_metric=costs_metric
         )
-        timing_dict["service.discovery"] = time.time() - start_time
+        time_metric["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
@@ -611,7 +611,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             service_name=service_metadata["service_name"],
             chat_id=chat_id,
         )
-        timing_dict["service.entity_validation"] = time.time() - start_time
+        time_metric["service.entity_validation"] = time.time() - start_time
 
         logger.info(
             f"[{chat_id}]   - Validation status: "
@@ -673,7 +673,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
         # Log costs after service workflow completes (follows RAG workflow pattern)
         if self.orchestration_service:
-            self.orchestration_service.log_costs(costs_dict)
+            self.orchestration_service.log_costs(costs_metric)
 
         return OrchestrationResponse(
             chatId=request.chatId,
@@ -688,31 +688,30 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """Execute service workflow in streaming mode.
 
         Args:
             request: Orchestration request
             context: Workflow context
-            timing_dict: Optional timing dictionary for unified tracking
+            time_metric: Optional timing dictionary for unified tracking
         """
-        import time
 
         chat_id = request.chatId
 
         # Create costs tracking dictionary (follows RAG workflow pattern)
-        costs_dict: Dict[str, Dict[str, Any]] = {}
-        # Use parent timing_dict or create new one
-        if timing_dict is None:
-            timing_dict = {}
+        costs_metric: Dict[str, Dict[str, Any]] = {}
+        # Use parent time_metric or create new one
+        if time_metric is None:
+            time_metric = {}
 
         # Service discovery with timing
         start_time = time.time()
         await self._log_request_details(
-            request, context, mode="streaming", costs_dict=costs_dict
+            request, context, mode="streaming", costs_metric=costs_metric
         )
-        timing_dict["service.discovery"] = time.time() - start_time
+        time_metric["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
@@ -820,7 +819,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
             # Log costs after streaming completes (follows RAG workflow pattern)
             # Must be inside generator because costs are accumulated during streaming
-            orchestration_service.log_costs(costs_dict)
+            orchestration_service.log_costs(costs_metric)
 
         return debug_stream()
         # REMOVE THIS BLOCK AFTER STEP 7 IMPLEMENTATION (END)
