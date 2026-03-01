@@ -50,7 +50,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """
         Execute RAG workflow in non-streaming mode.
@@ -65,7 +65,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query
             context: Unused (RAG doesn't need classification metadata)
-            timing_dict: Optional timing dictionary from parent (for unified tracking)
+            time_metric: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
             OrchestrationResponse with RAG-generated answer
@@ -74,10 +74,10 @@ class RAGWorkflowExecutor(BaseWorkflow):
         logger.info(f"[{request.chatId}] Executing RAG workflow (non-streaming)")
 
         # Initialize components needed for RAG pipeline
-        costs_dict: Dict[str, Any] = {}
-        # Use parent timing_dict or create new one
-        if timing_dict is None:
-            timing_dict = {}
+        costs_metric: Dict[str, Any] = {}
+        # Use parent time_metric or create new one
+        if time_metric is None:
+            time_metric = {}
 
         # Initialize service components
         components = self.orchestration_service._initialize_service_components(request)
@@ -86,13 +86,13 @@ class RAGWorkflowExecutor(BaseWorkflow):
         response = await self.orchestration_service._execute_orchestration_pipeline(
             request=request,
             components=components,
-            costs_dict=costs_dict,
-            timing_dict=timing_dict,
+            costs_metric=costs_metric,
+            time_metric=time_metric,
             prefix="rag",
         )
 
         # Log costs (timing is logged by parent orchestration service)
-        self.orchestration_service.log_costs(costs_dict)
+        self.orchestration_service.log_costs(costs_metric)
 
         return response
 
@@ -100,7 +100,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """
         Execute RAG workflow in streaming mode.
@@ -119,7 +119,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         Args:
             request: Orchestration request with user query
             context: Unused (RAG doesn't need classification metadata)
-            timing_dict: Optional timing dictionary from parent (for unified tracking)
+            time_metric: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
             AsyncIterator yielding SSE-formatted strings
@@ -128,10 +128,10 @@ class RAGWorkflowExecutor(BaseWorkflow):
         logger.info(f"[{request.chatId}] Executing RAG workflow (streaming)")
 
         # Initialize tracking dictionaries
-        costs_dict: Dict[str, Any] = {}
-        # Use parent timing_dict or create new one
-        if timing_dict is None:
-            timing_dict = {}
+        costs_metric: Dict[str, Any] = {}
+        # Use parent time_metric or create new one
+        if time_metric is None:
+            time_metric = {}
 
         # Get components from context if provided, otherwise initialize
         components = context.get("components")
@@ -172,7 +172,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
             request=request,
             components=components,
             stream_ctx=stream_ctx,
-            costs_dict=costs_dict,
-            timing_dict=timing_dict,
+            costs_metric=costs_metric,
+            time_metric=time_metric,
         ):
             yield sse_chunk

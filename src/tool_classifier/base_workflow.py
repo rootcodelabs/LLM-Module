@@ -33,7 +33,7 @@ class BaseWorkflow(ABC):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[OrchestrationResponse]:
         """
         Execute workflow in non-streaming mode.
@@ -44,7 +44,7 @@ class BaseWorkflow(ABC):
         Args:
             request: The orchestration request containing user query and context
             context: Workflow-specific metadata from ClassificationResult.metadata
-            timing_dict: Optional dictionary for tracking step execution times
+            time_metric: Optional dictionary for tracking step execution times
 
         Returns:
             OrchestrationResponse if workflow can handle this query
@@ -70,7 +70,7 @@ class BaseWorkflow(ABC):
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-        timing_dict: Optional[Dict[str, float]] = None,
+        time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
         """
         Execute workflow in streaming mode (Server-Sent Events).
@@ -81,7 +81,7 @@ class BaseWorkflow(ABC):
         Args:
             request: The orchestration request containing user query and context
             context: Workflow-specific metadata from ClassificationResult.metadata
-            timing_dict: Optional dictionary for tracking step execution times
+            time_metric: Optional dictionary for tracking step execution times
 
         Returns:
             AsyncIterator[str] yielding SSE-formatted strings if workflow can handle
