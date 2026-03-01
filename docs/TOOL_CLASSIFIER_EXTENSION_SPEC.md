@@ -425,7 +425,7 @@ formatted_content = format_service_response(service_response)
 # Apply output guardrails
 if guardrails_adapter:
     output_check = await guardrails_adapter.check_output_async(formatted_content)
-    costs_dict["output_guardrails"] = output_check.usage
+    costs_metric["output_guardrails"] = output_check.usage
     
     if not output_check.allowed:
         logger.warning(f"Service response blocked by guardrails: {output_check.reason}")
@@ -449,7 +449,7 @@ formatted_content = format_service_response(service_response)
 # Apply output guardrails validation
 if guardrails_adapter:
     output_check = await guardrails_adapter.check_output_async(formatted_content)
-    costs_dict["output_guardrails"] = output_check.usage
+    costs_metric["output_guardrails"] = output_check.usage
     
     if not output_check.allowed:
         logger.warning(f"Service response blocked by guardrails")
@@ -791,7 +791,7 @@ async def execute_context_workflow(
     request: OrchestrationRequest,
     llm_manager: LLMManager,
     guardrails_adapter: Optional[NeMoRailsAdapter],
-    costs_dict: Dict
+    costs_metric: Dict
 ) -> Optional[OrchestrationResponse]:
     """
     Execute context-based response workflow with output guardrails.
@@ -807,7 +807,7 @@ async def execute_context_workflow(
     )
     
     # Track costs
-    costs_dict["context_check"] = get_lm_usage_since(history_before)
+    costs_metric["context_check"] = get_lm_usage_since(history_before)
     
     if (context_result.is_greeting or context_result.can_answer_from_context) and context_result.answer:
         logger.info(
@@ -820,7 +820,7 @@ async def execute_context_workflow(
             output_check = await guardrails_adapter.check_output_async(
                 context_result.answer
             )
-            costs_dict["output_guardrails"] = output_check.usage
+            costs_metric["output_guardrails"] = output_check.usage
             
             if not output_check.allowed:
                 logger.warning(
@@ -852,7 +852,7 @@ async def execute_context_workflow_streaming(
     request: OrchestrationRequest,
     llm_manager: LLMManager,
     guardrails_adapter: Optional[NeMoRailsAdapter],
-    costs_dict: Dict
+    costs_metric: Dict
 ) -> Optional[AsyncIterator[str]]:
     """
     Execute context workflow with streaming support and output guardrails.
@@ -871,7 +871,7 @@ async def execute_context_workflow_streaming(
     )
     
     # Track costs
-    costs_dict["context_check"] = get_lm_usage_since(history_before)
+    costs_metric["context_check"] = get_lm_usage_since(history_before)
     
     if (context_result.is_greeting or context_result.can_answer_from_context) and context_result.answer:
         logger.info(
@@ -884,7 +884,7 @@ async def execute_context_workflow_streaming(
             output_check = await guardrails_adapter.check_output_async(
                 context_result.answer
             )
-            costs_dict["output_guardrails"] = output_check.usage
+            costs_metric["output_guardrails"] = output_check.usage
             
             if not output_check.allowed:
                 logger.warning(
@@ -941,17 +941,17 @@ def split_into_tokens(text: str, chunk_size: int = 5) -> List[str]:
 ```python
 try:
     result = await execute_context_workflow(
-        request, llm_manager, guardrails_adapter, costs_dict
+        request, llm_manager, guardrails_adapter, costs_metric
     )
     if result:
         return result  # Context-based answer (validated)
     else:
         # Move to Layer 3 (RAG)
-        return await execute_rag_workflow(request, components, costs_dict)
+        return await execute_rag_workflow(request, components, costs_metric)
 except Exception as e:
     logger.error(f"Context workflow failed: {e}")
     # Fallback to RAG workflow
-    return await execute_rag_workflow(request, components, costs_dict)
+    return await execute_rag_workflow(request, components, costs_metric)
 ```
 
 **Guardrail Violation Fallback:**
@@ -963,7 +963,7 @@ if not output_check.allowed:
 # Option 2: Fallback to RAG (alternative approach)
 if not output_check.allowed:
     logger.warning("Context response blocked, trying RAG workflow")
-    return await execute_rag_workflow(request, components, costs_dict)
+    return await execute_rag_workflow(request, components, costs_metric)
 ```
 
 ---
@@ -978,7 +978,7 @@ if not output_check.allowed:
 ```python
 # Reuse existing RAG pipeline
 return self._execute_orchestration_pipeline(
-    request, components, costs_dict, timing_dict
+    request, components, costs_metric, time_metric
 )
 ```
 
@@ -1121,7 +1121,7 @@ if context_result.can_answer_from_context:
 -  **Pre-validation**: Get complete response → Validate → Stream to client
 -  **Complete response**: Already have full text before streaming starts
 -  **Uni-directional**: Simply chunk and send validated response
--  **Cost**: Separate validation call tracked in `costs_dict["output_guardrails"]`
+-  **Cost**: Separate validation call tracked in `costs_metric["output_guardrails"]`
 -  **UX Consistency**: Simulates streaming to match RAG workflow behavior
 
 ### Why Different Approaches?
@@ -1601,15 +1601,15 @@ CREATE INDEX idx_classifier_decisions_workflow
 
 **Add tracking for new LLM calls:**
 # Service workflow - intent detection
-costs_dict["intent_detection"] = {
+costs_metric["intent_detection"] = {
     "total_prompt_tokens": usage.prompt_tokens,
     "total_completion_tokens": usage.completion_tokens,
     "total_cost": calculate_cost(usage)
 }
 
 # Context workflow - context availability check
-costs_dict["context_check
-costs_dict["intent_detection"] = {
+costs_metric["context_check
+costs_metric["intent_detection"] = {
     "total_prompt_tokens": usage.prompt_tokens,
     "total_completion_tokens": usage.completion_tokens,
     "total_cost": calculate_cost(usage)
@@ -1663,7 +1663,7 @@ async def stream_validated_response(
     response_text: str,
     guardrails_adapter: NeMoRailsAdapter,
     request: OrchestrationRequest,
-    costs_dict: Dict
+    costs_metric: Dict
 ) -> AsyncIterator[str]:
     """
     Apply output guardrails and stream validated response.
@@ -1677,7 +1677,7 @@ async def stream_validated_response(
     output_check = await guardrails_adapter.check_output_async(response_text)
     
     # Track costs
-    costs_dict["output_guardrails"] = output_check.usage
+    costs_metric["output_guardrails"] = output_check.usage
     
     if not output_check.allowed:
         logger.warning(f"[{request.chatId}] Output blocked by guardrails")
