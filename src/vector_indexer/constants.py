@@ -100,10 +100,11 @@ class ProcessingConstants:
 class ResponseGenerationConstants:
     """Constants for response generation and context retrieval."""
 
-    # Top-K blocks for response generation
-    # This controls how many of the retrieved chunks are used
-    # for generating the final response
-    DEFAULT_MAX_BLOCKS = 5  # Maximum context blocks to use in response generation
+    # Controls both:
+    #   1. How many chunks the contextual retriever returns after RRF fusion
+    #   2. How many context blocks the response generator feeds to the LLM
+    # Change this value to adjust both retrieval and generation together.
+    DEFAULT_MAX_BLOCKS = 5
     MIN_BLOCKS_REQUIRED = 3  # Minimum blocks required for valid response
 
 

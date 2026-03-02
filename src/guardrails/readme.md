@@ -180,7 +180,7 @@ result.usage = usage_info  # Contains: total_cost, tokens, num_calls
 ### Modified Pipeline in `llm_orchestration_service.py`
 
 ```python
-costs_dict = {
+costs_metric = {
     "input_guardrails": {...},      # Step 1
     "prompt_refiner": {...},         # Step 2
     "response_generator": {...},    # Step 4

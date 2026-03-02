@@ -144,8 +144,9 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
             for i, example in enumerate(service_data.examples):
                 logger.info(
                     f"  Creating embeddings for example {i + 1}/{len(service_data.examples)}: "
-                    f"'{example[:80]}...'" if len(example) > 80 else
-                    f"  Creating embeddings for example {i + 1}/{len(service_data.examples)}: "
+                    f"'{example[:80]}...'"
+                    if len(example) > 80
+                    else f"  Creating embeddings for example {i + 1}/{len(service_data.examples)}: "
                     f"'{example}'"
                 )
 

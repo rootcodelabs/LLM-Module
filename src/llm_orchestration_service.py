@@ -221,8 +221,8 @@ class LLMOrchestrationService:
         Raises:
             Exception: For any processing errors
         """
-        costs_dict: Dict[str, Dict[str, Any]] = {}
-        timing_dict: Dict[str, float] = {}
+        costs_metric: Dict[str, Dict[str, Any]] = {}
+        time_metric: Dict[str, float] = {}
 
         try:
             logger.info(
@@ -234,7 +234,7 @@ class LLMOrchestrationService:
             start_time = time.time()
             detected_language = detect_language(request.message)
             language_name = get_language_name(detected_language)
-            timing_dict["language_detection"] = time.time() - start_time
+            time_metric["language_detection"] = time.time() - start_time
             logger.info(
                 f"[{request.chatId}] Detected language: {language_name} ({detected_language})"
             )
@@ -246,7 +246,7 @@ class LLMOrchestrationService:
             # STEP 0.5: Basic Query Validation (before expensive component initialization)
             start_time = time.time()
             validation_result = validate_query_basic(request.message)
-            timing_dict["query_validation"] = time.time() - start_time
+            time_metric["query_validation"] = time.time() - start_time
             if not validation_result.is_valid:
                 logger.info(
                     f"[{request.chatId}] Query validation failed: {validation_result.rejection_reason}"
@@ -277,21 +277,21 @@ class LLMOrchestrationService:
             # Initialize all service components (only for valid queries, with timing)
             start_time = time.time()
             components = self._initialize_service_components(request)
-            timing_dict["initialization"] = time.time() - start_time
+            time_metric["initialization"] = time.time() - start_time
 
             if components["guardrails_adapter"]:
                 start_time = time.time()
                 input_blocked_response = await self.handle_input_guardrails(
                     components["guardrails_adapter"], request, {}
                 )
-                timing_dict["input_guardrails_check"] = time.time() - start_time
+                time_metric["input_guardrails_check"] = time.time() - start_time
 
                 if input_blocked_response:
                     logger.warning(
                         f"[{request.chatId}] Input blocked before classifier - "
                         f"saved expensive service discovery"
                     )
-                    log_step_timings(timing_dict, request.chatId)
+                    log_step_timings(time_metric, request.chatId)
                     return input_blocked_response
             else:
                 logger.info(
@@ -322,7 +322,7 @@ class LLMOrchestrationService:
                         conversation_history=request.conversationHistory,
                         language=detected_language,
                     )
-                    timing_dict["classifier.classify"] = time.time() - start_time
+                    time_metric["classifier.classify"] = time.time() - start_time
 
                     logger.info(
                         f"[{request.chatId}] Classification: {classification.workflow.value} "
@@ -335,9 +335,9 @@ class LLMOrchestrationService:
                         classification=classification,
                         request=request,
                         is_streaming=False,
-                        timing_dict=timing_dict,
+                        time_metric=time_metric,
                     )
-                    timing_dict["classifier.route"] = time.time() - start_time
+                    time_metric["classifier.route"] = time.time() - start_time
 
                 except Exception as classifier_error:
                     logger.error(
@@ -351,7 +351,7 @@ class LLMOrchestrationService:
                         )
                         # Execute existing RAG pipeline as fallback
                         response = await self._execute_orchestration_pipeline(
-                            request, components, costs_dict, timing_dict
+                            request, components, costs_metric, time_metric
                         )
                     else:
                         raise
@@ -361,27 +361,27 @@ class LLMOrchestrationService:
                     f"[{request.chatId}] Tool classifier disabled - using RAG pipeline"
                 )
                 response = await self._execute_orchestration_pipeline(
-                    request, components, costs_dict, timing_dict
+                    request, components, costs_metric, time_metric
                 )
 
             # Log final costs and return response
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
 
             # Update budget for the LLM connection
             self._update_connection_budget(
-                request.connection_id, costs_dict, request.environment
+                request.connection_id, costs_metric, request.environment
             )
 
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                total_costs = calculate_total_costs(costs_dict)
+                total_costs = calculate_total_costs(costs_metric)
 
                 total_input_tokens = sum(
-                    c.get("total_prompt_tokens", 0) for c in costs_dict.values()
+                    c.get("total_prompt_tokens", 0) for c in costs_metric.values()
                 )
                 total_output_tokens = sum(
-                    c.get("total_completion_tokens", 0) for c in costs_dict.values()
+                    c.get("total_completion_tokens", 0) for c in costs_metric.values()
                 )
 
                 langfuse.update_current_generation(
@@ -398,7 +398,7 @@ class LLMOrchestrationService:
                     },
                     metadata={
                         "total_calls": total_costs.get("total_calls", 0),
-                        "cost_breakdown": costs_dict,
+                        "cost_breakdown": costs_metric,
                         "chat_id": request.chatId,
                         "author_id": request.authorId,
                         "environment": request.environment,
@@ -422,12 +422,12 @@ class LLMOrchestrationService:
                     }
                 )
                 langfuse.flush()
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
 
             # Update budget even on error
             self._update_connection_budget(
-                request.connection_id, costs_dict, request.environment
+                request.connection_id, costs_metric, request.environment
             )
 
             return self._create_error_response(request)
@@ -470,14 +470,14 @@ class LLMOrchestrationService:
         """
 
         # Track costs after streaming completes
-        costs_dict: Dict[str, Dict[str, Any]] = {}
-        timing_dict: Dict[str, float] = {}
+        costs_metric: Dict[str, Dict[str, Any]] = {}
+        time_metric: Dict[str, float] = {}
 
         # STEP 0: Detect language from user message (with timing)
         start_time = time.time()
         detected_language = detect_language(request.message)
         language_name = get_language_name(detected_language)
-        timing_dict["language_detection"] = time.time() - start_time
+        time_metric["language_detection"] = time.time() - start_time
         logger.info(
             f"[{request.chatId}] Streaming request - Detected language: {language_name} ({detected_language})"
         )
@@ -489,7 +489,7 @@ class LLMOrchestrationService:
         # Step 0.5: Basic Query Validation (before guardrails, with timing)
         start_time = time.time()
         validation_result = validate_query_basic(request.message)
-        timing_dict["query_validation"] = time.time() - start_time
+        time_metric["query_validation"] = time.time() - start_time
         if not validation_result.is_valid:
             logger.info(
                 f"[{request.chatId}] Streaming - Query validation failed: {validation_result.rejection_reason}"
@@ -517,7 +517,7 @@ class LLMOrchestrationService:
                 # Initialize all service components (with timing)
                 start_time = time.time()
                 components = self._initialize_service_components(request)
-                timing_dict["initialization"] = time.time() - start_time
+                time_metric["initialization"] = time.time() - start_time
 
                 # This implements fail-fast principle - block malicious/policy-violating inputs
                 # before expensive operations (service discovery, LLM calls, streaming setup)
@@ -530,9 +530,9 @@ class LLMOrchestrationService:
                     input_check_result = await self._check_input_guardrails_async(
                         guardrails_adapter=components["guardrails_adapter"],
                         user_message=request.message,
-                        costs_dict=costs_dict,
+                        costs_metric=costs_metric,
                     )
-                    timing_dict["input_guardrails_check"] = time.time() - start_time
+                    time_metric["input_guardrails_check"] = time.time() - start_time
 
                     if not input_check_result.allowed:
                         logger.warning(
@@ -543,9 +543,9 @@ class LLMOrchestrationService:
                             request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
                         )
                         yield self.format_sse(request.chatId, "END")
-                        self.log_costs(costs_dict)
+                        self.log_costs(costs_metric)
                         # Log timings before returning (for visibility)
-                        log_step_timings(timing_dict, request.chatId)
+                        log_step_timings(time_metric, request.chatId)
                         stream_ctx.mark_completed()
                         return
                 else:
@@ -605,8 +605,8 @@ class LLMOrchestrationService:
                         )
 
                         # Log costs and timings
-                        self.log_costs(costs_dict)
-                        log_step_timings(timing_dict, request.chatId)
+                        self.log_costs(costs_metric)
+                        log_step_timings(time_metric, request.chatId)
                         stream_ctx.mark_completed()
                         return  # Exit after successful classifier routing
 
@@ -636,8 +636,8 @@ class LLMOrchestrationService:
                     request=request,
                     components=components,
                     stream_ctx=stream_ctx,
-                    costs_dict=costs_dict,
-                    timing_dict=timing_dict,
+                    costs_metric=costs_metric,
+                    time_metric=time_metric,
                 ):
                     yield sse_chunk
 
@@ -654,12 +654,12 @@ class LLMOrchestrationService:
                 yield self.format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
                 yield self.format_sse(request.chatId, "END")
 
-                self.log_costs(costs_dict)
-                log_step_timings(timing_dict, request.chatId)
+                self.log_costs(costs_metric)
+                log_step_timings(time_metric, request.chatId)
 
                 # Update budget even on outer exception
                 self._update_connection_budget(
-                    request.connection_id, costs_dict, request.environment
+                    request.connection_id, costs_metric, request.environment
                 )
 
                 if self.langfuse_config.langfuse_client:
@@ -680,8 +680,8 @@ class LLMOrchestrationService:
         request: OrchestrationRequest,
         components: Dict[str, Any],
         stream_ctx: Any,
-        costs_dict: Dict[str, Dict[str, Any]],
-        timing_dict: Dict[str, float],
+        costs_metric: Dict[str, Dict[str, Any]],
+        time_metric: Dict[str, float],
     ) -> AsyncIterator[str]:
         """
         Core RAG streaming pipeline without classifier routing.
@@ -699,8 +699,8 @@ class LLMOrchestrationService:
             request: Orchestration request
             components: Initialized service components (LLM, retriever, generator, guardrails)
             stream_ctx: Stream context for tracking
-            costs_dict: Dictionary to accumulate costs
-            timing_dict: Dictionary to accumulate timings
+            costs_metric: Dictionary to accumulate costs
+            time_metric: Dictionary to accumulate timings
 
         Yields:
             SSE-formatted strings
@@ -719,8 +719,8 @@ class LLMOrchestrationService:
             original_message=request.message,
             conversation_history=request.conversationHistory,
         )
-        timing_dict["prompt_refiner"] = time.time() - start_time
-        costs_dict["prompt_refiner"] = refiner_usage
+        time_metric["prompt_refiner"] = time.time() - start_time
+        costs_metric["prompt_refiner"] = refiner_usage
 
         logger.info(
             f"[{request.chatId}] [{stream_ctx.stream_id}] Prompt refinement complete"
@@ -736,7 +736,7 @@ class LLMOrchestrationService:
             relevant_chunks = await self._safe_retrieve_contextual_chunks(
                 components["contextual_retriever"], refined_output, request
             )
-            timing_dict["contextual_retrieval"] = time.time() - start_time
+            time_metric["contextual_retrieval"] = time.time() - start_time
         except (
             ContextualRetrieverInitializationError,
             ContextualRetrievalFailureError,
@@ -752,8 +752,8 @@ class LLMOrchestrationService:
             )
             yield self.format_sse(request.chatId, localized_msg)
             yield self.format_sse(request.chatId, "END")
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
             stream_ctx.mark_completed()
             return
 
@@ -766,8 +766,8 @@ class LLMOrchestrationService:
             )
             yield self.format_sse(request.chatId, localized_msg)
             yield self.format_sse(request.chatId, "END")
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
             stream_ctx.mark_completed()
             return
 
@@ -786,7 +786,7 @@ class LLMOrchestrationService:
             chunks=relevant_chunks,
             max_blocks=ResponseGenerationConstants.DEFAULT_MAX_BLOCKS,
         )
-        timing_dict["scope_check"] = time.time() - start_time
+        time_metric["scope_check"] = time.time() - start_time
 
         if is_out_of_scope:
             logger.info(
@@ -797,8 +797,8 @@ class LLMOrchestrationService:
             )
             yield self.format_sse(request.chatId, localized_msg)
             yield self.format_sse(request.chatId, "END")
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
             stream_ctx.mark_completed()
             return
 
@@ -866,9 +866,9 @@ class LLMOrchestrationService:
                             yield self.format_sse(request.chatId, "END")
 
                             usage_info = get_lm_usage_since(history_length_before)
-                            costs_dict["streaming_generation"] = usage_info
-                            self.log_costs(costs_dict)
-                            log_step_timings(timing_dict, request.chatId)
+                            costs_metric["streaming_generation"] = usage_info
+                            self.log_costs(costs_metric)
+                            log_step_timings(time_metric, request.chatId)
                             stream_ctx.mark_completed()
                             return
 
@@ -895,9 +895,9 @@ class LLMOrchestrationService:
                             yield self.format_sse(request.chatId, "END")
 
                             usage_info = get_lm_usage_since(history_length_before)
-                            costs_dict["streaming_generation"] = usage_info
-                            self.log_costs(costs_dict)
-                            log_step_timings(timing_dict, request.chatId)
+                            costs_metric["streaming_generation"] = usage_info
+                            self.log_costs(costs_metric)
+                            log_step_timings(time_metric, request.chatId)
                             stream_ctx.mark_completed()
                             return
 
@@ -964,11 +964,11 @@ class LLMOrchestrationService:
 
             # Extract usage information after streaming completes
             usage_info = get_lm_usage_since(history_length_before)
-            costs_dict["streaming_generation"] = usage_info
+            costs_metric["streaming_generation"] = usage_info
 
             # Record timings
-            timing_dict["streaming_generation"] = time.time() - streaming_step_start
-            timing_dict["output_guardrails"] = 0.0  # Inline during streaming
+            time_metric["streaming_generation"] = time.time() - streaming_step_start
+            time_metric["output_guardrails"] = 0.0  # Inline during streaming
 
             # Calculate streaming duration
             streaming_duration = (datetime.now() - streaming_start_time).total_seconds()
@@ -977,18 +977,18 @@ class LLMOrchestrationService:
             )
 
             # Log costs and trace
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
 
             # Update budget
             self._update_connection_budget(
-                request.connection_id, costs_dict, request.environment
+                request.connection_id, costs_metric, request.environment
             )
 
             # Langfuse tracking
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                total_costs = calculate_total_costs(costs_dict)
+                total_costs = calculate_total_costs(costs_metric)
 
                 langfuse.update_current_generation(
                     model=components["llm_manager"]
@@ -1004,7 +1004,7 @@ class LLMOrchestrationService:
                         "streaming": True,
                         "streaming_duration_seconds": streaming_duration,
                         "chunks_streamed": chunk_count,
-                        "cost_breakdown": costs_dict,
+                        "cost_breakdown": costs_metric,
                         "chat_id": request.chatId,
                         "environment": request.environment,
                         "stream_id": stream_ctx.stream_id,
@@ -1039,13 +1039,13 @@ class LLMOrchestrationService:
                 f"[{request.chatId}] [{stream_ctx.stream_id}] Client disconnected"
             )
             usage_info = get_lm_usage_since(history_length_before)
-            costs_dict["streaming_generation"] = usage_info
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            costs_metric["streaming_generation"] = usage_info
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
 
             # Update budget even on client disconnect
             self._update_connection_budget(
-                request.connection_id, costs_dict, request.environment
+                request.connection_id, costs_metric, request.environment
             )
             raise
         except Exception as stream_error:
@@ -1062,13 +1062,13 @@ class LLMOrchestrationService:
             yield self.format_sse(request.chatId, "END")
 
             usage_info = get_lm_usage_since(history_length_before)
-            costs_dict["streaming_generation"] = usage_info
-            self.log_costs(costs_dict)
-            log_step_timings(timing_dict, request.chatId)
+            costs_metric["streaming_generation"] = usage_info
+            self.log_costs(costs_metric)
+            log_step_timings(time_metric, request.chatId)
 
             # Update budget even on streaming error
             self._update_connection_budget(
-                request.connection_id, costs_dict, request.environment
+                request.connection_id, costs_metric, request.environment
             )
 
     def format_sse(self, chat_id: str, content: str) -> str:
@@ -1229,8 +1229,8 @@ class LLMOrchestrationService:
         self,
         request: OrchestrationRequest,
         components: Dict[str, Any],
-        costs_dict: Dict[str, Dict[str, Any]],
-        timing_dict: Dict[str, float],
+        costs_metric: Dict[str, Dict[str, Any]],
+        time_metric: Dict[str, float],
         prefix: str = "",
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Execute the main orchestration pipeline with all components.
@@ -1238,8 +1238,8 @@ class LLMOrchestrationService:
         Args:
             request: Orchestration request
             components: Initialized service components
-            costs_dict: Dictionary for cost tracking
-            timing_dict: Dictionary for timing tracking
+            costs_metric: Dictionary for cost tracking
+            time_metric: Dictionary for timing tracking
             prefix: Optional prefix for timing keys (e.g., "rag" for workflow namespacing)
         """
         # Note: Query validation AND input guardrails check now happen at orchestration level
@@ -1254,8 +1254,8 @@ class LLMOrchestrationService:
             conversation_history=request.conversationHistory,
         )
         timing_key = f"{prefix}.prompt_refiner" if prefix else "prompt_refiner"
-        timing_dict[timing_key] = time.time() - start_time
-        costs_dict["prompt_refiner"] = refiner_usage
+        time_metric[timing_key] = time.time() - start_time
+        costs_metric["prompt_refiner"] = refiner_usage
 
         # Step 2: Retrieve relevant chunks using contextual retrieval
         try:
@@ -1266,7 +1266,7 @@ class LLMOrchestrationService:
             timing_key = (
                 f"{prefix}.contextual_retrieval" if prefix else "contextual_retrieval"
             )
-            timing_dict[timing_key] = time.time() - start_time
+            time_metric[timing_key] = time.time() - start_time
         except (
             ContextualRetrieverInitializationError,
             ContextualRetrievalFailureError,
@@ -1287,12 +1287,12 @@ class LLMOrchestrationService:
             refined_output=refined_output,
             relevant_chunks=relevant_chunks,
             response_generator=components["response_generator"],
-            costs_dict=costs_dict,
+            costs_metric=costs_metric,
         )
         timing_key = (
             f"{prefix}.response_generation" if prefix else "response_generation"
         )
-        timing_dict[timing_key] = time.time() - start_time
+        time_metric[timing_key] = time.time() - start_time
 
         # Step 4: Output Guardrails Check
         # Apply guardrails to all response types for consistent safety across all environments
@@ -1301,12 +1301,12 @@ class LLMOrchestrationService:
             components["guardrails_adapter"],
             generated_response,
             request,
-            costs_dict,
+            costs_metric,
         )
         timing_key = (
             f"{prefix}.output_guardrails_check" if prefix else "output_guardrails_check"
         )
-        timing_dict[timing_key] = time.time() - start_time
+        time_metric[timing_key] = time.time() - start_time
 
         # Step 5: Store inference data (for production and testing environments)
         # Only store OrchestrationResponse (has chatId), not TestOrchestrationResponse
@@ -1379,13 +1379,13 @@ class LLMOrchestrationService:
         self,
         guardrails_adapter: NeMoRailsAdapter,
         request: OrchestrationRequest,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse, None]:
         """Check input guardrails and return blocked response if needed."""
         input_check_result = await self._check_input_guardrails_async(
             guardrails_adapter=guardrails_adapter,
             user_message=request.message,
-            costs_dict=costs_dict,
+            costs_metric=costs_metric,
         )
 
         if not input_check_result.allowed:
@@ -1505,7 +1505,7 @@ class LLMOrchestrationService:
         guardrails_adapter: Optional[NeMoRailsAdapter],
         generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
         request: OrchestrationRequest,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Check output guardrails and handle blocked responses for both response types."""
         # Determine if we should run guardrails (same logic for both response types)
@@ -1521,7 +1521,7 @@ class LLMOrchestrationService:
             output_check_result = await self._check_output_guardrails(
                 guardrails_adapter=guardrails_adapter,
                 assistant_message=generated_response.content,
-                costs_dict=costs_dict,
+                costs_metric=costs_metric,
             )
 
             if not output_check_result.allowed:
@@ -1798,7 +1798,7 @@ class LLMOrchestrationService:
         self,
         guardrails_adapter: NeMoRailsAdapter,
         user_message: str,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> GuardrailCheckResult:
         """
         Check user input against guardrails and track costs (async version).
@@ -1806,7 +1806,7 @@ class LLMOrchestrationService:
         Args:
             guardrails_adapter: The guardrails adapter instance
             user_message: The user message to check
-            costs_dict: Dictionary to store cost information
+            costs_metric: Dictionary to store cost information
 
         Returns:
             GuardrailCheckResult: Result of the guardrail check
@@ -1818,7 +1818,7 @@ class LLMOrchestrationService:
             result = await guardrails_adapter.check_input_async(user_message)
 
             # Store guardrail costs
-            costs_dict["input_guardrails"] = result.usage
+            costs_metric["input_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 langfuse.update_current_generation(
@@ -1871,7 +1871,7 @@ class LLMOrchestrationService:
         self,
         guardrails_adapter: NeMoRailsAdapter,
         user_message: str,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> GuardrailCheckResult:
         """
         Check user input against guardrails and track costs (sync version for non-streaming).
@@ -1879,7 +1879,7 @@ class LLMOrchestrationService:
         Args:
             guardrails_adapter: The guardrails adapter instance
             user_message: The user message to check
-            costs_dict: Dictionary to store cost information
+            costs_metric: Dictionary to store cost information
 
         Returns:
             GuardrailCheckResult: Result of the guardrail check
@@ -1890,7 +1890,7 @@ class LLMOrchestrationService:
             result = guardrails_adapter.check_input(user_message)
 
             # Store guardrail costs
-            costs_dict["input_guardrails"] = result.usage
+            costs_metric["input_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 langfuse.update_current_generation(
@@ -1943,7 +1943,7 @@ class LLMOrchestrationService:
         self,
         guardrails_adapter: NeMoRailsAdapter,
         assistant_message: str,
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
     ) -> GuardrailCheckResult:
         """
         Check assistant output against guardrails and track costs.
@@ -1951,7 +1951,7 @@ class LLMOrchestrationService:
         Args:
             guardrails_adapter: The guardrails adapter instance
             assistant_message: The assistant message to check
-            costs_dict: Dictionary to store cost information
+            costs_metric: Dictionary to store cost information
 
         Returns:
             GuardrailCheckResult: Result of the guardrail check
@@ -1962,7 +1962,7 @@ class LLMOrchestrationService:
             result = await guardrails_adapter.check_output_async(assistant_message)
 
             # Store guardrail costs
-            costs_dict["output_guardrails"] = result.usage
+            costs_metric["output_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 langfuse.update_current_generation(
@@ -2012,22 +2012,22 @@ class LLMOrchestrationService:
                 usage={},
             )
 
-    def log_costs(self, costs_dict: Dict[str, Dict[str, Any]]) -> None:
+    def log_costs(self, costs_metric: Dict[str, Dict[str, Any]]) -> None:
         """
         Log cost information for tracking.
 
         Args:
-            costs_dict: Dictionary of costs per component
+            costs_metric: Dictionary of costs per component
         """
         try:
-            if not costs_dict:
+            if not costs_metric:
                 return
 
-            total_costs = calculate_total_costs(costs_dict)
+            total_costs = calculate_total_costs(costs_metric)
 
             logger.info("LLM USAGE COSTS BREAKDOWN:")
 
-            for component, costs in costs_dict.items():
+            for component, costs in costs_metric.items():
                 logger.info(
                     f"  {component:20s}: ${costs.get('total_cost', 0):.6f} "
                     f"({costs.get('num_calls', 0)} calls, "
@@ -2081,7 +2081,7 @@ class LLMOrchestrationService:
     def _update_connection_budget(
         self,
         connection_id: Optional[str],
-        costs_dict: Dict[str, Dict[str, Any]],
+        costs_metric: Dict[str, Dict[str, Any]],
         environment: str = "development",
     ) -> None:
         """
@@ -2090,7 +2090,7 @@ class LLMOrchestrationService:
 
         Args:
             connection_id: The LLM connection ID (optional)
-            costs_dict: Dictionary of costs per component
+            costs_metric: Dictionary of costs per component
             environment: The deployment environment (production/testing/development)
         """
         try:
@@ -2118,7 +2118,9 @@ class LLMOrchestrationService:
                         f"Error fetching production connection ID: {str(fetch_error)}"
                     )
 
-            result = budget_tracker.update_budget_from_costs(connection_id, costs_dict)
+            result = budget_tracker.update_budget_from_costs(
+                connection_id, costs_metric
+            )
 
             if result.get("success"):
                 if result.get("budget_exceeded"):
@@ -2473,7 +2475,7 @@ class LLMOrchestrationService:
         refined_output: PromptRefinerOutput,
         relevant_chunks: List[Dict[str, Union[str, float, Dict[str, Any]]]],
         response_generator: Optional[ResponseGeneratorAgent] = None,
-        costs_dict: Optional[Dict[str, Dict[str, Any]]] = None,
+        costs_metric: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """
         Generate response using retrieved chunks and ResponseGeneratorAgent only.
@@ -2481,8 +2483,8 @@ class LLMOrchestrationService:
         """
         logger.info("Starting RAG response generation")
 
-        if costs_dict is None:
-            costs_dict = {}
+        if costs_metric is None:
+            costs_metric = {}
 
         # If response generator is not available -> standardized technical issue
         if response_generator is None:
@@ -2540,7 +2542,7 @@ class LLMOrchestrationService:
                     "num_calls": 0,
                 },
             )
-            costs_dict["response_generator"] = generator_usage
+            costs_metric["response_generator"] = generator_usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
                 langfuse.update_current_generation(

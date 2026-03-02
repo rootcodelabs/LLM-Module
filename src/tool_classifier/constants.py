@@ -70,7 +70,7 @@ HYBRID_SEARCH_TOP_K = 5
 DENSE_SEARCH_TOP_K = 3
 """Number of top results from dense-only search for relevance scoring."""
 
-DENSE_MIN_THRESHOLD = 0.20
+DENSE_MIN_THRESHOLD = 0.38
 """Minimum dense cosine similarity to consider a result as a potential match.
 Below this → skip SERVICE entirely, go to CONTEXT/RAG.
 Note: Multilingual embeddings (Estonian/short queries) typically yield

@@ -115,7 +115,7 @@ vectors_config = {
     "dense": VectorParams(size=3072, distance=Distance.COSINE)
 }
 sparse_vectors_config = {
-    "sparse": SparseVectorParams(index=SparseIndexParams())
+    "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False))
 }
 ```
 
@@ -129,8 +129,7 @@ Each point payload:
   "entities": ["currency_from", "currency_to"],
   "context": "LLM-generated enriched context...",
   "point_type": "example",
-  "example_text": "Mis suhe on euro ja usd vahel",
-  "point_index": 0
+  "example_text": "Mis suhe on euro ja usd vahel"
 }
 ```
 
@@ -200,14 +199,15 @@ Qdrant's RRF uses `1/(1+rank)`, producing fixed scores (0.50, 0.33, 0.25) regard
 ### Step 2: Hybrid Search — "Which Service?"
 
 Only runs if cosine ≥ `DENSE_MIN_THRESHOLD`. Combines dense + sparse search with RRF fusion.
+Sparse prefetch is only included if the query produces a non-empty sparse vector.
 
 ```python
 # classifier.py → _hybrid_search()
 POST /collections/intent_collections/points/query
 {
     "prefetch": [
-        {"query": dense_vector, "using": "dense", "limit": 20},
-        {"query": {"indices": [...], "values": [...]}, "using": "sparse", "limit": 20}
+        {"query": dense_vector, "using": "dense", "limit": 10},
+        {"query": {"indices": [...], "values": [...]}, "using": "sparse", "limit": 10}
     ],
     "query": {"fusion": "rrf"},
     "limit": 5,
@@ -220,12 +220,12 @@ POST /collections/intent_collections/points/query
 ```
 Dense cosine score + gap
         │
-        ├─ cosine < 0.20              → PATH 1: Skip SERVICE → CONTEXT/RAG
+        ├─ cosine < 0.38              → PATH 1: Skip SERVICE → CONTEXT/RAG
         │
         ├─ cosine ≥ 0.40 AND          → PATH 2: HIGH-CONFIDENCE SERVICE
-        │  gap ≥ 0.05                     (skip discovery, entity extraction only)
+        │  gap ≥ 0.05                     (skip discovery, intent detection on matched service only)
         │
-        └─ else (0.20 ≤ cosine < 0.40 → PATH 3: AMBIGUOUS SERVICE
+        └─ else (0.38 ≤ cosine < 0.40 → PATH 3: AMBIGUOUS SERVICE
            OR gap < 0.05)                 (LLM intent detection on candidates)
 ```
 
@@ -234,9 +234,9 @@ Dense cosine score + gap
 Top cosine score below minimum threshold. The query has no meaningful similarity to any indexed service.
 
 ```
-Query: "Tere, kuidas läheb?"
-Dense: top cosine=0.15 → below 0.20 → skip SERVICE
-→ Routes directly to CONTEXT → RAG (saves ~2-4s)
+Query: "Miks ID-kaart ei tööta e-teenustes?"
+Dense: top cosine=0.29 → below 0.38 → skip SERVICE
+→ Routes directly to CONTEXT → RAG (saves ~50-300ms by skipping hybrid search)
 ```
 
 ### Path 2: HIGH-CONFIDENCE Service Match
@@ -248,7 +248,7 @@ Query: "Palju saan 1 EUR eest THBdes?"
 Dense: Valuutakursid (cosine=0.5511), gap=0.2371
 → 0.5511 ≥ 0.40 AND 0.2371 ≥ 0.05 → HIGH-CONFIDENCE
 → Skips service discovery
-→ Runs entity extraction on matched service only
+→ Runs intent detection + entity extraction on matched service only
 → Entities: {currency_from: EUR, currency_to: THB}
 → Validation: PASSED ✓
 ```
@@ -259,11 +259,14 @@ Multiple services score similarly or cosine is in the medium range.
 
 ```
 Query: "Mis on täna ilm?"
-Dense: Ilmapäring (cosine=0.35), gap=0.02
-→ 0.35 ≥ 0.20 but 0.35 < 0.40 → AMBIGUOUS
+Dense: Ilmapäring (cosine=0.39), gap=0.03
+→ 0.39 ≥ 0.38 but 0.39 < 0.40 → AMBIGUOUS
 → Runs LLM Intent Detection on top 3 candidates
 → LLM confirms or rejects → falls back to RAG if rejected
 ```
+
+> **Note:** With the current threshold (0.38), the AMBIGUOUS zone (0.38–0.40) is intentionally narrow.
+> Most queries resolve cleanly to either NON-SERVICE (<0.38) or HIGH-CONFIDENCE (≥0.40 with gap).
 
 ### Fallback Chain
 
@@ -343,9 +346,9 @@ All defined in `src/tool_classifier/constants.py`.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `DENSE_MIN_THRESHOLD` | `0.20` | Minimum cosine to consider any service match. Below → skip SERVICE entirely. Set low because multilingual (Estonian) queries yield lower cosine (0.25–0.55). |
-| `DENSE_HIGH_CONFIDENCE_THRESHOLD` | `0.40` | Cosine for HIGH-CONFIDENCE path. Service queries with correct match score > 0.40 (observed: 0.55). Non-service score 0.27–0.35. |
-| `DENSE_SCORE_GAP_THRESHOLD` | `0.05` | Required gap between top two services. Prevents false positives when multiple services score similarly. Service gaps: ~0.24, non-service gaps: ~0.01. |
+| `DENSE_MIN_THRESHOLD` | `0.38` | Minimum cosine to consider any service match. Below → skip SERVICE entirely. Empirically tuned: SERVICE queries score ≥ 0.49, RAG queries ≤ 0.35 — threshold sits in the 0.134 natural gap between the two distributions. |
+| `DENSE_HIGH_CONFIDENCE_THRESHOLD` | `0.40` | Cosine for HIGH-CONFIDENCE path. Service queries with correct match score ≥ 0.49 (observed range: 0.49–1.00). Non-service score 0.27–0.35. |
+| `DENSE_SCORE_GAP_THRESHOLD` | `0.05` | Required gap between top two services. Prevents false positives when multiple services score similarly. Service gaps: 0.15–0.75, non-service gaps: 0.001–0.029. |
 
 ### Search Configuration
 
@@ -356,25 +359,35 @@ All defined in `src/tool_classifier/constants.py`.
 
 ### Observed Score Distributions
 
-Based on real Estonian query testing:
+Based on empirical testing with 42 Estonian queries (20 SERVICE, 22 RAG):
 
-| Metric | Service Query | Non-Service Query |
-|--------|:------------:|:-----------------:|
-| Top cosine | **0.55** | 0.27 – 0.35 |
-| Cosine gap | **0.24** | 0.005 – 0.017 |
-| Decision | HIGH-CONFIDENCE | AMBIGUOUS → LLM reject |
+| Metric | Service Query (n=20) | Non-Service / RAG Query (n=22) |
+|--------|:--------------------:|:------------------------------:|
+| Top cosine range | **0.49 – 1.00** | 0.27 – 0.35 |
+| Top cosine mean | **0.77** | 0.30 |
+| Cosine gap range | **0.15 – 0.75** | 0.001 – 0.029 |
+| Cosine gap mean | **0.31** | 0.010 |
+| Decision | HIGH-CONFIDENCE (100%) | NON-SERVICE (100%) |
+
+> **Separation gap:** The lowest SERVICE cosine (0.49) and highest RAG cosine (0.35) are separated by **0.134** — a clean margin with no overlap. The threshold at 0.38 sits centrally in this gap.
 
 ### Performance by Path
 
 | Path | Latency | LLM Calls | Cost |
 |------|:-------:|:---------:|:----:|
-| Non-service (below threshold) | ~0.3s | 0 | $0 |
-| HIGH-CONFIDENCE service | ~2.0s | 1 | ~$0.002 |
+| Non-service (below threshold) | ~50ms | 0 | $0 |
+| HIGH-CONFIDENCE service | ~100ms | 1 | ~$0.002 |
 | AMBIGUOUS service | ~3.5s | 1-2 | ~$0.002–0.004 |
 | Legacy (no classifier) | ~4.0s | 2+ | ~$0.004+ |
+
+> **Note:** Latencies above are classification time only (embedding + Qdrant search), excluding the downstream service call or RAG pipeline.
 
 ### Tuning Recommendations
 
 - **Adding more services:** Score distributions improve naturally — service queries score higher, non-service score lower.
 - **Adding more examples per service:** Diverse phrasings expand the embedding coverage. Aim for 5-8 examples per service covering formal + informal + different word orders.
 - **Adjusting thresholds:** Monitor the logs (`Dense search: top=... cosine=...`) and adjust if real-world scores differ from test data.
+
+### Current Limitations
+
+- **Step 7 (Ruuter service call) is not yet implemented.** The service workflow currently returns a debug response with service metadata (endpoint URL, HTTP method, extracted entities) instead of calling the actual Ruuter service endpoint. See the `TODO: STEP 7` comments in `src/tool_classifier/workflows/service_workflow.py`.

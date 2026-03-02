@@ -578,6 +578,7 @@ services:
       - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
       - ./src/optimization/optimized_modules:/app/src/optimization/optimized_modules
       - llm_orchestration_logs:/app/logs
+      - ./tests:/app/tests  # mount tests directory (excluded from image via .dockerignore)
     networks:
       - bykstack
     depends_on:

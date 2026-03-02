@@ -190,20 +190,14 @@ class QdrantManager:
                 ),
             )
 
-            logger.success(
-                f"Successfully deleted points for service '{service_id}'"
-            )
+            logger.success(f"Successfully deleted points for service '{service_id}'")
             return True
 
         except Exception as e:
-            logger.error(
-                f"Failed to delete points for service '{service_id}': {e}"
-            )
+            logger.error(f"Failed to delete points for service '{service_id}': {e}")
             return False
 
-    def upsert_service_points(
-        self, enriched_points: List[EnrichedService]
-    ) -> bool:
+    def upsert_service_points(self, enriched_points: List[EnrichedService]) -> bool:
         """Upsert multiple enriched service points to Qdrant.
 
         Each point contains both dense and sparse vectors for hybrid search.
@@ -228,8 +222,8 @@ class QdrantManager:
                 f"Upserting {len(enriched_points)} points for service '{service_id}'"
             )
 
-
             from typing import Any, Dict
+
             points: List[PointStruct] = []
             for idx, enriched_service in enumerate(enriched_points):
                 # Deterministic UUID based on service_id + index
@@ -263,7 +257,7 @@ class QdrantManager:
 
                 point = PointStruct(
                     id=point_id,
-                    vector=vectors, 
+                    vector=vectors,
                     payload=payload,
                 )
 
@@ -283,9 +277,7 @@ class QdrantManager:
             return True
 
         except Exception as e:
-            logger.error(
-                f"Failed to upsert service points: {e}"
-            )
+            logger.error(f"Failed to upsert service points: {e}")
             return False
 
     def upsert_service(self, enriched_service: EnrichedService) -> bool:

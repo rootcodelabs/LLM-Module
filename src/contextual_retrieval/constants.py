@@ -5,6 +5,8 @@ Centralized constants for HTTP client, search operations, collections,
 and other configurable values across the contextual retrieval system.
 """
 
+from vector_indexer.constants import ResponseGenerationConstants
+
 
 class HttpClientConstants:
     """HTTP client configuration constants."""
@@ -41,7 +43,8 @@ class SearchConstants:
     # Default search parameters
     DEFAULT_TOPK_SEMANTIC = 40
     DEFAULT_TOPK_BM25 = 40
-    DEFAULT_FINAL_TOP_N = 12
+    # Final top-N chunks returned after RRF fusion.
+    DEFAULT_FINAL_TOP_N = ResponseGenerationConstants.DEFAULT_MAX_BLOCKS
     DEFAULT_SEARCH_TIMEOUT = 2
 
     # Score and quality thresholds
