@@ -8,6 +8,7 @@ Shared module used by both:
 Uses hash-based indexing compatible with Qdrant's sparse vector format.
 """
 
+import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -68,10 +69,12 @@ def compute_sparse_vector(text: str) -> SparseVector:
     token_counts = Counter(tokens)
 
     # Hash-based indexing: map each token to an index in [0, SPARSE_VOCAB_SIZE)
-    # Collisions are handled by summing values at the same index
+    # Uses MD5 (first 4 bytes) for deterministic cross-process indices.
+    # Collisions are handled by summing values at the same index.
     hash_counts: dict[int, float] = {}
     for token, count in token_counts.items():
-        idx = hash(token) % SPARSE_VOCAB_SIZE
+        digest = hashlib.md5(token.encode(), usedforsecurity=False).digest()  # noqa: S324
+        idx = int.from_bytes(digest[:4], "little") % SPARSE_VOCAB_SIZE
         # Handle hash collisions by accumulating
         hash_counts[idx] = hash_counts.get(idx, 0) + float(count)
 
