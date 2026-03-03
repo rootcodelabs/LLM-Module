@@ -58,3 +58,28 @@ If service count exceeds this, semantic search is used to filter to top-K."""
 SERVICE_COUNT_THRESHOLD = 10
 """Threshold for triggering semantic search. If service count > this value,
 semantic search is used instead of sending all services to LLM."""
+
+
+# ============================================================================
+# Hybrid Search Classification Thresholds
+# ============================================================================
+
+HYBRID_SEARCH_TOP_K = 5
+"""Number of top results from hybrid search for service identification."""
+
+DENSE_SEARCH_TOP_K = 3
+"""Number of top results from dense-only search for relevance scoring."""
+
+DENSE_MIN_THRESHOLD = 0.38
+"""Minimum dense cosine similarity to consider a result as a potential match.
+Below this → skip SERVICE entirely, go to CONTEXT/RAG.
+Note: Multilingual embeddings (Estonian/short queries) typically yield
+lower cosine scores (0.25-0.40) than English. Tune based on observed scores."""
+
+DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40
+"""Dense cosine similarity for high-confidence service classification.
+Above this AND score gap is large → SERVICE without LLM confirmation."""
+
+DENSE_SCORE_GAP_THRESHOLD = 0.05
+"""Cosine score gap (top - second) for high-confidence classification.
+Ensures the top result is significantly better than the runner-up."""

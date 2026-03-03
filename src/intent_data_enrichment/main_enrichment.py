@@ -3,18 +3,60 @@
 Service Data Enrichment Script
 
 This script receives service data, enriches it with LLM-generated context,
-creates embeddings, and stores in Qdrant intent_collections.
+creates embeddings (dense + sparse per example), and stores in Qdrant intent_collections.
+
+Indexing strategy:
+- One 'example' point per example query (dense + sparse vectors of the example text)
+- One 'summary' point per service (dense + sparse vectors of name + description + context)
 """
 
 import sys
 import json
 import argparse
 import asyncio
+from typing import List
 from loguru import logger
 
 from intent_data_enrichment.models import ServiceData, EnrichedService, EnrichmentResult
 from intent_data_enrichment.api_client import LLMAPIClient
 from intent_data_enrichment.qdrant_manager import QdrantManager
+
+# Import sparse encoder from tool_classifier (shared module)
+sys.path.insert(0, "/app/src")
+try:
+    from tool_classifier.sparse_encoder import compute_sparse_vector
+except ImportError:
+    # Fallback for local development
+    try:
+        from src.tool_classifier.sparse_encoder import compute_sparse_vector
+    except ImportError:
+        logger.warning(
+            "Could not import sparse_encoder from tool_classifier, "
+            "attempting direct import"
+        )
+        import importlib.util
+        import os
+
+        # Try to find the module relative to this file
+        module_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "tool_classifier",
+            "sparse_encoder.py",
+        )
+        if os.path.exists(module_path):
+            spec = importlib.util.spec_from_file_location("sparse_encoder", module_path)
+            if spec is not None and spec.loader is not None:
+                sparse_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(sparse_module)
+                compute_sparse_vector = sparse_module.compute_sparse_vector
+            else:
+                raise ImportError(
+                    f"Cannot load spec or loader for sparse_encoder.py at {module_path}"
+                ) from None
+        else:
+            raise ImportError(
+                f"Cannot find sparse_encoder.py at {module_path}"
+            ) from None
 
 
 def parse_arguments() -> ServiceData:
@@ -76,7 +118,8 @@ def parse_arguments() -> ServiceData:
 
 async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
     """
-    Main enrichment pipeline: generate context, create embedding, store in Qdrant.
+    Main enrichment pipeline: generate context, create per-example embeddings,
+    store in Qdrant with hybrid vectors (dense + sparse).
 
     Args:
         service_data: Service data to enrich
@@ -85,14 +128,52 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
         EnrichmentResult with success/failure information
     """
     try:
-        # Step 1: Generate rich context using LLM
+        # Step 1: Generate rich context using LLM (unchanged from original)
         logger.info("Step 1: Generating rich context with LLM")
         async with LLMAPIClient() as api_client:
             context = await api_client.generate_context(service_data)
             logger.success(f"Context generated: {len(context)} characters")
 
-            # Step 2: Combine generated context with original metadata for embedding
-            logger.info("Step 2: Combining context with original service metadata")
+            # Step 2: Create per-example points (dense + sparse vectors)
+            logger.info(
+                f"Step 2: Creating per-example embeddings for "
+                f"{len(service_data.examples)} examples"
+            )
+            enriched_points: List[EnrichedService] = []
+
+            for i, example in enumerate(service_data.examples):
+                logger.info(
+                    f"  Creating embeddings for example {i + 1}/{len(service_data.examples)}: "
+                    f"'{example[:80]}...'"
+                    if len(example) > 80
+                    else f"  Creating embeddings for example {i + 1}/{len(service_data.examples)}: "
+                    f"'{example}'"
+                )
+
+                # Dense: embed the individual example
+                dense_embedding = await api_client.create_embedding(example)
+
+                # Sparse: BM25-style term frequencies for the example
+                sparse_vec = compute_sparse_vector(example)
+
+                enriched_points.append(
+                    EnrichedService(
+                        id=service_data.service_id,
+                        name=service_data.name,
+                        description=service_data.description,
+                        examples=service_data.examples,
+                        entities=service_data.entities,
+                        context=context,
+                        embedding=dense_embedding,
+                        sparse_indices=sparse_vec.indices,
+                        sparse_values=sparse_vec.values,
+                        example_text=example,
+                        point_type="example",
+                    )
+                )
+
+            # Step 3: Create summary point (combined name + description + context)
+            logger.info("Step 3: Creating summary embedding")
             combined_text_parts = [
                 f"Service Name: {service_data.name}",
                 f"Description: {service_data.description}",
@@ -108,35 +189,44 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
                     f"Required Entities: {', '.join(service_data.entities)}"
                 )
 
-            # Add generated context last (enriched understanding)
             combined_text_parts.append(f"Enriched Context: {context}")
-
             combined_text = "\n".join(combined_text_parts)
-            logger.info(f"Combined text length: {len(combined_text)} characters")
 
-            # Step 3: Create embedding for combined text
-            logger.info("Step 3: Creating embedding vector for combined text")
-            embedding = await api_client.create_embedding(combined_text)
-            logger.success(f"Embedding created: {len(embedding)}-dimensional vector")
+            summary_embedding = await api_client.create_embedding(combined_text)
+            summary_sparse = compute_sparse_vector(combined_text)
 
-        # Step 4: Prepare enriched service
-        enriched_service = EnrichedService(
-            id=service_data.service_id,
-            name=service_data.name,
-            description=service_data.description,
-            examples=service_data.examples,
-            entities=service_data.entities,
-            context=context,
-            embedding=embedding,
-        )
+            enriched_points.append(
+                EnrichedService(
+                    id=service_data.service_id,
+                    name=service_data.name,
+                    description=service_data.description,
+                    examples=service_data.examples,
+                    entities=service_data.entities,
+                    context=context,
+                    embedding=summary_embedding,
+                    sparse_indices=summary_sparse.indices,
+                    sparse_values=summary_sparse.values,
+                    example_text=None,
+                    point_type="summary",
+                )
+            )
 
-        # Step 5: Store in Qdrant
-        logger.info("Step 5: Storing in Qdrant")
+        # Step 4: Delete existing points for this service (idempotent update)
+        logger.info("Step 4: Removing existing points for idempotent update")
         qdrant = QdrantManager()
         try:
             qdrant.connect()
             qdrant.ensure_collection()
-            success = qdrant.upsert_service(enriched_service)
+
+            # Delete old points before inserting new ones
+            qdrant.delete_service_points(service_data.service_id)
+
+            # Step 5: Bulk upsert all points (examples + summary)
+            logger.info(
+                f"Step 5: Storing {len(enriched_points)} points in Qdrant "
+                f"({len(service_data.examples)} examples + 1 summary)"
+            )
+            success = qdrant.upsert_service_points(enriched_points)
         finally:
             qdrant.close()
 
@@ -144,9 +234,13 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
             return EnrichmentResult(
                 success=True,
                 service_id=service_data.service_id,
-                message=f"Service '{service_data.name}' enriched and indexed successfully",
+                message=(
+                    f"Service '{service_data.name}' enriched and indexed successfully "
+                    f"({len(enriched_points)} points: "
+                    f"{len(service_data.examples)} examples + 1 summary)"
+                ),
                 context_length=len(context),
-                embedding_dimension=len(embedding),
+                embedding_dimension=len(summary_embedding),
                 error=None,
             )
         else:

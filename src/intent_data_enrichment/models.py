@@ -20,7 +20,12 @@ class ServiceData(BaseModel):
 
 
 class EnrichedService(BaseModel):
-    """Enriched service data ready for storage."""
+    """Enriched service data ready for storage.
+
+    Each service produces multiple points in Qdrant:
+    - One 'example' point per example query (for precise matching)
+    - One 'summary' point for the combined service description + context
+    """
 
     id: str = Field(..., description="Service ID (maps to service_id)")
     name: str = Field(..., description="Service name")
@@ -28,7 +33,19 @@ class EnrichedService(BaseModel):
     examples: List[str] = Field(..., description="Example queries")
     entities: List[str] = Field(..., description="Expected entity names")
     context: str = Field(..., description="Generated rich context")
-    embedding: List[float] = Field(..., description="Context embedding vector")
+    embedding: List[float] = Field(..., description="Dense embedding vector")
+    sparse_indices: List[int] = Field(
+        default_factory=list, description="Sparse vector indices"
+    )
+    sparse_values: List[float] = Field(
+        default_factory=list, description="Sparse vector values"
+    )
+    example_text: Optional[str] = Field(
+        default=None, description="The specific example this point represents"
+    )
+    point_type: str = Field(
+        default="summary", description="Point type: 'example' or 'summary'"
+    )
 
 
 class EnrichmentResult(BaseModel):

@@ -554,6 +554,11 @@ class ServiceWorkflowExecutor(BaseWorkflow):
     ) -> Optional[OrchestrationResponse]:
         """Execute service workflow in non-streaming mode.
 
+        Uses classification metadata from hybrid search:
+        - needs_llm_confirmation=False: Skip discovery + intent detection, use matched service
+        - needs_llm_confirmation=True: Run LLM intent detection on candidate services only
+        - No metadata: Fall back to original discovery flow
+
         Args:
             request: Orchestration request
             context: Workflow context
@@ -568,12 +573,77 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         if time_metric is None:
             time_metric = {}
 
-        # Service discovery with timing
-        start_time = time.time()
-        await self._log_request_details(
-            request, context, mode="non-streaming", costs_metric=costs_metric
-        )
-        time_metric["service.discovery"] = time.time() - start_time
+        # Check if classifier provided hybrid search metadata
+        needs_llm_confirmation = context.get("needs_llm_confirmation")
+
+        if needs_llm_confirmation is False:
+            # HIGH CONFIDENCE PATH: Classifier matched a service with high confidence
+            # Skip service discovery — use hybrid search match directly
+            matched_service_id = context.get("matched_service_id")
+            matched_service_name = context.get("matched_service_name")
+            rrf_score = context.get("rrf_score", 0)
+
+            logger.info(
+                f"[{chat_id}] HIGH-CONFIDENCE SERVICE MATCH (non-streaming): "
+                f"{matched_service_name} (rrf_score={rrf_score:.6f}) - "
+                f"skipping discovery"
+            )
+
+            # Get service details from top_results (already retrieved by classifier)
+            top_results = context.get("top_results", [])
+            if top_results:
+                matched = top_results[0]
+
+                # Run entity extraction via LLM (DSPy) for this single service
+                start_time = time.time()
+                await self._process_intent_detection(
+                    services=[matched],
+                    request=request,
+                    chat_id=chat_id,
+                    context=context,
+                    costs_metric=costs_metric,
+                )
+                time_metric["service.intent_detection"] = time.time() - start_time
+
+                # Ensure service_data is populated from hybrid match
+                # _process_intent_detection may not set it if DSPy returns
+                # a different service_id format, so we populate it explicitly
+                if not context.get("service_data"):
+                    context["service_id"] = matched.get("service_id")
+                    context["service_data"] = matched
+                    logger.info(
+                        f"[{chat_id}] Populated service_data from hybrid match: "
+                        f"{matched.get('name')}"
+                    )
+
+        elif needs_llm_confirmation is True:
+            # AMBIGUOUS PATH: Multiple services scored similarly
+            # Run LLM intent detection only on candidate services (not all services)
+            top_results = context.get("top_results", [])
+            logger.info(
+                f"[{chat_id}] AMBIGUOUS SERVICE MATCH (non-streaming): "
+                f"running LLM intent detection on {len(top_results)} candidates"
+            )
+
+            start_time = time.time()
+            if top_results:
+                await self._process_intent_detection(
+                    services=top_results,
+                    request=request,
+                    chat_id=chat_id,
+                    context=context,
+                    costs_metric=costs_metric,
+                )
+            time_metric["service.discovery"] = time.time() - start_time
+
+        else:
+            # LEGACY PATH: No hybrid search metadata (classifier disabled or error)
+            # Full service discovery + intent detection (original behavior)
+            start_time = time.time()
+            await self._log_request_details(
+                request, context, mode="non-streaming", costs_metric=costs_metric
+            )
+            time_metric["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
@@ -692,6 +762,8 @@ class ServiceWorkflowExecutor(BaseWorkflow):
     ) -> Optional[AsyncIterator[str]]:
         """Execute service workflow in streaming mode.
 
+        Uses classification metadata from hybrid search (same as execute_async).
+
         Args:
             request: Orchestration request
             context: Workflow context
@@ -706,12 +778,68 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         if time_metric is None:
             time_metric = {}
 
-        # Service discovery with timing
-        start_time = time.time()
-        await self._log_request_details(
-            request, context, mode="streaming", costs_metric=costs_metric
-        )
-        time_metric["service.discovery"] = time.time() - start_time
+        # Check if classifier provided hybrid search metadata
+        needs_llm_confirmation = context.get("needs_llm_confirmation")
+
+        if needs_llm_confirmation is False:
+            # HIGH CONFIDENCE PATH: Skip discovery, use matched service
+            matched_service_name = context.get("matched_service_name")
+            rrf_score = context.get("rrf_score", 0)
+
+            logger.info(
+                f"[{chat_id}] HIGH-CONFIDENCE SERVICE MATCH (streaming): "
+                f"{matched_service_name} (rrf_score={rrf_score:.6f})"
+            )
+
+            top_results = context.get("top_results", [])
+            if top_results:
+                matched = top_results[0]
+
+                start_time = time.time()
+                await self._process_intent_detection(
+                    services=[matched],
+                    request=request,
+                    chat_id=chat_id,
+                    context=context,
+                    costs_metric=costs_metric,
+                )
+                time_metric["service.intent_detection"] = time.time() - start_time
+
+                # Ensure service_data is populated from hybrid match
+                if not context.get("service_data"):
+                    context["service_id"] = matched.get("service_id")
+                    context["service_data"] = matched
+                    logger.info(
+                        f"[{chat_id}] Populated service_data from hybrid match: "
+                        f"{matched.get('name')}"
+                    )
+
+        elif needs_llm_confirmation is True:
+            # AMBIGUOUS PATH: Run LLM intent detection on candidates
+            top_results = context.get("top_results", [])
+            logger.info(
+                f"[{chat_id}] AMBIGUOUS SERVICE MATCH (streaming): "
+                f"{len(top_results)} candidates"
+            )
+
+            start_time = time.time()
+            if top_results:
+                await self._process_intent_detection(
+                    services=top_results,
+                    request=request,
+                    chat_id=chat_id,
+                    context=context,
+                    costs_metric=costs_metric,
+                )
+            time_metric["service.discovery"] = time.time() - start_time
+
+        else:
+            # LEGACY PATH: Full service discovery (original behavior)
+            start_time = time.time()
+            await self._log_request_details(
+                request, context, mode="streaming", costs_metric=costs_metric
+            )
+            time_metric["service.discovery"] = time.time() - start_time
 
         # Check if service was detected and validated
         if not context.get("service_id"):
