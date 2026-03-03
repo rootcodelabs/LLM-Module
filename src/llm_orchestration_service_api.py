@@ -85,8 +85,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down LLM Orchestration Service API")
-    # Clean up resources if needed
-    if hasattr(app.state, "orchestration_service"):
+    if (
+        hasattr(app.state, "orchestration_service")
+        and app.state.orchestration_service is not None
+    ):
+        await app.state.orchestration_service.aclose()
         app.state.orchestration_service = None
 
 

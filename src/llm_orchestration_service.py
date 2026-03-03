@@ -249,6 +249,16 @@ class LLMOrchestrationService:
                 f"index will be built on first query (graceful degradation)"
             )
 
+    async def aclose(self) -> None:
+        """Release all long-lived async resources held by the service.
+
+        Must be awaited during application shutdown (FastAPI lifespan teardown)
+        to avoid connection leaks from the ToolClassifier's httpx client.
+        """
+        if self.tool_classifier is not None:
+            await self.tool_classifier.aclose()
+            logger.debug("LLMOrchestrationService async resources closed")
+
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
         self, request: OrchestrationRequest

@@ -112,13 +112,21 @@ class SmartBM25Search:
             # Check if index needs refresh (non-blocking: schedule background rebuild,
             # current query continues with the existing index to avoid latency).
             if await self._should_refresh_index():
-                logger.info(
-                    "Collection data changed - scheduling background BM25 refresh "
-                    "(current query uses existing index)"
-                )
-                task = asyncio.create_task(self._background_refresh_index())
-                self._background_tasks.add(task)
-                task.add_done_callback(self._background_tasks.discard)
+                # Avoid scheduling multiple concurrent refresh tasks; coalesce while a
+                # refresh is already in progress.
+                if not self._refresh_in_progress:
+                    logger.info(
+                        "Collection data changed - scheduling background BM25 refresh "
+                        "(current query uses existing index)"
+                    )
+                    task = asyncio.create_task(self._background_refresh_index())
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
+                else:
+                    logger.debug(
+                        "BM25 refresh already in progress; skipping scheduling of a "
+                        "new background refresh task"
+                    )
 
             if not self.bm25_index:
                 logger.error("BM25 index not initialized")
