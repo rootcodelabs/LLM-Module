@@ -229,7 +229,7 @@ class PromptConfigurationLoader:
 
                     # Unwrap Ruuter's response wrapper if present
                     if isinstance(data, dict) and "response" in data:
-                        logger.info("Unwrapping 'response' key")
+                        logger.debug("Unwrapping 'response' key")
                         data = data["response"]
 
                     # Now extract prompt from the unwrapped data
@@ -238,25 +238,25 @@ class PromptConfigurationLoader:
                         first_elem_keys = (
                             list(data[0].keys()) if isinstance(data[0], dict) else []
                         )
-                        logger.info(
+                        logger.debug(
                             f"Extracting from list, first element keys: {first_elem_keys}"
                         )
                         prompt = data[0].get("prompt", "").strip()
                     elif isinstance(data, dict):
                         # Dict format: {"id": 1, "prompt": "..."}
-                        logger.info(f"Extracting from dict, keys: {list(data.keys())}")
+                        logger.debug(f"Extracting from dict, keys: {list(data.keys())}")
                         prompt = data.get("prompt", "").strip()
                     else:
                         logger.warning(
                             f"Unexpected data type: {type(data).__name__}, structure not recognized"
                         )
 
-                    logger.info(
+                    logger.debug(
                         f"Extracted prompt length: {len(prompt) if prompt else 0}"
                     )
 
                     if prompt:
-                        logger.info(
+                        logger.debug(
                             f"Loaded prompt on attempt {attempt} ({len(prompt)} chars)"
                         )
                         return prompt

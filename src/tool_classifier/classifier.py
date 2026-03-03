@@ -99,6 +99,14 @@ class ToolClassifier:
             f"(Qdrant: {self._qdrant_base_url})"
         )
 
+    async def aclose(self) -> None:
+        """Close the shared httpx client and release connection pool resources.
+
+        Must be awaited during application shutdown to avoid connection leaks.
+        """
+        await self._qdrant_client.aclose()
+        logger.debug("ToolClassifier Qdrant httpx client closed")
+
     async def classify(
         self,
         query: str,

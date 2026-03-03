@@ -219,14 +219,20 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
             qdrant.ensure_collection()
 
             # Delete old points before inserting new ones
-            qdrant.delete_service_points(service_data.service_id)
-
-            # Step 5: Bulk upsert all points (examples + summary)
-            logger.info(
-                f"Step 5: Storing {len(enriched_points)} points in Qdrant "
-                f"({len(service_data.examples)} examples + 1 summary)"
-            )
-            success = qdrant.upsert_service_points(enriched_points)
+            deleted = qdrant.delete_service_points(service_data.service_id)
+            if not deleted:
+                logger.error(
+                    f"Failed to delete existing points for service_id={service_data.service_id}; "
+                    "aborting upsert to avoid stale data."
+                )
+                success = False
+            else:
+                # Step 5: Bulk upsert all points (examples + summary)
+                logger.info(
+                    f"Step 5: Storing {len(enriched_points)} points in Qdrant "
+                    f"({len(service_data.examples)} examples + 1 summary)"
+                )
+                success = qdrant.upsert_service_points(enriched_points)
         finally:
             qdrant.close()
 

@@ -581,11 +581,11 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             # Skip service discovery — use hybrid search match directly
             matched_service_id = context.get("matched_service_id")
             matched_service_name = context.get("matched_service_name")
-            rrf_score = context.get("rrf_score", 0)
+            cosine_score = context.get("cosine_score", 0.0)
 
             logger.info(
                 f"[{chat_id}] HIGH-CONFIDENCE SERVICE MATCH (non-streaming): "
-                f"{matched_service_name} (rrf_score={rrf_score:.6f}) - "
+                f"{matched_service_name} (cosine_score={cosine_score:.4f}) - "
                 f"skipping discovery"
             )
 
@@ -634,7 +634,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-            time_metric["service.discovery"] = time.time() - start_time
+            time_metric["service.intent_detection"] = time.time() - start_time
 
         else:
             # LEGACY PATH: No hybrid search metadata (classifier disabled or error)
@@ -784,11 +784,11 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         if needs_llm_confirmation is False:
             # HIGH CONFIDENCE PATH: Skip discovery, use matched service
             matched_service_name = context.get("matched_service_name")
-            rrf_score = context.get("rrf_score", 0)
+            cosine_score = context.get("cosine_score", 0.0)
 
             logger.info(
                 f"[{chat_id}] HIGH-CONFIDENCE SERVICE MATCH (streaming): "
-                f"{matched_service_name} (rrf_score={rrf_score:.6f})"
+                f"{matched_service_name} (cosine_score={cosine_score:.4f})"
             )
 
             top_results = context.get("top_results", [])
@@ -831,7 +831,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-            time_metric["service.discovery"] = time.time() - start_time
+            time_metric["service.intent_detection"] = time.time() - start_time
 
         else:
             # LEGACY PATH: Full service discovery (original behavior)
