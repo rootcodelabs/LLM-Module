@@ -57,14 +57,14 @@ class NeMoRailsAdapter:
         self._rails: Optional[LLMRails] = None
         self._initialized = False
 
-        logger.info(f"Initializing NeMoRailsAdapter for environment: {environment}")
+        logger.debug(f"NeMoRailsAdapter created for environment: {environment}")
 
     def _register_custom_provider(self) -> None:
         """Register DSPy custom LLM provider with NeMo Guardrails."""
         try:
             from src.guardrails.dspy_nemo_adapter import DSPyLLMProviderFactory
 
-            logger.info("Registering DSPy custom LLM provider with NeMo Guardrails")
+            logger.debug("Registering DSPy custom LLM provider with NeMo Guardrails")
 
             # NeMo Guardrails' register_llm_provider accepts callable factories at runtime.
             # We instantiate DSPyLLMProviderFactory first, then register the instance.
@@ -74,7 +74,7 @@ class NeMoRailsAdapter:
             # We use cast to satisfy the type checker while maintaining runtime correctness.
             factory = DSPyLLMProviderFactory()
             register_llm_provider("dspy-custom", cast(Type[BaseLLM], factory))
-            logger.info("DSPy custom LLM provider registered successfully")
+            logger.debug("DSPy custom LLM provider registered successfully")
 
         except Exception as e:
             logger.error(f"Failed to register DSPy custom provider: {str(e)}")
@@ -86,8 +86,8 @@ class NeMoRailsAdapter:
             return
 
         try:
-            logger.info(
-                "Initializing NeMo Guardrails with DSPy LLM and streaming support"
+            logger.debug(
+                f"Initializing NeMo Guardrails with DSPy LLM (env={self.environment})"
             )
 
             from llm_orchestrator_config.llm_manager import LLMManager
@@ -106,33 +106,24 @@ class NeMoRailsAdapter:
             guardrails_loader = get_guardrails_loader()
             config_path, metadata = guardrails_loader.get_optimized_config_path()
 
-            logger.info(f"Loading guardrails config from: {config_path}")
+            logger.debug(f"Loading guardrails config from: {config_path}")
 
             rails_config = RailsConfig.from_path(str(config_path.parent))
 
             rails_config.streaming = True
 
-            logger.info("Streaming configuration:")
-            logger.info(f"  Global streaming: {rails_config.streaming}")
-
-            if hasattr(rails_config, "rails") and hasattr(rails_config.rails, "output"):
-                logger.info(
-                    f"  Output rails config exists: {rails_config.rails.output}"
-                )
-            else:
-                logger.info("  Output rails config will be loaded from YAML")
-
             if metadata.get("optimized", False):
-                logger.info(
-                    f"Loaded OPTIMIZED guardrails config (version: {metadata.get('version', 'unknown')})"
-                )
+                version = metadata.get("version", "unknown")
                 metrics = metadata.get("metrics", {})
-                if metrics:
-                    logger.info(
-                        f" Optimization metrics: weighted_accuracy={metrics.get('weighted_accuracy', 'N/A')}"
-                    )
+                accuracy = metrics.get("weighted_accuracy", "N/A") if metrics else "N/A"
+                logger.info(
+                    f"Guardrails ready: OPTIMIZED config v={version}, "
+                    f"weighted_accuracy={accuracy}, env={self.environment}"
+                )
             else:
-                logger.info("Loaded BASE guardrails config (no optimization)")
+                logger.info(
+                    f"Guardrails ready: BASE config (no optimization), env={self.environment}"
+                )
 
             from src.guardrails.dspy_nemo_adapter import DSPyNeMoLLM
 
@@ -144,18 +135,16 @@ class NeMoRailsAdapter:
                 verbose=False,
             )
 
-            if (
+            if not (
                 hasattr(self._rails.config, "streaming")
                 and self._rails.config.streaming
             ):
-                logger.info("✓ Streaming enabled in NeMo Guardrails configuration")
-            else:
                 logger.warning(
                     "Streaming not enabled in configuration - this may cause issues"
                 )
 
             self._initialized = True
-            logger.info("NeMo Guardrails initialized successfully with DSPy LLM")
+            logger.debug("NeMo Guardrails initialized successfully with DSPy LLM")
 
         except Exception as e:
             logger.error(f"Failed to initialize NeMo Guardrails: {str(e)}")
