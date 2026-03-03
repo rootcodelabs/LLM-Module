@@ -178,6 +178,7 @@ services:
       - ./DSL/CronManager/DSL:/DSL
       - ./DSL/CronManager/script:/app/scripts
       - ./src/vector_indexer:/app/src/vector_indexer
+      - ./src/tool_classifier:/app/src/tool_classifier
       - ./src/intent_data_enrichment:/app/src/intent_data_enrichment
       - ./src/utils/decrypt_vault_secrets.py:/app/src/utils/decrypt_vault_secrets.py:ro  # Decryption utility (read-only)
       - cron_data:/app/data
@@ -577,6 +578,7 @@ services:
       - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
       - ./src/optimization/optimized_modules:/app/src/optimization/optimized_modules
       - llm_orchestration_logs:/app/logs
+      - ./tests:/app/tests  # mount tests directory (excluded from image via .dockerignore)
     networks:
       - bykstack
     depends_on:
