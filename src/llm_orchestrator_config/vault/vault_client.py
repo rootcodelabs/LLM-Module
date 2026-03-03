@@ -142,10 +142,7 @@ class VaultAgentClient:
         try:
             # If using proxy mode, skip token checks
             if not self.use_token_file:
-                logger.debug(
-                    "Using vault agent proxy - skipping token authentication check"
-                )
-                # Just verify vault is accessible
+                # Just verify vault is accessible (no token needed with proxy)
                 return self.is_vault_available()
 
             # Check token is available
@@ -182,27 +179,10 @@ class VaultAgentClient:
         """
         try:
             response = self.client.sys.read_health_status()
-            logger.debug(f"Vault health response type: {type(response)}")
-            logger.debug(f"Vault health response: {response}")
 
             # For Vault health endpoint, we primarily check the HTTP status code
             if hasattr(response, "status_code"):
-                is_available = response.status_code == 200
-                logger.debug(
-                    f"Vault health check: status_code={response.status_code}, available={is_available}"
-                )
-
-                # Try to get additional details from response body if available
-                try:
-                    if hasattr(response, "json") and callable(response.json):
-                        health_data = response.json()
-                        logger.debug(f"Vault health details: {health_data}")
-                except Exception as e:
-                    logger.debug(
-                        f"Could not parse health response body (this is normal): {e}"
-                    )
-
-                return is_available
+                return response.status_code == 200
             else:
                 # Fallback for non-Response objects (direct dict)
                 if isinstance(response, dict):
@@ -291,7 +271,6 @@ class VaultAgentClient:
                 path=path,
                 mount_point=self.mount_point,
             )
-            logger.debug(f"List secrets response: {response}")
 
             if response and "data" in response:
                 keys = response["data"].get("keys", [])

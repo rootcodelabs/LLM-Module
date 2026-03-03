@@ -42,6 +42,7 @@ class ContextualRetriever:
         connection_id: Optional[str] = None,
         config_path: Optional[str] = None,
         llm_service: Optional["LLMOrchestrationService"] = None,
+        shared_bm25: Optional[SmartBM25Search] = None,
     ):
         """
         Initialize contextual retriever.
@@ -52,6 +53,10 @@ class ContextualRetriever:
             connection_id: Optional connection ID
             config_path: Optional config file path
             llm_service: Optional LLM service instance (prevents circular dependency)
+            shared_bm25: Optional pre-warmed SmartBM25Search singleton.  When
+                provided the retriever skips the expensive index-build step during
+                initialize() and reuses the already-ready index, eliminating the
+                cold-start latency on the first query.
         """
         self.qdrant_url = qdrant_url
         self.environment = environment
@@ -70,7 +75,14 @@ class ContextualRetriever:
         # Initialize components with configuration
         self.provider_detection = DynamicProviderDetection(qdrant_url, self.config)
         self.qdrant_search = QdrantContextualSearch(qdrant_url, self.config)
-        self.bm25_search = SmartBM25Search(qdrant_url, self.config)
+        # Use the injected pre-warmed singleton when available; create a fresh
+        # instance only as a fallback (avoids duplicate Qdrant scroll on startup).
+        self.bm25_search: SmartBM25Search = (
+            shared_bm25
+            if shared_bm25 is not None
+            else SmartBM25Search(qdrant_url, self.config)
+        )
+        self._bm25_is_shared: bool = shared_bm25 is not None
         self.rank_fusion = DynamicRankFusion(self.config)
 
         # State
@@ -87,10 +99,18 @@ class ContextualRetriever:
         try:
             logger.info("Initializing Contextual Retriever...")
 
-            # Initialize BM25 index
-            bm25_success = await self.bm25_search.initialize_index()
-            if not bm25_success:
-                logger.warning("BM25 initialization failed - will skip BM25 search")
+            # If received a pre-warmed shared BM25 index, reuse it directly.
+            # This is the normal startup path and adds zero latency to the first query.
+            if self._bm25_is_shared and self.bm25_search.bm25_index is not None:
+                logger.info(
+                    "Using pre-warmed shared BM25 index - skipping BM25 build "
+                    f"({len(self.bm25_search.chunk_mapping)} chunks ready)"
+                )
+            else:
+                # No shared index available - build it now (fallback path).
+                bm25_success = await self.bm25_search.initialize_index()
+                if not bm25_success:
+                    logger.warning("BM25 initialization failed - will skip BM25 search")
 
             self.initialized = True
             logger.info("Contextual Retriever initialized successfully")

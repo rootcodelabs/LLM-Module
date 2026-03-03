@@ -5,10 +5,11 @@ Implements fast lexical search on contextual content with smart refresh
 when collection data changes.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from loguru import logger
 from rank_bm25 import BM25Okapi
 import re
+import asyncio
 from contextual_retrieval.contextual_retrieval_api_client import get_http_client_manager
 from contextual_retrieval.error_handler import SecureErrorHandler
 from contextual_retrieval.constants import (
@@ -33,6 +34,11 @@ class SmartBM25Search:
         self.chunk_mapping: Dict[int, Dict[str, Any]] = {}
         self.last_collection_stats: Dict[str, Any] = {}
         self.tokenizer_pattern = re.compile(r"\w+")  # Simple word tokenizer
+        # Background refresh state - prevents blocking queries during index rebuild
+        self._refresh_in_progress: bool = False
+        self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        # Strong references to background tasks to prevent premature GC
+        self._background_tasks: Set[asyncio.Task[None]] = set()
 
     async def _get_http_client_manager(self):
         """Get the HTTP client manager instance."""
@@ -103,10 +109,16 @@ class SmartBM25Search:
             limit = self._config.search.topk_bm25
 
         try:
-            # Check if index needs refresh
+            # Check if index needs refresh (non-blocking: schedule background rebuild,
+            # current query continues with the existing index to avoid latency).
             if await self._should_refresh_index():
-                logger.info("Collection data changed - refreshing BM25 index")
-                await self.initialize_index()
+                logger.info(
+                    "Collection data changed - scheduling background BM25 refresh "
+                    "(current query uses existing index)"
+                )
+                task = asyncio.create_task(self._background_refresh_index())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
             if not self.bm25_index:
                 logger.error("BM25 index not initialized")
@@ -161,6 +173,31 @@ class SmartBM25Search:
         except Exception as e:
             logger.error(f"BM25 search failed: {e}")
             return []
+
+    async def _background_refresh_index(self) -> None:
+        """
+        Rebuild the BM25 index in the background without blocking in-flight queries.
+
+        Uses a lock to ensure only one rebuild runs at a time.  If a rebuild is
+        already in progress when a second collection-change is detected, the
+        duplicate request is silently discarded — the in-progress rebuild will
+        capture the latest data anyway.
+        """
+        if self._refresh_in_progress:
+            logger.debug("BM25 background refresh already running - skipping duplicate")
+            return
+        async with self._refresh_lock:
+            if self._refresh_in_progress:
+                return
+            self._refresh_in_progress = True
+        try:
+            logger.info("Starting background BM25 index refresh...")
+            await self.initialize_index()
+            logger.info("Background BM25 index refresh complete")
+        except Exception as e:
+            logger.error(f"Background BM25 refresh failed: {e}")
+        finally:
+            self._refresh_in_progress = False
 
     async def _fetch_all_contextual_chunks(self) -> List[Dict[str, Any]]:
         """Fetch all chunks from contextual collections."""

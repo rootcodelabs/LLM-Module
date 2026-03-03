@@ -55,6 +55,7 @@ from src.utils.prompt_config_loader import PromptConfigurationLoader
 from src.utils.query_validator import validate_query_basic
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
+from src.contextual_retrieval.bm25_search import SmartBM25Search
 from src.llm_orchestrator_config.exceptions import (
     ContextualRetrieverInitializationError,
     ContextualRetrievalFailureError,
@@ -133,6 +134,13 @@ class LLMOrchestrationService:
         # This allows components to be initialized per-request with proper context
         self.tool_classifier = None
 
+        # Shared BM25 search index pre-warmed at startup.
+        # Populated by _prewarm_shared_bm25() which is called from the FastAPI
+        # lifespan so it runs inside the async event loop.  Until then it is None
+        # and each ContextualRetriever will build the index on first query (graceful
+        # degradation path).
+        self.shared_bm25_search: Optional[SmartBM25Search] = None
+
         # Initialize shared guardrails adapters at startup (production and testing)
         self.shared_guardrails_adapters = (
             self._initialize_shared_guardrails_at_startup()
@@ -168,10 +176,17 @@ class LLMOrchestrationService:
                     connection_id=None,  # Shared configuration, not user-specific
                 )
 
+                # Eagerly trigger the full internal initialization (NeMo config
+                # loading, LLMRails creation, embedding model download) so that
+                # the first user query is not penalised by the cold-start cost.
+                # Without this, _ensure_initialized() runs lazily on the first
+                guardrails_adapter._ensure_initialized()
+
                 elapsed_time = time.time() - start_time
                 adapters[env] = guardrails_adapter
                 logger.info(
-                    f" Guardrails for '{env}' initialized successfully in {elapsed_time:.3f}s"
+                    f" Guardrails for '{env}' fully initialized in {elapsed_time:.3f}s "
+                    f"(NeMo Rails + embedding model loaded)"
                 )
 
             except Exception as e:
@@ -196,6 +211,43 @@ class LLMOrchestrationService:
             )
 
         return adapters
+
+    async def _prewarm_shared_bm25(self) -> None:
+        """
+        Pre-warm the shared BM25 index at application startup.
+
+        Must be called from an async context (e.g. FastAPI lifespan) so that
+        asyncio is available for the HTTP calls to Qdrant.  Absorbs the
+        cold-start latency (fetching all chunks + building BM25Okapi corpus)
+        at deploy time so that the first real user query is not penalised.
+
+        On any failure the method logs a warning and leaves
+        self.shared_bm25_search as None — the ContextualRetriever will then
+        fall back to building the index on the first query (graceful degradation).
+        """
+        qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+        logger.info("Pre-warming shared BM25 index at startup...")
+        prewarm_start = time.time()
+        try:
+            bm25 = SmartBM25Search(qdrant_url=qdrant_url)
+            success = await bm25.initialize_index()
+            if success:
+                self.shared_bm25_search = bm25
+                elapsed = time.time() - prewarm_start
+                logger.info(
+                    f"Shared BM25 index pre-warmed in {elapsed:.2f}s "
+                    f"({len(bm25.chunk_mapping)} chunks indexed)"
+                )
+            else:
+                logger.warning(
+                    "BM25 pre-warming produced an empty index - "
+                    "index will be built on first query instead"
+                )
+        except Exception as e:
+            logger.warning(
+                f"BM25 pre-warming failed: {e} - "
+                f"index will be built on first query (graceful degradation)"
+            )
 
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
@@ -1786,7 +1838,6 @@ class LLMOrchestrationService:
                 environment=environment, connection_id=connection_id
             )
 
-            logger.info("Guardrails adapter initialized successfully")
             return guardrails_adapter
 
         except Exception as e:
@@ -2322,6 +2373,7 @@ class LLMOrchestrationService:
                 environment=environment,
                 connection_id=connection_id,
                 llm_service=self,  # Inject self to eliminate circular dependency
+                shared_bm25=self.shared_bm25_search,  # Inject pre-warmed BM25 index
             )
 
             logger.info("Contextual retriever initialized successfully")
