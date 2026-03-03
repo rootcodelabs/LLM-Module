@@ -1,10 +1,21 @@
-"""Qdrant manager for intent collections."""
+"""Qdrant manager for intent collections with hybrid search support."""
 
 import uuid
-from typing import Optional
+from typing import Optional, List
 from loguru import logger
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance,
+    VectorParams,
+    PointStruct,
+    SparseVectorParams,
+    SparseIndexParams,
+    SparseVector,
+    Filter,
+    FieldCondition,
+    MatchValue,
+    FilterSelector,
+)
 
 from intent_data_enrichment.constants import EnrichmentConstants
 from intent_data_enrichment.models import EnrichedService
@@ -14,7 +25,7 @@ _CLIENT_NOT_INITIALIZED = "Qdrant client not initialized"
 
 
 class QdrantManager:
-    """Manages Qdrant operations for intent collections."""
+    """Manages Qdrant operations for intent collections with hybrid search."""
 
     def __init__(
         self,
@@ -44,7 +55,12 @@ class QdrantManager:
             raise
 
     def ensure_collection(self) -> None:
-        """Ensure the intent_collections collection exists with correct vector size."""
+        """Ensure the intent_collections collection exists with hybrid vector config.
+
+        The collection uses named vectors:
+        - 'dense': 3072-dim cosine similarity vectors for semantic matching
+        - 'sparse': BM25-style sparse vectors for keyword matching
+        """
         try:
             if not self.client:
                 raise RuntimeError(_CLIENT_NOT_INITIALIZED)
@@ -53,48 +69,60 @@ class QdrantManager:
             collection_names = [col.name for col in collections]
 
             if self.collection_name in collection_names:
-                # Check if existing collection has correct vector size
                 collection_info = self.client.get_collection(self.collection_name)
-
-                # Qdrant vectors config is a dict - get the default vector config
                 vectors_config = collection_info.config.params.vectors
 
-                existing_vector_size: Optional[int] = None
+                # Check if collection has the expected named vector configuration
                 if isinstance(vectors_config, dict):
-                    # Get first vector config (usually the default/unnamed one)
-                    if vectors_config:
-                        vector_params = next(iter(vectors_config.values()))
-                        existing_vector_size = vector_params.size
+                    if EnrichmentConstants.DENSE_VECTOR_NAME in vectors_config:
+                        existing_vector_size = vectors_config[
+                            EnrichmentConstants.DENSE_VECTOR_NAME
+                        ].size
+                        if existing_vector_size != EnrichmentConstants.VECTOR_SIZE:
+                            logger.error(
+                                f"Collection '{self.collection_name}' has incompatible vector size: "
+                                f"{existing_vector_size} (expected {EnrichmentConstants.VECTOR_SIZE})"
+                            )
+                            raise RuntimeError(
+                                f"Collection '{self.collection_name}' has incompatible vector size "
+                                f"({existing_vector_size} vs expected {EnrichmentConstants.VECTOR_SIZE}). "
+                                "To recreate the collection, manually delete it first using: "
+                                f"qdrant.client.delete_collection('{self.collection_name}') or via Qdrant UI/API."
+                            )
+                        logger.info(
+                            f"Collection '{self.collection_name}' already exists "
+                            f"with correct hybrid vector config (dense: {existing_vector_size}d + sparse)"
+                        )
+                    else:
+                        # Old collection format (unnamed/single vector) — needs migration
+                        logger.error(
+                            f"Collection '{self.collection_name}' exists but uses old single-vector format. "
+                            "Migration to named vectors (dense + sparse) required."
+                        )
+                        raise RuntimeError(
+                            f"Collection '{self.collection_name}' uses old single-vector format. "
+                            "Please delete the collection and re-index all services. "
+                            f"Delete with: qdrant.client.delete_collection('{self.collection_name}') "
+                            "or via Qdrant UI/API."
+                        )
                 elif vectors_config is not None:
-                    # Direct VectorParams object (older API)
-                    existing_vector_size = vectors_config.size
-
-                if existing_vector_size is None:
+                    # Direct VectorParams object (old single-vector format)
                     logger.error(
-                        f"Collection '{self.collection_name}' exists but vector size cannot be determined"
+                        f"Collection '{self.collection_name}' exists but uses old single-vector format."
                     )
                     raise RuntimeError(
-                        f"Collection '{self.collection_name}' exists but vector size cannot be determined. "
-                        "This may indicate a Qdrant API issue or unexpected collection configuration. "
-                        "Manual intervention required: verify Qdrant health, inspect collection config, "
-                        "or manually delete the collection if recreating is intended."
-                    )
-                elif existing_vector_size != EnrichmentConstants.VECTOR_SIZE:
-                    logger.error(
-                        f"Collection '{self.collection_name}' has incompatible vector size: "
-                        f"{existing_vector_size} (expected {EnrichmentConstants.VECTOR_SIZE})"
-                    )
-                    raise RuntimeError(
-                        f"Collection '{self.collection_name}' has incompatible vector size "
-                        f"({existing_vector_size} vs expected {EnrichmentConstants.VECTOR_SIZE}). "
-                        "This prevents automatic deletion to avoid accidental data loss. "
-                        "To recreate the collection, manually delete it first using: "
-                        f"qdrant.client.delete_collection('{self.collection_name}') or via Qdrant UI/API."
+                        f"Collection '{self.collection_name}' uses old single-vector format. "
+                        "Please delete the collection and re-index all services. "
+                        f"Delete with: qdrant.client.delete_collection('{self.collection_name}') "
+                        "or via Qdrant UI/API."
                     )
                 else:
-                    logger.info(
-                        f"Collection '{self.collection_name}' already exists "
-                        f"with correct vector size ({existing_vector_size})"
+                    logger.error(
+                        f"Collection '{self.collection_name}' exists but vector config cannot be determined"
+                    )
+                    raise RuntimeError(
+                        f"Collection '{self.collection_name}' exists but vector config cannot be determined. "
+                        "Manual intervention required."
                     )
             else:
                 self._create_collection()
@@ -104,76 +132,166 @@ class QdrantManager:
             raise
 
     def _create_collection(self) -> None:
-        """Create the collection with correct vector configuration."""
+        """Create the collection with hybrid vector configuration (dense + sparse)."""
         if not self.client:
             raise RuntimeError(_CLIENT_NOT_INITIALIZED)
 
         logger.info(
             f"Creating collection '{self.collection_name}' "
-            f"with vector size {EnrichmentConstants.VECTOR_SIZE}"
+            f"with hybrid vectors (dense: {EnrichmentConstants.VECTOR_SIZE}d + sparse)"
         )
         self.client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=VectorParams(
-                size=EnrichmentConstants.VECTOR_SIZE,
-                distance=Distance.COSINE,
-            ),
+            vectors_config={
+                EnrichmentConstants.DENSE_VECTOR_NAME: VectorParams(
+                    size=EnrichmentConstants.VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                ),
+            },
+            sparse_vectors_config={
+                EnrichmentConstants.SPARSE_VECTOR_NAME: SparseVectorParams(
+                    index=SparseIndexParams(on_disk=False),
+                ),
+            },
         )
         logger.success(f"Collection '{self.collection_name}' created successfully")
 
-    def upsert_service(self, enriched_service: EnrichedService) -> bool:
-        """
-        Upsert enriched service to Qdrant (update if exists, insert if new).
+    def delete_service_points(self, service_id: str) -> bool:
+        """Delete all points belonging to a service.
+
+        Used before re-indexing to ensure idempotent updates, and when
+        a service is deactivated.
 
         Args:
-            enriched_service: EnrichedService instance containing the embedding and
-                associated metadata to upsert into Qdrant.
+            service_id: Service identifier to delete all points for
 
         Returns:
             True if successful, False otherwise
         """
         try:
             if not self.client:
-                raise RuntimeError("Qdrant client not initialized")
+                raise RuntimeError(_CLIENT_NOT_INITIALIZED)
 
-            logger.info(f"Upserting service '{enriched_service.id}' to Qdrant")
-
-            # Convert service_id to UUID for Qdrant compatibility
-            # Qdrant requires point IDs to be either integers or UUIDs
-            point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, enriched_service.id))
-
-            # Prepare payload (all metadata except embedding)
-            payload = {
-                "service_id": enriched_service.id,  # Store original ID in payload
-                "name": enriched_service.name,
-                "description": enriched_service.description,
-                "examples": enriched_service.examples,
-                "entities": enriched_service.entities,
-                "context": enriched_service.context,
-            }
-
-            # Create point with UUID
-            point = PointStruct(
-                id=point_id,  # ✓ Now using UUID string
-                vector=enriched_service.embedding,
-                payload=payload,
+            logger.info(
+                f"Deleting existing points for service '{service_id}' from Qdrant"
             )
 
-            # Upsert to Qdrant
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=FilterSelector(
+                    filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="service_id",
+                                match=MatchValue(value=service_id),
+                            )
+                        ]
+                    )
+                ),
+            )
+
+            logger.success(f"Successfully deleted points for service '{service_id}'")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete points for service '{service_id}': {e}")
+            return False
+
+    def upsert_service_points(self, enriched_points: List[EnrichedService]) -> bool:
+        """Upsert multiple enriched service points to Qdrant.
+
+        Each point contains both dense and sparse vectors for hybrid search.
+        Points are identified by a deterministic UUID based on service_id + point_index.
+
+        Args:
+            enriched_points: List of EnrichedService instances (examples + summary)
+
+        Returns:
+            True if all points upserted successfully, False otherwise
+        """
+        try:
+            if not self.client:
+                raise RuntimeError(_CLIENT_NOT_INITIALIZED)
+
+            if not enriched_points:
+                logger.warning("No points to upsert")
+                return True
+
+            service_id = enriched_points[0].id
+            logger.info(
+                f"Upserting {len(enriched_points)} points for service '{service_id}'"
+            )
+
+            from typing import Any, Dict
+
+            points: List[PointStruct] = []
+            for idx, enriched_service in enumerate(enriched_points):
+                # Deterministic UUID based on service_id + index
+                point_id_source = f"{enriched_service.id}_{idx}"
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, point_id_source))
+
+                # Prepare payload
+                payload = {
+                    "service_id": enriched_service.id,
+                    "name": enriched_service.name,
+                    "description": enriched_service.description,
+                    "examples": enriched_service.examples,
+                    "entities": enriched_service.entities,
+                    "context": enriched_service.context,
+                    "point_type": enriched_service.point_type,
+                }
+
+                # Add example_text for example points
+                if enriched_service.example_text:
+                    payload["example_text"] = enriched_service.example_text
+
+                # Build named vectors (dense always, sparse if present)
+                vectors: Dict[str, Any] = {
+                    EnrichmentConstants.DENSE_VECTOR_NAME: enriched_service.embedding,
+                }
+                if enriched_service.sparse_indices:
+                    vectors[EnrichmentConstants.SPARSE_VECTOR_NAME] = SparseVector(
+                        indices=enriched_service.sparse_indices,
+                        values=enriched_service.sparse_values,
+                    )
+
+                point = PointStruct(
+                    id=point_id,
+                    vector=vectors,
+                    payload=payload,
+                )
+
+                points.append(point)
+
+            # Bulk upsert
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=[point],
+                points=points,
             )
 
             logger.success(
-                f"Successfully upserted service '{enriched_service.id}' "
-                f"({len(enriched_service.embedding)}-dim vector)"
+                f"Successfully upserted {len(points)} points for service '{service_id}' "
+                f"({sum(1 for p in enriched_points if p.point_type == 'example')} examples + "
+                f"{sum(1 for p in enriched_points if p.point_type == 'summary')} summary)"
             )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to upsert service '{enriched_service.id}': {e}")
+            logger.error(f"Failed to upsert service points: {e}")
             return False
+
+    def upsert_service(self, enriched_service: EnrichedService) -> bool:
+        """Upsert a single enriched service to Qdrant.
+
+        Backward-compatible wrapper that delegates to upsert_service_points.
+
+        Args:
+            enriched_service: EnrichedService instance
+
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.upsert_service_points([enriched_service])
 
     def close(self) -> None:
         """Close Qdrant connection."""

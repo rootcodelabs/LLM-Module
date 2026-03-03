@@ -24,6 +24,10 @@ class EnrichmentConstants:
     VECTOR_SIZE = 3072  # Azure text-embedding-3-large dimension
     DISTANCE_METRIC = "Cosine"
 
+    # Named Vector Configuration (for hybrid search)
+    DENSE_VECTOR_NAME = "dense"
+    SPARSE_VECTOR_NAME = "sparse"
+
     # Context Generation
     CONTEXT_TEMPLATE = """<document>
 {full_service_info}
