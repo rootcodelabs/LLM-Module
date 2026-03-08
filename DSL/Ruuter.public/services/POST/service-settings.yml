@@ -1,0 +1,29 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SERVICE-SETTINGS'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: name
+        type: string
+        description: "Body field 'name'"
+      - field: value
+        type: string
+        description: "Body field 'value'"
+
+updateSettings:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/update-settings"
+    body:
+      name: ${incoming.body.name}
+      value: ${incoming.body.value}
+  result: getResult
+
+returnSuccess:
+  status: 200
+  return: 'ok'

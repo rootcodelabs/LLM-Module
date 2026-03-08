@@ -1,0 +1,42 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'DIRECT-TO-CS'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: message
+        type: string
+        description: "Body field 'message'"
+
+# Direct to customer support
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null || incoming.body.message == null || incoming.body.message == ""}
+      next: missing_body_parameter
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    message: ${incoming.body.message}
+
+# TODO: do the actual request
+send_message_to_client:
+  call: reflect.mock
+  args:
+    response:
+      status: 'OK'
+      message: "Teid suunatakse klienditeenindusse"
+  result: result
+
+return_value:
+  return: ${result.response.body}
+  next: end
+
+missing_body_parameter:
+  status: 400
+  return: 'message - missing'
+  next: end

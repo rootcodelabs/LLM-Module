@@ -1,0 +1,33 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'LOG-BY-SERVICE'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+get_services_stat:
+  call: http.post
+  args:
+    url: "[#SERVICE_OPENSEARCH]/services/_search/template"
+    body:
+      id: 'get-log-by-service'
+      params: ${incoming.params}
+  result: results
+
+check_result:
+  switch:
+    - condition: ${results.response.body.found === true}
+      next: return_ok
+  next: return_not_found
+
+return_not_found:
+  status: 404
+  return: 'index not found'
+  next: end
+
+return_ok:
+  status: 200
+  return: ${results.response.body._source}
+  next: end

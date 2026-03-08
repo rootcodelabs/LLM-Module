@@ -1,0 +1,42 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'RENAME'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: current_path
+        type: string
+        description: "Body field 'current_path'"
+      - field: new_path
+        type: string
+        description: "Body field 'new_path'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null || incoming.body.current_path == null || incoming.body.new_path == null}
+      next: return_incorrect_request
+
+rename_file:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/rename"
+    headers:
+      type: 'json'
+    body:
+      current_path: ${incoming.body.current_path}
+      new_path: ${incoming.body.new_path}
+      layout: false
+  result: result
+
+return_value:
+  status: 200
+  return: ${result.response.body}
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Start date is required"

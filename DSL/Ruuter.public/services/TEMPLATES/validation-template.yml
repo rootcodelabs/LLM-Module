@@ -1,0 +1,56 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'VALIDATION-TEMPLATE'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: response
+        type: string
+        description: "Body field 'response'"
+      - field: type
+        type: string
+        description: "Body field 'type'"
+
+assign_step:
+  assign:
+    res: ${incoming.body.response}
+    type: ${incoming.body.type}
+  next: check_for_type
+
+check_for_type:
+  switch:
+    - condition: ${type.toLowerCase() === 'get'}
+      next: validate_get_request
+  next: validate_post_request
+
+validate_get_request:
+  call: http.get
+  args:
+    url: ${res}
+  result: results
+  next: validate_status_code
+
+validate_post_request:
+  call: http.post
+  args:
+    url: ${res}
+  result: results
+  next: validate_status_code
+
+validate_status_code:
+  switch:
+    - condition: ${200 <= results.response.statusCodeValue && results.response.statusCodeValue < 300}
+      next: return_true
+  next: return_false
+
+return_true:
+  return: true
+  next: end
+
+return_false:
+  return: false
+  next: end

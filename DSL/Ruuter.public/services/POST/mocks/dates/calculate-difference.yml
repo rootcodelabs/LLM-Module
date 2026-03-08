@@ -1,0 +1,136 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'CALCULATE-DIFFERENCE'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: startDate
+        type: string
+        description: "Body field 'startDate'"
+      - field: endDate
+        type: string
+        description: "Body field 'endDate'"
+    params:
+      - field: outputType
+        type: string
+        description: "Parameter 'outputType'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: return_incorrect_request
+  next: check_for_required_parameters
+
+check_for_required_parameters:
+  switch:
+    - condition: ${incoming.body.startDate == null}
+      next: return_incorrect_request
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    outputType: ${incoming.params.outputType ?? 'days'}
+    startDate: ${incoming.body.startDate}
+    endDate: ${incoming.body.endDate ?? new Date().toISOString()}
+
+check_is_end_date_greater_than_start_date:
+  switch:
+    - condition: ${new Date(endDate) < new Date(startDate)}
+      next: return_incorrect_date
+
+check_is_output_type_valid:
+  switch:
+    - condition: ${outputType !== null && !['years','months','hours','days','minutes', 'seconds'].includes(outputType)}
+      next: return_incorrect_output_type
+
+calculate_difference:
+  switch:
+    - condition: ${outputType === 'years'}
+      next: calculate_difference_in_years
+    - condition: ${outputType === 'months'}
+      next: calculate_difference_in_months
+    - condition: ${outputType === 'hours'}
+      next: calculate_difference_in_hours
+    - condition: ${outputType === 'minutes'}
+      next: calculate_difference_in_minutes
+    - condition: ${outputType === 'seconds'}
+      next: calculate_difference_in_seconds
+  next: calculate_difference_in_days
+
+calculate_difference_in_years:
+  call: reflect.mock
+  args:
+    response: {
+      result: 0
+    }
+  result: result
+  next: return_value
+
+calculate_difference_in_months:
+  call: reflect.mock
+  args:
+    response: {
+      result: 11
+    }
+  result: result
+  next: return_value
+
+calculate_difference_in_days:
+  call: reflect.mock
+  args:
+    response: {
+      result: 1
+    }
+  result: result
+  next: return_value
+
+calculate_difference_in_hours:
+  call: reflect.mock
+  args:
+    response: {
+      result: 24
+    }
+  result: result
+  next: return_value
+
+calculate_difference_in_minutes:
+  call: reflect.mock
+  args:
+    response: {
+      result: 59
+    }
+  result: result
+  next: return_value
+
+calculate_difference_in_seconds:
+  call: reflect.mock
+  args:
+    response: {
+      result: 201
+    }
+  result: result
+  next: return_value
+
+return_value:
+  status: 200
+  return: ${result.response.body}
+  next: end
+
+return_incorrect_date:
+  status: 400
+  return: "Start date can not be greater than the end date/ today"
+  next: end
+
+return_incorrect_output_type:
+  status: 400
+  return: "Output type must be: years, months, hours, days, minutes or seconds"
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Start date is required"
+  next: end

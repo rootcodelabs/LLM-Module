@@ -1,0 +1,26 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Get slots from OpenSearch"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+getSlots:
+  call: http.post
+  args:
+    url: "[#SERVICE_OPENSEARCH]/domain/_search/template"
+    body:
+      id: "domain-objects-with-pagination"
+      params:
+        type: "slots"
+        filter: ""
+        from: 0
+        size: 1000
+  result: getSlotsResult
+
+returnSuccess:
+  return: ${getSlotsResult.response.body.hits.hits[0].fields.filtered_items[0]}
+  wrapper: false
+  next: end

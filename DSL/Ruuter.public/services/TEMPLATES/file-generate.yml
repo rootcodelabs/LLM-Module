@@ -1,0 +1,45 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'FILE-GENERATE'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: fileContent
+        type: string
+        description: "Body field 'fileContent'"
+      - field: fileName
+        type: string
+        description: "Body field 'fileName'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null || incoming.body.fileName == null || incoming.body.fileContent == null}
+      next: missing_body_parameters
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    fileName: ${incoming.body.fileName}
+    fileContent: ${incoming.body.fileContent}
+
+generate_pdf_file:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/js/generate/pdf"
+    body:
+      filename: ${fileName}
+      template: ${fileContent}
+  result: result
+
+return:
+  return: ${result.response.body}
+  next: end
+
+missing_body_parameters:
+  status: 400
+  return: "fileName, fileContent - missing"
+  next: end

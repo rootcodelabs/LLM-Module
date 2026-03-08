@@ -1,0 +1,43 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SERVICES'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: page
+        type: number
+        description: "Body field 'page'"
+      - field: page_size
+        type: number
+        description: "Body field 'page_size'"
+      - field: sorting
+        type: string
+        description: "Body field 'sorting'"
+      - field: is_common
+        type: boolean
+        description: "Body field 'is_common'"  
+
+get_services_list:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-services-list"
+    body:
+      page: ${incoming.body.page}
+      page_size: ${incoming.body.page_size}
+      sorting: ${incoming.body.sorting}
+      is_common: ${incoming.body.is_common}
+  limit: 400
+  result: services_res
+
+assign_services_result:
+  assign:
+    services: ${services_res.response.body}
+
+return_ok:
+  status: 200
+  return: ${[services]}
+  next: end

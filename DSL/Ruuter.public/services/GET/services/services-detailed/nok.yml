@@ -1,0 +1,52 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'NOK'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    params:
+      - field: page
+        type: number
+        description: "Parameter 'page'"
+      - field: page_size
+        type: number
+        description: "Parameter 'page_size'"
+      - field: sorting
+        type: string
+        description: "Parameter 'sorting'"
+      - field: order
+        type: string
+        description: "Parameter 'order'"  
+
+getFaults:
+  call: http.post
+  args:
+    url: "[#SERVICE_OPENSEARCH]/ruuterlog/_search"
+    query:
+      from: ${(incoming.params.page - 1) * incoming.params.page_size}
+      size: ${incoming.params.page_size}
+      _source_excludes: "stackTrace,statusCode"
+    body:
+      sort: [{ "timestamp": { "order": "${incoming.params.order}" } }]
+      query:
+        match_phrase_prefix:
+          dslName:
+            query: "services/active"
+  result: getFaultsResult
+
+mapFaultsData:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/get-faults"
+    headers:
+      type: "json"
+    body:
+      data: { "hits": "${getFaultsResult.response.body.hits.hits}" }
+  result: faultsData
+
+returnSuccess:
+  wrapper: false
+  return: ${[faultsData.response.body, getFaultsResult.response.body.hits.total.value]}

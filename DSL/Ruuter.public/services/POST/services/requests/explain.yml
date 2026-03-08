@@ -1,0 +1,95 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'EXPLAIN'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: requests
+        type: object
+        description: "request object containing multiple requests"
+
+check_for_requests:
+  switch:
+    - condition: ${incoming.body.requests == null}
+      next: missing_requests
+  next: initialize_responses
+
+initialize_responses:
+  assign:
+    requests: ${incoming.body.requests}
+    responses: []
+    index: 0
+  next: process_next_request
+
+process_next_request:
+  switch:
+    - condition: ${index < requests.length}
+      next: assign_current_request
+  next: return_responses
+
+assign_current_request:
+  assign:
+    current_request: ${requests[index]}
+  next: check_method  
+
+check_method:
+  switch:
+    - condition: ${current_request.method.toLowerCase() == 'post'}
+      next: request_explain_post
+  next: request_explain_get
+
+request_explain_get:
+  call: http.get
+  args:
+    url: ${current_request.url}
+    headers:
+      Content-Type: "application/json"
+  result: res
+  next: assign_result
+
+request_explain_post:
+  call: http.post
+  args:
+    url: ${current_request.url}
+    headers:
+      Content-Type: "application/json"
+    body:
+      data: ${current_request.body}
+  result: res
+  next: assign_result
+
+assign_result:
+  assign:
+    result_res: ${[res.response.body]}
+  next: check_responses_list
+
+check_responses_list:
+  switch:
+    - condition: ${responses.length === 0}
+      next: append_first_response
+  next: append_response
+
+append_first_response:
+  assign:
+    responses: ${[responses, ...result_res]}
+    index: ${index + 1}
+  next: process_next_request
+
+append_response:
+  assign:
+    responses: ${[...responses, ...result_res]}
+    index: ${index + 1}
+  next: process_next_request
+
+return_responses:
+  return: ${responses.splice(1 , responses.length - 1)}
+  next: end
+
+missing_requests:
+  status: 400
+  return: "required requests were not provided"
+  next: end

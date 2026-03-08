@@ -1,0 +1,177 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'ADD'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    header:
+      - field: cookie
+        type: string
+        description: "Cookie field"
+    body:
+      - field: content
+        type: string
+        description: "Body field 'content'"
+      - field: description
+        type: string
+        description: "Body field 'description'"
+      - field: entities
+        type: object
+        description: "Body field 'Entities'"
+      - field: examples
+        type: object
+        description: "Body field 'Examples'"
+      - field: isCommon
+        type: boolean
+        description: "Body field 'isCommon'"
+      - field: name
+        type: string
+        description: "Body field 'name'"
+      - field: serviceId
+        type: string
+        description: "Body field 'serviceId'"
+      - field: structure
+        type: object
+        description: "Body field 'structure'"
+      - field: type
+        type: string
+        description: "Body field 'type'"
+      - field: updateServiceDb
+        type: boolean
+        description: "Body field 'updateServiceDb'"
+      - field: state
+        type: string
+        description: "Body field 'state'"  
+
+check_for_required_parameters:
+  switch:
+    - condition: ${incoming.body.name == null || incoming.body.description == null || incoming.body.type == null || incoming.body.content == null || incoming.body.serviceId == null || incoming.body.isCommon == null || incoming.body.structure == null}
+      next: return_incorrect_request
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    name: ${incoming.body.name}
+    description: ${incoming.body.description}
+    slot: ${""}
+    entities: ${incoming.body.entities}
+    examples: ${incoming.body.examples}
+    type: ${incoming.body.type.toUpperCase()}
+    content: ${incoming.body.content}
+    serviceId: ${incoming.body.serviceId}
+    isCommon: ${incoming.body.isCommon}
+    structure: ${incoming.body.structure}
+    state: ${incoming.body.state}
+  next: check_if_update_service_db
+
+check_if_update_service_db:
+  switch:
+    - condition: ${incoming.body.updateServiceDb === true}
+      next: check_if_name_exists
+  next: delete_all_mcq_files
+
+check_if_name_exists:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/services/check_name_exist"
+    body:
+      name: ${name}
+  result: name_exists_res
+  next: check_name_exists_result
+
+check_name_exists_result:
+  switch:
+    - condition: ${name_exists_res.response.body[0].nameExists}
+      next: return_name_already_exists
+  next: service_add   
+
+service_add:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/add"
+    body:
+      name: ${name}
+      description: ${description}
+      slot: ${slot}
+      entities: ${entities}
+      examples: ${examples}
+      ruuter_type: ${type}
+      service_id: ${serviceId}
+      is_common: ${isCommon}
+      state: ${state}
+      structure: ${structure}
+  result: createdService
+  next: convert_json_content_to_yml
+
+delete_all_mcq_files:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/delete-all-that-starts-with"
+    body:
+      path: "[#RUUTER_SERVICES_PATH]/${type}/services/draft"
+      keyword: "${name}_"
+  result: deleteRes 
+
+convert_json_content_to_yml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json_to_yaml_data"
+    body:
+      data: ${content}
+  result: ymlResult
+
+check_for_type:
+  switch:
+    - condition: ${type === 'GET'}
+      next: add_get_dsl
+  next: add_post_dsl
+
+add_get_dsl:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: "[#RUUTER_SERVICES_GET_PATH]/draft/${name}.tmp"
+      content: ${ymlResult.response.body.yaml}
+  result: results
+  next: check_result
+
+add_post_dsl:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: "[#RUUTER_SERVICES_POST_PATH]/draft/${name}.tmp"
+      content: ${ymlResult.response.body.yaml}
+  result: results
+  next: check_result
+
+check_result:
+  switch:
+    - condition: ${200 <= results.response.statusCodeValue && results.response.statusCodeValue < 300}
+      next: return_ok
+  next: return_bad_request
+
+return_ok:
+  reloadDsl: true
+  status: 200
+  return: ${results.response.body.message}
+  next: end
+
+return_bad_request:
+  status: 400
+  return: ${results.response.body.message}
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Required parameter(s) missing"
+  next: end
+
+return_name_already_exists:
+  status: 409
+  return: "Service name already exists"
+  next: end

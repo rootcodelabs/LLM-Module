@@ -1,0 +1,34 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Deletes an endpoint"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: id
+        type: string
+        description: "Endpoint UUID"
+
+delete_endpoint:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/endpoints/delete_endpoint"
+    body:
+      id: ${incoming.body.id}
+  result: res
+
+remove_from_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/endpoints/remove_endpoint_from_preferences"
+    body:
+      endpoint_id: ${incoming.body.id}
+  result: preferences_res
+
+return_ok:
+  status: 200
+  return: "Endpoint deleted"
+  next: end

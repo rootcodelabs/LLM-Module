@@ -1,0 +1,17 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'OPEN-API-SPEC-MOCK'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+
+get_message:
+  call: http.get
+  args:
+    url: https://petstore3.swagger.io/api/v3/openapi.json
+  result: res
+
+return_value:
+  return: ${res.response.body}

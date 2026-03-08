@@ -1,0 +1,19 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SERVICE-SETTINGS'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+updateSettings:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-settings"
+  result: results
+
+returnSuccess:
+  wrapper: false
+  status: 200
+  return: ${results.response.body}

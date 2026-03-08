@@ -1,0 +1,72 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'PREFERENCES'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+get_user_info:
+  call: http.post
+  args:
+    url: "[#SERVICE_TIM]/jwt/custom-jwt-userinfo"
+    contentType: plaintext
+    headers:
+      cookie: ${incoming.headers.cookie}
+    plaintext: "customJwtCookie"
+  result: res
+
+check_user_info_response:
+  switch:
+    - condition: ${200 <= res.response.statusCodeValue && res.response.statusCodeValue < 300}
+      next: assignIdCode
+  next: return_unauthorized
+
+assignIdCode:
+  assign:
+    idCode: ${res.response.body.idCode}
+
+get_user_step_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-user-step-preferences"
+    body:
+      user_id_code: ${idCode}
+  result: preferences
+
+check_preferences_response:
+  switch:
+    - condition: ${preferences.response.body.length > 0}
+      next: return_preferences
+  next: seed_default_user_preferences
+
+seed_default_user_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/seed-user-step-preferences"
+    body:
+      user_id_code: ${idCode}
+  result: seed_preferences_res
+  next: refetch_user_step_preferences
+
+refetch_user_step_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-user-step-preferences"
+    body:
+      user_id_code: ${idCode}
+  result: refetched_preferences
+
+return_refetched_preferences:
+  return: ${refetched_preferences.response.body[0]}
+  next: end
+
+return_preferences:
+  return: ${preferences.response.body[0]}
+  next: end
+
+return_unauthorized:
+  status: 401
+  return: "unauthorized"
+  next: end

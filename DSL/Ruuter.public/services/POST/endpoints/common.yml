@@ -1,0 +1,48 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'Common'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: pagination
+        type: string
+        description: "Body field 'pagination'"
+      - field: page
+        type: string
+        description: "Body field 'page'"
+      - field: pageSize
+        type: string
+        description: "Body field 'pageSize'"
+      - field: sorting
+        type: string
+        description: "Body field 'sorting'"  
+      - field: search
+        type: string
+        description: "Body field 'search'"
+
+extract_request_data:
+  assign:
+    pagination: ${incoming.body.pagination}
+    page: ${incoming.body.page}
+    pageSize: ${incoming.body.pageSize}
+    sorting: ${incoming.body.sorting}
+    search: ${incoming.body.search}
+
+get_common_endpoints:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/endpoints/get_common_endpoints"
+    body:
+      pagination: ${pagination}
+      page: ${page}
+      page_size: ${pageSize}
+      sorting: ${sorting}
+      search: ${search}
+  result: res
+
+return_result:
+  return: ${res.response.body}

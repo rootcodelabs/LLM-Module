@@ -1,0 +1,21 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'STATISTICS'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+get_services_stat:
+  call: http.post
+  args:
+    url: "[#SERVICE_OPENSEARCH]/services/_search/template"
+    body:
+      id: 'get-services-stat'
+  result: results
+
+return_ok:
+  status: 200
+  return: ${results.response.body.hits.hits}
+  next: end

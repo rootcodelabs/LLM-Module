@@ -1,0 +1,44 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'OPEN-WEBPAGE'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: link
+        type: string
+        description: "Body field 'link'"
+      - field: linkText
+        type: string
+        description: "Body field 'linkText'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null || incoming.body.link == null || incoming.body.link == "" || incoming.body.linkText == null || incoming.body.linkText == ""}
+      next: missing_body_parameter
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    link: ${incoming.body.link}
+    linkText: ${incoming.body.linkText}
+
+send_link_to_client:
+  call: reflect.mock
+  args:
+    response:
+      status: "OK"
+      link: <a href="https://example.com" target="_blank">Link Text</a>
+  result: result
+
+return_value:
+  return: ${result.response.body}
+  next: end
+
+missing_body_parameter:
+  status: 400
+  return: "link, linkText - both or one of these fields are missing"
+  next: end

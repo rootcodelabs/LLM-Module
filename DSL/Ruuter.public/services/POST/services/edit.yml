@@ -1,0 +1,381 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'EDIT'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: content
+        type: string
+        description: "Body field 'content'"
+      - field: description
+        type: string
+        description: "Body field 'description'"
+      - field: isCommon
+        type: boolean
+        description: "Body field 'isCommon'"  
+      - field: entities
+        type: object
+        description: "Body field 'Entities'"
+      - field: examples
+        type: object
+        description: "Body field 'Examples'"
+      - field: name
+        type: string
+        description: "Body field 'name'"
+      - field: structure
+        type: object
+        description: "Body field 'structure'"
+      - field: type
+        type: string
+        description: "Body field 'type'"
+      - field: updateServiceDb
+        type: boolean
+        description: "Body field 'updateServiceDb'"
+      - field: state
+        type: string
+        description: "Body field 'state'"  
+    params:
+      - field: id
+        type: string
+        description: "Parameter 'id'"
+    headers:
+      - field: cookie
+        type: string
+        description: "Cookie field"    
+
+extract_request_data:
+  assign:
+    id: ${incoming.params.id}
+    name: ${incoming.body.name}
+    description: ${incoming.body.description}
+    isCommon: ${incoming.body.isCommon}
+    slot: ${""}
+    entities: ${incoming.body.entities}
+    examples: ${incoming.body.examples}
+    type: ${incoming.body.type}
+    content: ${incoming.body.content}
+    structure: ${incoming.body.structure}
+    updateServiceDb: ${incoming.body.updateServiceDb}
+    state: ${incoming.body.state}
+
+check_for_update_service_db:
+  switch:
+    - condition: ${incoming.body.updateServiceDb === true}
+      next: get_service
+  next: check_for_content
+
+get_service:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/services/get_services_by_ids"
+    body:
+      serviceIds: "${id}"
+  result: get_service_result
+
+check_if_name_is_the_same:
+  switch:
+    - condition: ${get_service_result.response.body[0].name === name}
+      next: delete_all_mcq_files
+  next: check_if_name_exists
+
+check_if_name_exists:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/services/check_name_exist"
+    body:
+      name: ${name}
+  result: name_exists_res
+  next: check_name_exists_result
+
+check_name_exists_result:
+  switch:
+    - condition: ${name_exists_res.response.body[0].nameExists}
+      next: return_name_already_exists
+  next: delete_all_mcq_files   
+
+delete_all_mcq_files:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/delete-all-that-starts-with"
+    body:
+      path: "[#RUUTER_SERVICES_PATH]/${type}/services/draft"
+      keyword: "${name}_"
+  result: deleteRes
+  next: check_for_content
+
+check_for_content:
+  switch:
+    - condition: ${content === null}
+      next: check_for_required_parameters
+  next: convert_json_content_to_yml
+
+convert_json_content_to_yml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json_to_yaml_data"
+    body:
+      data: ${content}
+  result: ymlResult
+
+check_for_type:
+  switch:
+    - condition: ${type === 'GET'}
+      next: add_get_dsl
+  next: add_post_dsl
+
+add_get_dsl:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: "[#RUUTER_SERVICES_GET_PATH]/draft/${name}.tmp"
+      content: ${ymlResult.response.body.yaml}
+  result: results
+  next: check_for_required_parameters
+
+add_post_dsl:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: "[#RUUTER_SERVICES_POST_PATH]/draft/${name}.tmp"
+      content: ${ymlResult.response.body.yaml}
+  result: results
+  next: check_for_required_parameters
+
+check_for_required_parameters:
+  switch:
+    - condition: ${id === null || name === null || description === null}
+      next: return_incorrect_request
+    - condition: ${type === null}
+      next: return_incorrect_request
+
+upper_case_type:
+  assign:
+    type: ${type.toUpperCase()}
+
+check_type:
+  switch:
+    - condition: ${type !== 'GET' && type !== 'POST'}
+      next: return_incorrect_request
+
+check_if_update_service_db:
+  switch:
+    - condition: ${incoming.body.updateServiceDb === true}
+      next: get_service_by_id
+  next: return_ok
+
+get_service_by_id:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-service-by-id"
+    body:
+      id: ${id}
+  result: old_service_result
+
+assign_values:
+  assign:
+    old_name: ${old_service_result.response.body[0].name}
+    old_structure: ${old_service_result.response.body[0].structure}
+    old_state: ${old_service_result.response.body[0].state}
+    service_type: ${old_service_result.response.body[0].type}
+
+check_new_structure:
+  switch:
+    - condition: ${structure === null}
+      next: use_old_structure
+    - condition: ${structure !== null}
+      next: use_new_structure
+
+use_new_structure:
+  assign:
+    new_structure: ${structure}
+  next: rename_dsl
+
+use_old_structure:
+  assign:
+    new_structure: ${old_structure.value}
+  next: rename_dsl
+
+rename_dsl:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/move"
+    body:
+      file_path: "[#RUUTER_SERVICES_PATH]/${type}/[#RUUTER_SERVICES_DIR_PATH]/${old_state}/${old_name}.tmp"
+      new_path: "[#RUUTER_SERVICES_PATH]/${type}/[#RUUTER_SERVICES_DIR_PATH]/${old_state}/${name}.tmp"
+  result: results
+
+service_edit:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/edit"
+    body:
+      id: ${id}
+      name: ${name}
+      description: ${description}
+      is_common: ${isCommon ?? false}
+      slot: ${slot}
+      examples: ${examples}
+      entities: ${entities}
+      structure: ${new_structure}
+      state: ${state ?? 'draft'}
+  result: editedService
+
+check for_state:
+  switch:
+    - condition: ${state === 'draft'}
+      next: check_remove_blob_then_draft
+    - condition: ${state === 'active'}
+      next: check_if_service_data_exists
+  next: check_remove_blob_then_ok
+
+check_remove_blob_then_draft:
+  switch:
+    - condition: ${old_state === 'active'}
+      next: delete_from_storage_edit
+  next: change_state_to_draft
+
+check_remove_blob_then_ok:
+  switch:
+    - condition: ${old_state === 'active'}
+      next: delete_from_storage_edit
+  next: return_ok
+
+delete_from_storage_edit:
+  call: http.delete
+  args:
+    url: "[#STORAGE_FERRY]/v1/files/delete"
+    body:
+      files:
+        - storageAccountId: "[#STORAGE_FERRY_ACCOUNT_ID]"
+          container: "[#STORAGE_FERRY_CONTAINER]"
+          fileName: "${old_name}.json"
+  result: ferry_delete_result
+  next: check_if_azure_configured_after_delete_edit
+
+check_if_azure_configured_after_delete_edit:
+  switch:
+    - condition: ${"[#AZURE_SEARCH_SERVICE_NAME]" !== "" && "[#AZURE_SEARCH_INDEXER_NAME]" !== "" && "[#AZURE_SEARCH_API_KEY]" !== ""}
+      next: trigger_azure_indexer_after_delete_edit
+  next: log_azure_not_configured_after_delete_edit
+
+log_azure_not_configured_after_delete_edit:
+  log: "Warning! Azure Search configuration not found. Skipping Azure indexer trigger. Please configure AZURE_SEARCH_SERVICE_NAME, AZURE_SEARCH_INDEXER_NAME, and AZURE_SEARCH_API_KEY in constants.ini"
+  next: after_delete_from_storage_edit
+
+trigger_azure_indexer_after_delete_edit:
+  call: http.post
+  args:
+    url: "https://[#AZURE_SEARCH_SERVICE_NAME].search.windows.net/indexers/[#AZURE_SEARCH_INDEXER_NAME]/run?api-version=2024-07-01"
+    headers:
+      api-key: "[#AZURE_SEARCH_API_KEY]"
+      Content-Type: "application/json"
+  result: azure_indexer_result
+  next: after_delete_from_storage_edit
+
+after_delete_from_storage_edit:
+  switch:
+    - condition: ${state === 'draft'}
+      next: change_state_to_draft
+  next: return_ok
+
+change_state_to_draft:
+  call: http.post
+  args:
+    url: "[#SERVICE_RUUTER]/services/status"
+    headers:
+      cookie: ${incoming.headers.cookie}
+    body:
+      id: ${id}
+      state: "draft"
+      type: ${service_type ?? 'POST'}
+  result: changeStateResult
+  next: return_ok
+
+check_if_service_data_exists:
+  switch:
+    - condition: ${old_service_result !== undefined && old_service_result !== null}
+      next: generate_service_json_from_existing
+  next: get_service_data_for_json
+
+get_service_data_for_json:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-service-by-id"
+    body:
+      id: ${id}
+  result: service_data_result
+  next: generate_service_json
+
+generate_service_json_from_existing:
+  assign:
+    service_data_result: ${old_service_result}
+  next: generate_service_json
+
+generate_service_json:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/service_declaration"
+    headers:
+      type: 'json'
+    body:
+      name: ${name}
+      description: ${service_data_result.response.body[0].description}
+      examples: ${service_data_result.response.body[0].examples}
+      entities: ${service_data_result.response.body[0].entities}
+  result: service_json_result
+  next: replace_in_storage
+
+replace_in_storage:
+  call: http.post
+  args:
+    url: "[#STORAGE_FERRY]/v1/files/create"
+    body:
+      files:
+        - storageAccountId: "[#STORAGE_FERRY_ACCOUNT_ID]"
+          container: "[#STORAGE_FERRY_CONTAINER]"
+          fileName: "${name}.json"
+      content: ${JSON.stringify(service_json_result.response.body)}
+  result: ferry_upload_result
+  next: check_if_azure_configured
+
+check_if_azure_configured:
+  switch:
+    - condition: ${"[#AZURE_SEARCH_SERVICE_NAME]" !== "" && "[#AZURE_SEARCH_INDEXER_NAME]" !== "" && "[#AZURE_SEARCH_API_KEY]" !== ""}
+      next: trigger_azure_indexer
+  next: log_azure_not_configured
+
+log_azure_not_configured:
+  log: "Warning! Azure Search configuration not found. Skipping Azure indexer trigger. Please configure AZURE_SEARCH_SERVICE_NAME, AZURE_SEARCH_INDEXER_NAME, and AZURE_SEARCH_API_KEY in constants.ini"
+  next: return_ok
+
+trigger_azure_indexer:
+  call: http.post
+  args:
+    url: "https://[#AZURE_SEARCH_SERVICE_NAME].search.windows.net/indexers/[#AZURE_SEARCH_INDEXER_NAME]/run?api-version=2024-07-01"
+    headers:
+      api-key: "[#AZURE_SEARCH_API_KEY]"
+      Content-Type: "application/json"
+  result: azure_indexer_result
+  next: return_ok
+
+return_ok:
+  reloadDsl: true
+  status: 200
+  return: "Edited Successfully"
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Required parameter(s) missing"
+  next: end
+
+return_name_already_exists:
+  status: 409
+  return: "Service name already exists"
+  next: end

@@ -1,0 +1,82 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'CALCULATE-DIFFERENCE'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: startDate
+        type: string
+        description: "Body field 'startDate'"
+      - field: endDate
+        type: string
+        description: "Body field 'endDate'"
+    params:
+      - field: outputType
+        type: string
+        description: "Parameter 'outputType'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: return_incorrect_request
+  next: check_for_required_parameters
+
+check_for_required_parameters:
+  switch:
+    - condition: ${incoming.body.startDate == null}
+      next: return_incorrect_request
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    outputType: ${incoming.params.outputType ?? 'days'}
+    startDate: ${incoming.body.startDate}
+    endDate: ${incoming.body.endDate ?? new Date().toISOString()}
+
+check_is_end_date_greater_than_start_date:
+  switch:
+    - condition: ${new Date(endDate) < new Date(startDate)}
+      next: return_incorrect_date
+
+check_is_output_type_valid:
+  switch:
+    - condition: ${outputType !== null && !['years','months','hours','days','minutes', 'seconds'].includes(outputType)}
+      next: return_incorrect_output_type
+
+calculate_difference:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/calculate-date-difference"
+    headers:
+      type: "json"
+    body:
+      startDate: ${startDate}
+      endDate: ${endDate}
+      outputType: ${outputType}
+      layout: false
+  result: result
+  next: return_value
+
+return_value:
+  status: 200
+  return: ${result.response.body}
+  next: end
+
+return_incorrect_date:
+  status: 400
+  return: "Start date can not be greater than the end date/ today"
+  next: end
+
+return_incorrect_output_type:
+  status: 400
+  return: "Output type must be: years, months, hours, days, minutes or seconds"
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Start date is required"
+  next: end

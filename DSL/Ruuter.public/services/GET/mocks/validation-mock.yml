@@ -1,0 +1,26 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'VALIDATION-MOCK'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+
+call_mock:
+  call: reflect.mock
+  args:
+    response:
+      project: "Bürokratt"
+      website: "www.kratid.ee"
+  result: mock_res
+
+call_template:
+  template: "[#SERVICE_PROJECT_LAYER]/validation-template"
+  requestType: templates
+  body:
+    response: ${mock_res.response}
+  result: templateResult
+
+return_result:
+  return: ${templateResult}

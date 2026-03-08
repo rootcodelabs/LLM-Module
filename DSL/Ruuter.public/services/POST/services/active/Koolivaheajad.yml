@@ -1,0 +1,63 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: Kasutaja soovib infot koolivaheaegade kohta antud õppeaastal.
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowList:
+    body:
+      - field: chatId
+        type: string
+        description: The chat ID for the message
+      - field: authorId
+        type: string
+        description: The author ID for the message
+      - field: input
+        type: object
+        description: The Input from the user
+prepare:
+  assign:
+    chatId: ${incoming.body.chatId}
+    authorId: ${incoming.body.authorId}
+    input: ${incoming.body.input}
+    buttons: []
+    res:
+      result: ""
+  next: sõnum_kliendile_1
+sõnum_kliendile_1:
+  assign:
+    res:
+      result: E 20. oktoober 2025 - P 26. oktoober 2025 Sügisvaheaeg E 22. detsember
+        2025 - P 11. jaanuar 2026 Jõuluvaheaeg E 23. veebruar 2026 - P 01. märts
+        2026 Talvevaheaeg E 13. aprill 2026 - P 19. aprill 2026 Kevadvaheaeg K
+        17. juuni 2026 - E 31. august 2026 Suvevaheaeg
+  next: teenuse_lõpetamine_1
+teenuse_lõpetamine_1:
+  template: "[#SERVICE_PROJECT_LAYER]/end-conversation"
+  requestType: templates
+  body:
+    message: ""
+  result: teenuse_lõpetamine_1_result
+  next: format_messages
+format_messages:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/bot_responses_to_messages"
+    headers:
+      type: json
+    body:
+      data:
+        botMessages: ${[res]}
+        chatId: ${chatId ?? ''}
+        authorId: ${authorId ?? ''}
+        authorFirstName: ""
+        authorLastName: ""
+        authorTimestamp: ${new Date().toISOString()}
+        created: ${new Date().toISOString()}
+        buttons: ${buttons ?? []}
+  result: formatMessage
+  next: service-end
+service-end:
+  return: ${formatMessage.response.body ?? ''}

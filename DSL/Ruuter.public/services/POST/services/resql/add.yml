@@ -1,0 +1,62 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'ADD'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: name
+        type: string
+        description: "Body field 'name'"
+      - field: sql
+        type: string
+        description: "Body field 'sql'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: missing_parameter
+
+extract_request_data:
+  assign:
+    name: ${incoming.body.name}
+    sql: ${incoming.body.sql}
+
+check_for_required_parameters:
+  switch:
+    - condition: ${name == null || sql == null}
+      next: missing_parameter
+  next: add_resql
+
+missing_parameter:
+  status: 400
+  return: "required parameters were not provided"
+  next: end
+
+add_resql:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: "/Resql/services/${name}.sql"
+      content: ${sql}
+  result: results
+
+check_result:
+  switch:
+    - condition: ${200 <= results.response.statusCodeValue && results.response.statusCodeValue < 300}
+      next: return_ok
+  next: return_bad_request
+
+return_ok:
+  status: 200
+  return: ${results.response.body.message}
+  next: end
+
+return_bad_request:
+  status: 400
+  return: ${results.response.body.message}
+  next: end

@@ -1,0 +1,90 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SERVICE-BY-ID'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    header:
+      - field: cookie
+        type: string
+        description: "Cookie field"
+    body:
+      - field: id
+        type: string
+        description: "Body field 'id'"
+      - field: search
+        type: string
+        description: "Body field 'search'"
+
+extract_request_data:
+  assign:
+    id: ${incoming.body.id}
+    search: ${incoming.body.search}
+
+get_user_info:
+  call: http.post
+  args:
+    url: "[#SERVICE_TIM]/jwt/custom-jwt-userinfo"
+    contentType: plaintext
+    headers:
+      cookie: ${incoming.headers.cookie}
+    plaintext: "customJwtCookie"
+  result: res
+
+check_user_info_response:
+  switch:
+    - condition: ${200 <= res.response.statusCodeValue && res.response.statusCodeValue < 300}
+      next: assignIdCode
+  next: return_unauthorized
+
+assignIdCode:
+  assign:
+    idCode: ${res.response.body.idCode}
+
+get_service_by_id:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-service-by-id"
+    body:
+      id: ${id}
+  result: service_results
+
+get_endpoints_by_service_id:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/endpoints/get_endpoints_by_service_id"
+    body:
+      id: ${id}
+      user_id_code: ${idCode}
+      search: ${search}
+  result: endpoints_results
+
+prepare_results:
+  assign:
+    results:
+      id: ${service_results.response.body[0].id}
+      name: ${service_results.response.body[0].name}
+      description: ${service_results.response.body[0].description}
+      slot: ${service_results.response.body[0].slot}
+      examples: ${service_results.response.body[0].examples}
+      entities: ${service_results.response.body[0].entities}
+      state: ${service_results.response.body[0].state}
+      type: ${service_results.response.body[0].type}
+      isCommon: ${service_results.response.body[0].isCommon}
+      structure: ${service_results.response.body[0].structure}
+      endpoints: ${endpoints_results.response.body}
+      serviceId: ${service_results.response.body[0].serviceId}
+
+return_ok:
+  status: 200
+  wrapper: false
+  return: ${results}
+  next: end
+
+return_unauthorized:
+  status: 401
+  return: "unauthorized"
+  next: end
