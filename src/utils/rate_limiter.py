@@ -1,8 +1,8 @@
-"""Rate limiter for streaming endpoints with sliding window and token bucket algorithms."""
+"""Rate limiter for streaming endpoints with sliding window algorithms."""
 
 import time
 from collections import defaultdict, deque
-from typing import Dict, Deque, Tuple, Optional, Any
+from typing import Dict, Deque, Optional, Any
 from threading import Lock
 
 from loguru import logger
@@ -31,11 +31,11 @@ class RateLimitResult(BaseModel):
 
 class RateLimiter:
     """
-    In-memory rate limiter with sliding window (requests/minute) and token bucket (tokens/second).
+    In-memory rate limiter using sliding windows for both requests and tokens.
 
     Features:
     - Sliding window for request rate limiting (e.g., 10 requests per minute)
-    - Token bucket for burst control (e.g., 100 tokens per second)
+    - Sliding window for token rate limiting (e.g., 40,000 tokens per minute)
     - Per-user tracking with authorId
     - Automatic cleanup of old entries to prevent memory leaks
     - Thread-safe operations
@@ -43,7 +43,7 @@ class RateLimiter:
     Usage:
         rate_limiter = RateLimiter(
             requests_per_minute=10,
-            tokens_per_second=100
+            tokens_per_minute=40_000,
         )
 
         result = rate_limiter.check_rate_limit(
@@ -59,28 +59,29 @@ class RateLimiter:
     def __init__(
         self,
         requests_per_minute: int = StreamConfig.RATE_LIMIT_REQUESTS_PER_MINUTE,
-        tokens_per_second: int = StreamConfig.RATE_LIMIT_TOKENS_PER_SECOND,
+        tokens_per_minute: int = StreamConfig.RATE_LIMIT_TOKENS_PER_MINUTE,
         cleanup_interval: int = StreamConfig.RATE_LIMIT_CLEANUP_INTERVAL,
+        token_window_seconds: int = StreamConfig.RATE_LIMIT_TOKEN_WINDOW_SECONDS,
     ):
         """
         Initialize rate limiter.
 
         Args:
             requests_per_minute: Maximum requests per user per minute (sliding window)
-            tokens_per_second: Maximum tokens per user per second (token bucket)
+            tokens_per_minute: Maximum tokens per user per minute (sliding window)
             cleanup_interval: Seconds between automatic cleanup of old entries
+            token_window_seconds: Sliding window size in seconds for token tracking
         """
         self.requests_per_minute = requests_per_minute
-        self.tokens_per_second = tokens_per_second
+        self.tokens_per_minute = tokens_per_minute
         self.cleanup_interval = cleanup_interval
+        self.token_window_seconds = token_window_seconds
 
         # Sliding window: Track request timestamps per user
-        # Format: {author_id: deque([timestamp1, timestamp2, ...])}
         self._request_history: Dict[str, Deque[float]] = defaultdict(deque)
 
-        # Token bucket: Track token consumption per user
-        # Format: {author_id: (last_refill_time, available_tokens)}
-        self._token_buckets: Dict[str, Tuple[float, float]] = {}
+        # Sliding window: Track token usage per user
+        self._token_history: Dict[str, Deque[tuple[float, int]]] = defaultdict(deque)
 
         # Thread safety
         self._lock = Lock()
@@ -91,7 +92,7 @@ class RateLimiter:
         logger.info(
             f"RateLimiter initialized - "
             f"requests_per_minute: {requests_per_minute}, "
-            f"tokens_per_second: {tokens_per_second}"
+            f"tokens_per_minute: {tokens_per_minute}"
         )
 
     def check_rate_limit(
@@ -121,7 +122,7 @@ class RateLimiter:
             if not request_result.allowed:
                 return request_result
 
-            # Check 2: Token bucket (tokens per second)
+            # Check 2: Sliding window (tokens per minute)
             if estimated_tokens > 0:
                 token_result = self._check_token_limit(
                     author_id, estimated_tokens, current_time
@@ -186,12 +187,11 @@ class RateLimiter:
         current_time: float,
     ) -> RateLimitResult:
         """
-        Check token bucket limit.
+        Check sliding window token limit.
 
-        Token bucket algorithm:
-        - Bucket refills at constant rate (tokens_per_second)
-        - Burst allowed up to bucket capacity
-        - Request denied if insufficient tokens
+        Sliding window algorithm:
+        - Track cumulative tokens consumed within the window
+        - Reject if adding estimated tokens would exceed the limit
 
         Args:
             author_id: User identifier
@@ -201,29 +201,31 @@ class RateLimiter:
         Returns:
             RateLimitResult for token limit check
         """
-        bucket_capacity = self.tokens_per_second
+        token_history = self._token_history[author_id]
+        window_start = current_time - self.token_window_seconds
 
-        # Get or initialize bucket for user
-        if author_id not in self._token_buckets:
-            # New user - start with full bucket
-            self._token_buckets[author_id] = (current_time, bucket_capacity)
+        # Remove entries outside the sliding window
+        while token_history and token_history[0][0] < window_start:
+            token_history.popleft()
 
-        last_refill, available_tokens = self._token_buckets[author_id]
+        # Sum tokens consumed in the current window
+        current_token_usage = sum(tokens for _, tokens in token_history)
 
-        # Refill tokens based on time elapsed
-        time_elapsed = current_time - last_refill
-        refill_amount = time_elapsed * self.tokens_per_second
-        available_tokens = min(bucket_capacity, available_tokens + refill_amount)
-
-        # Check if enough tokens available
-        if available_tokens < estimated_tokens:
-            # Calculate time needed to refill enough tokens
-            tokens_needed = estimated_tokens - available_tokens
-            retry_after = int(tokens_needed / self.tokens_per_second) + 1
+        # Check if adding this request would exceed the limit
+        if current_token_usage + estimated_tokens > self.tokens_per_minute:
+            # Calculate retry_after based on oldest entry in window
+            if token_history:
+                oldest_timestamp = token_history[0][0]
+                retry_after = (
+                    int(oldest_timestamp + self.token_window_seconds - current_time) + 1
+                )
+            else:
+                retry_after = 1
 
             logger.warning(
                 f"Token rate limit exceeded for {author_id} - "
-                f"needed: {estimated_tokens}, available: {available_tokens:.0f} "
+                f"needed: {estimated_tokens}, "
+                f"current_usage: {current_token_usage}/{self.tokens_per_minute} "
                 f"(retry after {retry_after}s)"
             )
 
@@ -231,8 +233,8 @@ class RateLimiter:
                 allowed=False,
                 retry_after=retry_after,
                 limit_type="tokens",
-                current_usage=int(bucket_capacity - available_tokens),
-                limit=self.tokens_per_second,
+                current_usage=current_token_usage,
+                limit=self.tokens_per_minute,
             )
 
         return RateLimitResult(allowed=True)
@@ -254,20 +256,9 @@ class RateLimiter:
         # Record request timestamp for sliding window
         self._request_history[author_id].append(current_time)
 
-        # Deduct tokens from bucket
-        if tokens_consumed > 0 and author_id in self._token_buckets:
-            last_refill, available_tokens = self._token_buckets[author_id]
-
-            # Refill before deducting
-            time_elapsed = current_time - last_refill
-            refill_amount = time_elapsed * self.tokens_per_second
-            available_tokens = min(
-                self.tokens_per_second, available_tokens + refill_amount
-            )
-
-            # Deduct tokens
-            available_tokens -= tokens_consumed
-            self._token_buckets[author_id] = (current_time, available_tokens)
+        # Record token usage for sliding window
+        if tokens_consumed > 0:
+            self._token_history[author_id].append((current_time, tokens_consumed))
 
     def _cleanup_old_entries(self, current_time: float) -> None:
         """
@@ -294,23 +285,25 @@ class RateLimiter:
         for author_id in users_to_remove:
             del self._request_history[author_id]
 
-        # Clean up token buckets (remove entries inactive for 5 minutes)
-        inactive_threshold = current_time - 300
-        buckets_to_remove: list[str] = []
+        # Clean up token history (remove entries outside window + inactive users)
+        token_window_start = current_time - self.token_window_seconds
+        token_users_to_remove: list[str] = []
 
-        for author_id, (last_refill, _) in self._token_buckets.items():
-            if last_refill < inactive_threshold:
-                buckets_to_remove.append(author_id)
+        for author_id, token_history in self._token_history.items():
+            while token_history and token_history[0][0] < token_window_start:
+                token_history.popleft()
+            if not token_history:
+                token_users_to_remove.append(author_id)
 
-        for author_id in buckets_to_remove:
-            del self._token_buckets[author_id]
+        for author_id in token_users_to_remove:
+            del self._token_history[author_id]
 
         self._last_cleanup = current_time
 
-        if users_to_remove or buckets_to_remove:
+        if users_to_remove or token_users_to_remove:
             logger.debug(
                 f"Cleaned up {len(users_to_remove)} request histories and "
-                f"{len(buckets_to_remove)} token buckets"
+                f"{len(token_users_to_remove)} token histories"
             )
 
     def get_stats(self) -> Dict[str, Any]:
@@ -323,9 +316,9 @@ class RateLimiter:
         with self._lock:
             return {
                 "total_users_tracked": len(self._request_history),
-                "total_token_buckets": len(self._token_buckets),
+                "total_token_histories": len(self._token_history),
                 "requests_per_minute_limit": self.requests_per_minute,
-                "tokens_per_second_limit": self.tokens_per_second,
+                "tokens_per_minute_limit": self.tokens_per_minute,
                 "last_cleanup": self._last_cleanup,
             }
 
@@ -339,7 +332,7 @@ class RateLimiter:
         with self._lock:
             if author_id in self._request_history:
                 del self._request_history[author_id]
-            if author_id in self._token_buckets:
-                del self._token_buckets[author_id]
+            if author_id in self._token_history:
+                del self._token_history[author_id]
 
             logger.info(f"Reset rate limits for user: {author_id}")

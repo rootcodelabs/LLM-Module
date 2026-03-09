@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if StreamConfig.RATE_LIMIT_ENABLED:
             app.state.rate_limiter = RateLimiter(
                 requests_per_minute=StreamConfig.RATE_LIMIT_REQUESTS_PER_MINUTE,
-                tokens_per_second=StreamConfig.RATE_LIMIT_TOKENS_PER_SECOND,
+                tokens_per_minute=StreamConfig.RATE_LIMIT_TOKENS_PER_MINUTE,
             )
             logger.info("Rate limiter initialized successfully")
         else:

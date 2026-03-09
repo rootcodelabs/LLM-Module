@@ -639,11 +639,13 @@ class LLMOrchestrationService:
                             )
 
                         # Classify query to determine workflow
+                        start_time = time.time()
                         classification = await self.tool_classifier.classify(
                             query=request.message,
                             conversation_history=request.conversationHistory,
                             language=detected_language,
                         )
+                        time_metric["classifier.classify"] = time.time() - start_time
 
                         logger.info(
                             f"[{request.chatId}] [{stream_ctx.stream_id}] Classification: {classification.workflow.value} "
@@ -652,11 +654,14 @@ class LLMOrchestrationService:
 
                         # Route to appropriate workflow (streaming)
                         # route_to_workflow returns AsyncIterator[str] when is_streaming=True
+                        start_time = time.time()
                         stream_result = await self.tool_classifier.route_to_workflow(
                             classification=classification,
                             request=request,
                             is_streaming=True,
+                            time_metric=time_metric,
                         )
+                        time_metric["classifier.route"] = time.time() - start_time
 
                         async for sse_chunk in stream_result:
                             yield sse_chunk
