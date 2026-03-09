@@ -1,0 +1,27 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'RETURN-FILE-LOCATIONS'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    headers:
+      - field: cookie
+        type: string
+        description: "Cookie field"
+
+assign_step:
+  assign:
+    locations:
+      rules_location: "[#DMAPPER_LOCATIONS_PATH]/data/rules.yml"
+      stories_location: "[#DMAPPER_LOCATIONS_PATH]/data/stories.yml"
+      domain_location: "[#DMAPPER_LOCATIONS_PATH]/data/domain.yml"
+      test_stories_location: "[#DMAPPER_LOCATIONS_PATH]/test_stories.yml"
+      intents_location: "[#DMAPPER_LOCATIONS_PATH]/nlu/"
+      regex_location: "[#DMAPPER_LOCATIONS_PATH]/regex"
+      training_result_location: "[#DMAPPER_LOCATIONS_PATH]/results"
+      config_location: "[#DMAPPER_LOCATIONS_PATH]/data/config.yml"
+return_value:
+  return: ${locations}

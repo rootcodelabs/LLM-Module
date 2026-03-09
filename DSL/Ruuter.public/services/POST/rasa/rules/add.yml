@@ -1,0 +1,129 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'ADD'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: data
+        type: object
+        description: "Body field 'data'"
+    headers:
+      - field: cookie
+        type: string
+        description: "Cookie field"
+
+assign_values:
+  assign:
+    body: ${incoming.body.data}
+
+validateRules:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/validate/validate-stories-rules"
+    body:
+      story: ${body}
+      category: "rules"
+  result: validateRulesResult
+
+validateRulesCheck:
+  switch:
+    - condition: ${validateRulesResult.response.body.result == true}
+      next: getRuleNames
+  next: returnDuplicateIntentOrEntity
+
+getRuleNames:
+  call: http.get
+  args:
+    url: "[#SERVICE_RUUTER]/rasa/rule-names"
+    headers:
+      cookie: ${incoming.headers.cookie}
+  result: ruleResult
+
+validateRuleName:
+  switch:
+    - condition: ${ruleResult.response.body.response.names == null}
+      next: getFileLocations
+    - condition: ${!ruleResult.response.body.response.names.includes(body.id)}
+      next: getFileLocations
+  next: returnStoryExists
+
+getFileLocations:
+  call: http.get
+  args:
+    url: "[#SERVICE_RUUTER]/internal/return-file-locations"
+    headers:
+      cookie: ${incoming.headers.cookie}
+  result: fileLocations
+
+getRulesFile:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/read-file"
+    body:
+      file_path: ${fileLocations.response.body.response.rules_location}
+  result: ruleFile
+
+convertYamlToJson:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/yaml_to_json"
+    body:
+      file: ${ruleFile.response.body.file}
+  result: rulesData
+
+mergeRules:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/merge"
+    body:
+      array1: ${rulesData.response.body.rules ?? []}
+      array2: ${[body]}
+      iteratee: "rule"
+  result: mergedRules
+
+convertJsonToYaml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json-to-yaml-stories"
+    headers:
+      content-type: "application/json"
+    body:
+      rules: ${mergedRules.response.body.array}
+  result: rulesYaml
+
+saveRulesFile:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: ${fileLocations.response.body.response.rules_location}
+      content: ${rulesYaml.response.body.json}
+  result: fileResult
+  next: updateOpenSearch
+
+updateOpenSearch:
+  call: http.post
+  args:
+    url: "[#SERVICES_PIPELINE]/bulk/rules/rule"
+    body:
+      input: ${rulesYaml.response.body.json}
+  result: updateSearchResult
+  next: returnSuccess
+
+returnSuccess:
+  return: "Rule added"
+  next: end
+
+returnRuleExists:
+  return: "Rule exists"
+  status: 409
+  next: end
+
+returnDuplicateIntentOrEntity:
+  return: "Rule may not have duplicate consecutive intents or entities"
+  status: 406
+  next: end

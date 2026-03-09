@@ -1,0 +1,38 @@
+1️⃣ Broneeringu kinnitus (Booking Confirmation)
+
+Estonian → English
+
+Kas minu broneering on kinnitatud?
+→ Is my booking confirmed?
+
+Palun kinnita minu broneering.
+→ Please confirm my booking.
+
+Kas broneering sai edukalt tehtud?
+→ Was the booking successfully made?
+
+2️⃣ Kalastusloa uuendamise teade (Fishing License Renewal)
+
+Estonian → English
+
+Kas minu kalastusluba tuleb uuendada?
+→ Do I need to renew my fishing license?
+
+Millal mu kalastusluba aegub?
+→ When does my fishing license expire?
+
+Kas mu kalastusluba on veel kehtiv?
+→ Is my fishing license still valid?
+
+3️⃣ Koolivaheajad (School Holidays)
+
+Estonian → English
+
+Millal on järgmine koolivaheaeg?
+→ When is the next school holiday?
+
+Kas sa saad öelda selle aasta koolivaheajad?
+→ Can you tell me the school holidays for this year?
+
+Millal algab suvevaheaeg?
+→ When does the summer holiday start?

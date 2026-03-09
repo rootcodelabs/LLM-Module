@@ -1,0 +1,16 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'USER-INFO'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+
+get_tara_info:
+  template: "[#SERVICE_PROJECT_LAYER]/tara"
+  requestType: templates
+  result: TARA
+
+return_authorized:
+  return: ${TARA.response.body}

@@ -1,0 +1,58 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'EXAMPLE'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    headers:
+      - field: cookie
+        type: string
+        description: "Cookie field"
+
+check_for_cookie:
+  switch:
+    - condition: ${incoming.headers.cookie == null || incoming.headers.cookie == ""}
+      next: return_unauthorized
+  next: extract_request_data
+
+extract_request_data:
+  assign:
+    cookie: ${incoming.headers.cookie}
+
+extract_cookie_data:
+  call: http.post
+  args:
+    url: "[#SERVICE_RUUTER]/mocks/mock-custom-jwt-userinfo"
+    headers:
+      cookie: ${cookie}
+    body:
+      cookieName: "customJwtCookie"
+  result: jwtResult
+  next: allow_only_admins
+
+allow_only_admins:
+  switch:
+    - condition: ${jwtResult.response.body.response.authorities.includes("ROLE_ADMIN")}
+      next: get_data
+  next: return_unauthorized
+
+get_data:
+  call: reflect.mock
+  args:
+    response:
+      type: "mock-value"
+      id: 1234567
+  result: reflectedRequest
+  next: return_value
+
+return_value:
+  return: ${reflectedRequest.response.body}
+  next: end
+
+return_unauthorized:
+  status: 401
+  return: "unauthorized"
+  next: end

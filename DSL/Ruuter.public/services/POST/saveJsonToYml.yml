@@ -1,0 +1,39 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SAVEJSONTOYML'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: result
+        type: string
+        description: "Body field 'result'"
+    params:
+      - field: location
+        type: string
+        description: "Parameter 'location'"
+
+toYml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json_to_yaml_data"
+    body:
+      data: ${incoming.body.result}
+  result: r
+
+saveFile:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: ${incoming.params.location}
+      content: ${r.response.body.yaml}
+  result: fileResult
+
+saved_seccessfully:
+  reloadDsl: true
+  return: ""
+  next: end

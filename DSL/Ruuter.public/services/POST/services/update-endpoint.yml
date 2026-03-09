@@ -1,0 +1,61 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Updates an existing endpoint"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: name
+        type: string
+        description: "Endpoint name"
+      - field: type
+        type: string
+        description: "Endpoint type"
+      - field: isCommon
+        type: boolean
+        description: "Endpoint common status"
+      - field: serviceId
+        type: string
+        description: "Service UUID"
+      - field: definitions
+        type: object
+        description: "Endpoint definitions"
+    params:
+      - field: id
+        type: string
+        description: "Endpoint UUID"
+
+extract_request_data:
+  assign:
+    id: ${incoming.params.id}
+
+check_for_type:
+  switch:
+    - condition: ${id == null}
+      next: return_no_type_error
+
+update_endpoint:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/endpoints/update_endpoint"
+    body:
+      endpointId: ${id}
+      name: ${incoming.body.name}
+      type: ${incoming.body.type}
+      isCommon: ${incoming.body.isCommon}
+      serviceId: ${incoming.body.serviceId ?? ''}
+      definitions: ${incoming.body.definitions}
+  result: res
+
+return_ok:
+  status: 200
+  return: "Endpoint updated"
+  next: end
+
+return_no_type_error:
+  status: 400
+  return: "Please provide an endpoint ID"
+  next: end

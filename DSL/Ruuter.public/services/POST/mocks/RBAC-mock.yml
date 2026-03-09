@@ -1,0 +1,50 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'RBAC-MOCK'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: allowedRoles
+        type: object
+        description: "Body field 'allowedRoles'"
+      - field: userId
+        type: string
+        description: "Body field 'userId'"
+
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: missing_parameter
+
+extract_request_data:
+  assign:
+    userId: ${incoming.body.userId}
+    allowedRoles: ${incoming.body.allowedRoles.sort()}
+
+check_for_required_parameters:
+  switch:
+    - condition: ${userId === null || allowedRoles === null}
+      next: missing_parameter
+  next: fetch_user_roles_from_db
+
+fetch_user_roles_from_db:
+  call: reflect.mock
+  args:
+    response:
+      isAllowed: TRUE
+  result: result
+
+return_value:
+  status: 200
+  return: "${result.response.body}"
+  next: end
+
+missing_parameter:
+  status: 400
+  return: "userId, allowedRoles - missing"
+  next: end

@@ -1,0 +1,60 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: Teenuse test, mis teavitab kasutajat, et tema kalastusluba vajab uuendamist.
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowList:
+    body:
+      - field: chatId
+        type: string
+        description: The chat ID for the message
+      - field: authorId
+        type: string
+        description: The author ID for the message
+      - field: input
+        type: object
+        description: The Input from the user
+prepare:
+  assign:
+    chatId: ${incoming.body.chatId}
+    authorId: ${incoming.body.authorId}
+    input: ${incoming.body.input}
+    buttons: []
+    res:
+      result: ""
+  next: send_message_to_client_1
+send_message_to_client_1:
+  assign:
+    res:
+      result: Su kalastusluba vajab uuendamist!
+  next: end_service_1
+end_service_1:
+  template: "[#SERVICE_PROJECT_LAYER]/end-conversation"
+  requestType: templates
+  body:
+    message: ""
+  result: end_service_1_result
+  next: format_messages
+format_messages:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/bot_responses_to_messages"
+    headers:
+      type: json
+    body:
+      data:
+        botMessages: ${[res]}
+        chatId: ${chatId ?? ''}
+        authorId: ${authorId ?? ''}
+        authorFirstName: ""
+        authorLastName: ""
+        authorTimestamp: ${new Date().toISOString()}
+        created: ${new Date().toISOString()}
+        buttons: ${buttons ?? []}
+  result: formatMessage
+  next: service-end
+service-end:
+  return: ${formatMessage.response.body ?? ''}

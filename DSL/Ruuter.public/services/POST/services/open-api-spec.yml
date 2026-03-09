@@ -1,0 +1,34 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'OPEN-API-SPEC'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: url
+        type: string
+        description: "Body field 'url'"
+
+check_for_required_parameters:
+  switch:
+    - condition: ${incoming.body == null || incoming.body.url == null}
+      next: return_incorrect_request
+  next: get_spec
+
+get_spec:
+  call: http.get
+  args:
+    url: ${incoming.body.url}
+  result: result
+
+return_value:
+  return: ${result.response.body}
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "missing parameters"
+  next: end

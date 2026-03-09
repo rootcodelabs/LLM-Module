@@ -1,0 +1,48 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: Description placeholder for 'test'
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowList:
+    body:
+      - field: chatId
+        type: string
+        description: The chat ID for the message
+      - field: authorId
+        type: string
+        description: The author ID for the message
+      - field: input
+        type: object
+        description: The Input from the user
+prepare:
+  assign:
+    chatId: ${incoming.body.chatId}
+    authorId: ${incoming.body.authorId}
+    input: ${incoming.body.input}
+    buttons: []
+    res:
+      result: ""
+  next: format_messages
+format_messages:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER_HBS]/bot_responses_to_messages"
+    headers:
+      type: json
+    body:
+      data:
+        botMessages: ${[res]}
+        chatId: ${chatId ?? ''}
+        authorId: ${authorId ?? ''}
+        authorFirstName: ""
+        authorLastName: ""
+        authorTimestamp: ${new Date().toISOString()}
+        created: ${new Date().toISOString()}
+        buttons: ${buttons ?? []}
+  result: formatMessage
+  next: service-end
+service-end:
+  return: ${formatMessage.response.body ?? ''}

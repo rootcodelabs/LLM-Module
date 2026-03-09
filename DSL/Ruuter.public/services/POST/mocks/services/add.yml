@@ -1,0 +1,44 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'ADD'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: name
+        type: string
+        description: "Body field 'name'"
+      - field: description
+        type: string
+        description: "Body field 'description'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: return_incorrect_request
+  next: check_for_required_parameters
+
+check_for_required_parameters:
+  switch:
+    - condition: ${incoming.body.name == null || incoming.body.description == null}
+      next: return_incorrect_request
+  next: service_add
+
+service_add:
+  call: reflect.mock
+  args:
+    response: {}
+  result: createdService
+
+return_value:
+  status: 201
+  wrapper: FALSE
+  return: ""
+  next: end
+
+return_incorrect_request:
+  status: 400
+  return: "Required parameter(s) missing"

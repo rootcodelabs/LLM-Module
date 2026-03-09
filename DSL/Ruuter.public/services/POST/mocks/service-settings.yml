@@ -1,0 +1,19 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'SERVICE-SETTINGS'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+
+call_mock:
+  call: reflect.mock
+  args:
+    response:
+      maxInputTry: 4
+  result: mock_res
+
+return_result:
+  wrapper: false
+  return: ${mock_res.response.body}

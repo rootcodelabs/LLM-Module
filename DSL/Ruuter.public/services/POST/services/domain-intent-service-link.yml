@@ -1,0 +1,157 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'domain-intent-service-link'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: intent
+        type: string
+        description: "Body field 'intent'"
+      - field: serviceName
+        type: string
+        description: "Body field 'serviceName'"
+      - field: serviceMethod
+        type: string
+        description: "Body field 'serviceMethod'"
+      - field: serviceSlot
+        type: string
+        description: "Slot input"
+      - field: type
+        type: string
+        description: "Body field 'type'"
+    header:
+      - field: cookie
+        type: string
+        description: "Cookie field"    
+
+extract_request_data:
+  assign:
+    serviceName: "${incoming.body.serviceName || ''}"
+    serviceMethod: "${incoming.body.serviceMethod || 'POST'}"
+    serviceSlot: ", ({${incoming.body.serviceSlot ? incoming.body.serviceSlot : ''}})"
+    intent: "${incoming.body.intent}"
+    type: "${incoming.body.type}"
+    service_path: "#service, /${serviceMethod}/services/active/${serviceName + (incoming.body.serviceSlot ? serviceSlot : '')}"
+
+get_file_locations:
+  call: http.get
+  args:
+    url: "[#SERVICE_RUUTER]/internal/return-file-locations"
+    headers:
+      cookie: ${incoming.headers.cookie}
+  result: fileLocations
+  next: get_domain_file
+
+get_domain_file:
+  call: http.get
+  args:
+    url: "[#SERVICE_RUUTER]/internal/domain-file"
+    headers:
+      cookie: ${incoming.headers.cookie}
+  result: domainData
+  next: assign_domain_file_data
+
+assign_domain_file_data:
+  assign:
+    domain_data_json: ${domainData.response.body.response}
+  next: check_if_intent_exists
+
+check_if_intent_exists:
+  switch:
+    - condition: ${domain_data_json.intents.includes(intent)}
+      next: update_existing_domain_response
+  next: return_intent_does_not_exist
+
+update_existing_domain_response:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/domain/update-existing-response"
+    body:
+      json: ${domain_data_json.responses}
+      searchKey: ${intent}
+      newKey: ${"utter_" + intent}
+      newKeyValue: '${type === "Add" ? service_path : "UNKNOWN"}'
+      deleteOldValue: false
+      createIfAbsent: true
+  result: updatedResponses
+  next: check_for_type
+
+check_for_type:
+  switch:
+    - condition: ${type === "Add"}
+      next: assignRuleData
+  next: convert_domain_json_to_yaml
+
+assignRuleData:
+  assign: 
+     data:
+       rule: "rule${intent}"
+       steps: [
+        {
+          intent: "${intent}",
+        },
+        {
+          action: "utter_${intent}",
+        },
+       ]
+  next: add_rule     
+
+add_rule:
+  call: http.post
+  args:
+    url: "[#SERVICE_RUUTER]/rasa/rules/add"
+    headers:
+      cookie: ${incoming.headers.cookie}
+    body:
+      data: ${data}
+  result: add_rule_res
+  next: convert_domain_json_to_yaml
+
+convert_domain_json_to_yaml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json_to_yaml_domain"
+    body:
+      version: ${domain_data_json.version}
+      session_config: ${domain_data_json.session_config}
+      intents: ${domain_data_json.intents}
+      entities: ${domain_data_json.entities}
+      slots: ${domain_data_json.slots}
+      forms: ${domain_data_json.forms}
+      actions: ${domain_data_json.actions}
+      responses: ${updatedResponses.response.body}
+  result: domainYaml
+  next: resave_domain_file
+
+resave_domain_file:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create"
+    body:
+      file_path: ${fileLocations.response.body.response.domain_location}
+      content: ${domainYaml.response.body.json}
+  result: fileResult
+  next: updateOpenSearch
+
+updateOpenSearch:
+  call: http.post
+  args:
+    url: "[#SERVICES_PIPELINE]/bulk/domain"
+    body:
+      input: ${domainYaml.response.body.json}
+  result: updateSearchResult
+  next: return_result
+
+return_result:
+  status: 200
+  return: "Connection request sent successfully"
+  next: end
+
+return_intent_does_not_exist:
+  status: 400
+  return: "Intent does not exists"
+  next: end

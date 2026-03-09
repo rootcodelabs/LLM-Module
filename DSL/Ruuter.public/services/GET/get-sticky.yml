@@ -1,0 +1,40 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'GET-STICKY'"
+  method: get
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    params:
+      - field: name
+        type: string
+        description: "Parameter 'name'"
+
+check_for_parameters:
+  switch:
+    - condition: ${incoming.params == null || incoming.params.name == null}
+      next: get_all_sticky_services
+  next: get_single_sticky_service
+
+get_single_sticky_service:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/ruuter/sticky/steps"
+    query:
+      name: ${incoming.params.name}
+  result: results
+  next: return_ok
+
+get_all_sticky_services:
+  call: http.get
+  args:
+    url: "[#SERVICE_DMAPPER]/ruuter/sticky"
+  result: results
+  next: return_ok
+
+return_ok:
+  status: 200
+  return: ${results.response.body}
+  next: end

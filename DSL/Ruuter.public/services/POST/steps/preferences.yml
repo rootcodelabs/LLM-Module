@@ -1,0 +1,68 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'PREFERENCES'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: steps
+        type: string
+        description: "Body field 'steps'"
+      - field: endpoints
+        type: string
+        description: "Body field 'endpoints'"
+
+extractRequestData:
+  assign:
+    steps: ${incoming.body.steps.join(",")}
+    endpoints: ${incoming.body.endpoints.join(",")}
+
+get_user_info:
+  call: http.post
+  args:
+    url: "[#SERVICE_TIM]/jwt/custom-jwt-userinfo"
+    contentType: plaintext
+    headers:
+      cookie: ${incoming.headers.cookie}
+    plaintext: "customJwtCookie"
+  result: res
+
+check_user_info_response:
+  switch:
+    - condition: ${200 <= res.response.statusCodeValue && res.response.statusCodeValue < 300}
+      next: assignIdCode
+  next: return_unauthorized
+
+assignIdCode:
+  assign:
+    idCode: ${res.response.body.idCode}
+
+update_user_step_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/update-user-step-preferences"
+    body:
+      steps: "{${steps}}"
+      endpoints: "{${endpoints}}"
+      user_id_code: ${idCode}
+  result: update_preferences_res
+
+get_user_step_preferences:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-user-step-preferences"
+    body:
+      user_id_code: ${idCode}
+  result: preferences
+
+return_preferences:
+  return: ${preferences.response.body[0]}
+  next: end
+
+return_unauthorized:
+  status: 401
+  return: "unauthorized"
+  next: end

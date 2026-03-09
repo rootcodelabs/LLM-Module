@@ -1,0 +1,52 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'USER-INFO'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: isTokenExpired
+        type: boolean
+        description: "Body field 'isTokenExpired'"
+
+check_for_body:
+  switch:
+    - condition: ${incoming.body == null}
+      next: return_user_info_mock
+  next: do_decision
+
+do_decision:
+  switch:
+    - condition: ${incoming.body.isTokenExpired === true}
+      next: return_unauthorized
+  next: return_user_info_mock
+
+return_unauthorized:
+  status: 401
+  return: "Unauthorized"
+  next: end
+
+return_user_info_mock:
+  call: reflect.mock
+  args:
+    response:
+      sub: ""
+      firstName: "MARY ÄNN"
+      idCode: "EE60001019906"
+      displayName: "MARY ÄNN"
+      iss: "test.buerokratt.ee"
+      exp: 1670250948
+      login: "EE60001019906"
+      iat: 1670243748
+      jti: "e14a5084-3b30-4a55-8720-c2ee22f43c2c"
+      authorities: [
+        "ROLE_ADMINISTRATOR"
+      ]
+  result: reflected_request
+  next: return_value
+
+return_value:
+  return: ${reflected_request.response}

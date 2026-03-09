@@ -53,7 +53,8 @@ The system has two phases:
 | `src/intent_data_enrichment/main_enrichment.py` | Orchestrates per-example and summary point creation |
 | `src/intent_data_enrichment/qdrant_manager.py` | Qdrant collection management, upsert, and deletion |
 | `src/intent_data_enrichment/api_client.py` | LLM API calls (context generation, embeddings) |
-| `src/intent_data_enrichment/models.py` | `EnrichedService` data model |
+| `src/intent_data_enrichment/models.py` | `ServiceData`, `EnrichedService`, `EnrichmentResult` data models |
+| `src/intent_data_enrichment/constants.py` | `EnrichmentConstants` — API URLs, Qdrant config, vector sizes, LLM prompt template |
 | `src/tool_classifier/sparse_encoder.py` | BM25-style sparse vector computation |
 
 ### What Changed: Single Embedding → Per-Example Indexing
@@ -78,8 +79,8 @@ Service "Valuutakursid" → 4 Qdrant points
     dense:  3072-dim embedding of this exact text
     sparse: BM25 vector → {euro: 1.0, gbp: 1.0, kurss: 1.0, ...}
 
-  Point 3 (summary): "Valuutakursid - Kasutaja soovib infot..."
-    dense:  3072-dim embedding of name + description + LLM context
+  Point 3 (summary): "Service Name: Valuutakursid\nDescription: ...\nExample Queries: ...\nRequired Entities: ...\nEnriched Context: ..."
+    dense:  3072-dim embedding of combined text
     sparse: BM25 vector of combined text
 ```
 
@@ -101,9 +102,12 @@ Service "Valuutakursid" → 4 Qdrant points
 
 ```python
 # sparse_encoder.py
+SPARSE_VOCAB_SIZE = 50_000
+
 text = "Mis suhe on euro ja usd vahel"
 tokens = re.findall(r"\w+", text.lower())  # ["mis", "suhe", "on", "euro", ...]
-# Each token → hashed to index in [0, VOCAB_SIZE), value = term frequency
+# Each token → MD5 hash (first 4 bytes) to index in [0, SPARSE_VOCAB_SIZE), value = term frequency
+# Collisions are handled by summing values at the same index
 # Output: SparseVector(indices=[hash("mis"), hash("euro"), ...], values=[1.0, 1.0, ...])
 ```
 
@@ -146,13 +150,24 @@ service_enrichment.sh
   │    ├─ Generate dense embedding (text-embedding-3-large)
   │    └─ Generate sparse vector (BM25 term hashing)
   │
-  ├─ Step 3: Summary point (name + description + LLM context):
+  ├─ Step 3: Summary point (name + description + examples + entities + LLM context):
   │    ├─ Generate dense embedding
   │    └─ Generate sparse vector
   │
   ├─ Step 4: Delete existing points for this service (idempotent)
   │
   └─ Step 5: Bulk upsert N+1 points to Qdrant
+```
+
+### Summary Point Combined Text Format
+
+The summary point embeds a structured concatenation:
+```
+Service Name: {name}
+Description: {description}
+Example Queries: {example1} | {example2} | ...
+Required Entities: {entity1}, {entity2}, ...
+Enriched Context: {LLM-generated context}
 ```
 
 ### Service Deletion
@@ -186,12 +201,12 @@ POST /collections/intent_collections/points/query
 {
     "query": [0.023, -0.041, ...],  # 3072-dim dense vector
     "using": "dense",
-    "limit": 6,
+    "limit": 6,                     # DENSE_SEARCH_TOP_K * 2 (3 * 2 = 6, allows dedup)
     "with_payload": true
 }
 ```
 
-Results are deduplicated by `service_id` (best score per service).
+Results are deduplicated by `service_id` (best score per service), returning up to `DENSE_SEARCH_TOP_K` (3) unique services.
 
 **Why not use RRF scores?**  
 Qdrant's RRF uses `1/(1+rank)`, producing fixed scores (0.50, 0.33, 0.25) regardless of actual relevance. A perfect match and a random query both get 0.50 for rank 1. Cosine similarity reflects true semantic closeness.
@@ -203,6 +218,7 @@ Sparse prefetch is only included if the query produces a non-empty sparse vector
 
 ```python
 # classifier.py → _hybrid_search()
+# First checks collection exists and has data (points_count > 0)
 POST /collections/intent_collections/points/query
 {
     "prefetch": [
@@ -214,6 +230,10 @@ POST /collections/intent_collections/points/query
     "with_payload": true
 }
 ```
+
+> **Note:** Prefetch limit is `HYBRID_SEARCH_TOP_K * 2` (5 * 2 = 10). The sparse prefetch is conditionally added only when `sparse_vector.is_empty()` is False.
+
+Hybrid results are also deduplicated by `service_id` (best RRF score per service).
 
 ### Routing Decision
 
@@ -251,6 +271,7 @@ Dense: Valuutakursid (cosine=0.5511), gap=0.2371
 → Runs intent detection + entity extraction on matched service only
 → Entities: {currency_from: EUR, currency_to: THB}
 → Validation: PASSED ✓
+→ Calls service endpoint → Returns response
 ```
 
 ### Path 3: AMBIGUOUS Service Match → LLM Confirmation
@@ -285,17 +306,17 @@ SERVICE (Layer 1)  →  CONTEXT (Layer 2)  →  RAG (Layer 3)  →  OOD (Layer 4
 | Path | Intent Detection | Entity Extraction |
 |------|-----------------|-------------------|
 | HIGH-CONFIDENCE | On 1 service (matched) | Yes — from LLM output |
-| AMBIGUOUS | On 2-3 candidates | Yes — if LLM matches |
+| AMBIGUOUS | On top candidates (from `top_results`) | Yes — if LLM matches |
 | Non-service | Not run | Not run |
 
 ### Intent Detection Module (DSPy)
 
 **File:** `src/tool_classifier/intent_detector.py`
 
-The DSPy `IntentDetectionModule` receives:
+The DSPy `IntentDetectionModule` uses `dspy.Predict` (direct prediction) and receives:
 - User query
-- Candidate services (formatted as JSON)
-- Conversation history (last 3 turns)
+- Candidate services (formatted as JSON with service_id, name, description, required_entities, top 3 examples)
+- Conversation history (last 3 turns, formatted as `{authorRole}: {message}`)
 
 It returns:
 ```json
@@ -335,6 +356,18 @@ Entities dict → ordered array matching service schema:
 # Dict:   {"currency_from": "EUR", "currency_to": "THB"}
 # Array:  ["EUR", "THB"]
 ```
+
+### Service Endpoint Call
+
+After entity validation and transformation, the workflow calls the Ruuter active service endpoint:
+
+```python
+# Endpoint: {RUUTER_SERVICE_BASE_URL}/services/active/{clean_service_name}
+# Payload: {"chatId": "...", "authorId": "...", "input": ["EUR", "THB"]}
+# Response: {"response": [{"content": "..."}]} → extracts content string
+```
+
+In streaming mode, the service content is wrapped as SSE events and streamed to the client.
 
 ---
 
@@ -387,7 +420,3 @@ Based on empirical testing with 42 Estonian queries (20 SERVICE, 22 RAG):
 - **Adding more services:** Score distributions improve naturally — service queries score higher, non-service score lower.
 - **Adding more examples per service:** Diverse phrasings expand the embedding coverage. Aim for 5-8 examples per service covering formal + informal + different word orders.
 - **Adjusting thresholds:** Monitor the logs (`Dense search: top=... cosine=...`) and adjust if real-world scores differ from test data.
-
-### Current Limitations
-
-- **Step 7 (Ruuter service call) is not yet implemented.** The service workflow currently returns a debug response with service metadata (endpoint URL, HTTP method, extracted entities) instead of calling the actual Ruuter service endpoint. See the `TODO: STEP 7` comments in `src/tool_classifier/workflows/service_workflow.py`.

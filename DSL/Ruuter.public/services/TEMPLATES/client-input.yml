@@ -1,0 +1,19 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'CLIENT-INPUT'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+
+# TODO: replace with correct request to get user input
+request_client_input:
+  call: reflect.mock
+  args:
+    response:
+      input: "Yes"
+  result: clientInput
+
+return_value:
+  return: ${clientInput.response.body}

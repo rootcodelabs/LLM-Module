@@ -1,0 +1,71 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Decription placeholder for 'IMPORT-SERVICES'"
+  method: post
+  accepts: json
+  returns: json
+  namespace: service
+  allowlist:
+    body:
+      - field: services
+        type: object
+        description: "Body field 'services'"
+      - field: timezone
+        type: string
+        description: "Body field 'timezone'"
+
+extract_request_data:
+  assign:
+    services: ${incoming.body.services ?? []}
+    names: ${services.map(s => s.fileName).join(",") ?? []}
+    timezone: ${incoming.body.timezone}
+
+get_import_names:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/get-import-names"
+    body:
+      names: ${names}
+      timezone: ${timezone}
+  result: import_names_res
+
+assign_imported_names:
+  assign:
+    imported_names: ${import_names_res.response.body[0].names.split(",")}
+    services: "$=services.map((s, i) => ({ ...s, fileName: imported_names[i] }))="
+    file_names: ${services.map(s => s.fileName)}
+
+insert_services:
+  call: http.post
+  args:
+    url: "[#SERVICE_RESQL]/add-services"
+    body:
+      names: ${file_names}
+      structures: ${services.map(s => s.flowData)}
+  result: insert_services_res
+
+convert_json_content_to_yml:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/conversion/json_to_yaml_data_multiple"
+    body:
+      data: ${services.map(s => s.content)}
+  result: ymls_res
+
+prepare_files:
+  assign:
+    file_paths: "$=file_names.map(name => `[#RUUTER_SERVICES_POST_PATH]/draft/${name}.tmp`)="
+    yaml_contents: ${ymls_res.response.body.yamls}
+
+add_dsls:
+  call: http.post
+  args:
+    url: "[#SERVICE_DMAPPER]/file-manager/create_multiple"
+    body:
+      file_paths: ${file_paths}
+      contents: ${yaml_contents}
+  result: add_dsls_res
+
+return_result:
+  return: "Services imported successfully"
