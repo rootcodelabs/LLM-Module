@@ -76,6 +76,9 @@ class RateLimiter:
         self.tokens_per_minute = tokens_per_minute
         self.cleanup_interval = cleanup_interval
         self.token_window_seconds = token_window_seconds
+        # Scale the per-minute limit to the actual window size so the
+        # sliding-window comparison is consistent regardless of window length.
+        self.tokens_per_window = int(tokens_per_minute * token_window_seconds / 60)
 
         # Sliding window: Track request timestamps per user
         self._request_history: Dict[str, Deque[float]] = defaultdict(deque)
@@ -211,8 +214,8 @@ class RateLimiter:
         # Sum tokens consumed in the current window
         current_token_usage = sum(tokens for _, tokens in token_history)
 
-        # Check if adding this request would exceed the limit
-        if current_token_usage + estimated_tokens > self.tokens_per_minute:
+        # Check if adding this request would exceed the scaled window limit
+        if current_token_usage + estimated_tokens > self.tokens_per_window:
             # Calculate retry_after based on oldest entry in window
             if token_history:
                 oldest_timestamp = token_history[0][0]
@@ -225,8 +228,10 @@ class RateLimiter:
             logger.warning(
                 f"Token rate limit exceeded for {author_id} - "
                 f"needed: {estimated_tokens}, "
-                f"current_usage: {current_token_usage}/{self.tokens_per_minute} "
-                f"(retry after {retry_after}s)"
+                f"current_usage: {current_token_usage}/{self.tokens_per_window} "
+                f"(window: {self.token_window_seconds}s, "
+                f"rate: {self.tokens_per_minute}/min, "
+                f"retry after {retry_after}s)"
             )
 
             return RateLimitResult(
@@ -234,7 +239,7 @@ class RateLimiter:
                 retry_after=retry_after,
                 limit_type="tokens",
                 current_usage=current_token_usage,
-                limit=self.tokens_per_minute,
+                limit=self.tokens_per_window,
             )
 
         return RateLimitResult(allowed=True)

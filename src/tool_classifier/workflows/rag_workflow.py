@@ -109,9 +109,10 @@ class RAGWorkflowExecutor(BaseWorkflow):
         """
         Execute RAG workflow in streaming mode.
 
-        Returns an AsyncIterator (not an async generator) so callers can
-        safely use ``await workflow.execute_streaming(...)`` without hitting
-        a TypeError from awaiting an async generator.
+        Coroutine that returns an AsyncIterator so callers can safely use
+        ``await workflow.execute_streaming(...)`` and then iterate over the
+        returned stream without hitting a TypeError from awaiting an async
+        generator.
 
         Delegates to existing streaming pipeline which handles:
         - Prompt refinement (blocking)

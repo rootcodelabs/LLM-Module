@@ -282,7 +282,9 @@ class ContextWorkflowExecutor(BaseWorkflow):
         if detection_result.is_greeting:
             from src.tool_classifier.greeting_constants import get_greeting_response
 
-            greeting = get_greeting_response(language=language)
+            greeting = get_greeting_response(
+                greeting_type=detection_result.greeting_type, language=language
+            )
             self._log_costs(costs_metric)
             return OrchestrationResponse(
                 chatId=request.chatId,
@@ -347,15 +349,19 @@ class ContextWorkflowExecutor(BaseWorkflow):
         if detection_result.is_greeting:
             from src.tool_classifier.greeting_constants import get_greeting_response
 
-            greeting = get_greeting_response(language=language)
+            greeting = get_greeting_response(
+                greeting_type=detection_result.greeting_type, language=language
+            )
             orchestration_service = self.orchestration_service
+            if orchestration_service is None:
+                self._log_costs(costs_metric)
+                return None
             chat_id = request.chatId
 
             async def _stream_greeting() -> AsyncIterator[str]:
-                if orchestration_service:
-                    yield orchestration_service.format_sse(chat_id, greeting)
-                    yield orchestration_service.format_sse(chat_id, "END")
-                    orchestration_service.log_costs(costs_metric)
+                yield orchestration_service.format_sse(chat_id, greeting)
+                yield orchestration_service.format_sse(chat_id, "END")
+                orchestration_service.log_costs(costs_metric)
 
             return _stream_greeting()
 

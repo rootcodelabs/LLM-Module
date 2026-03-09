@@ -109,6 +109,10 @@ class ContextDetectionResult(BaseModel):
     """Result of Phase 1 context detection (classify only, no answer generation)."""
 
     is_greeting: bool = Field(..., description="Whether the query is a greeting")
+    greeting_type: str = Field(
+        default="hello",
+        description="Type of greeting: hello, goodbye, thanks, or casual",
+    )
     can_answer_from_context: bool = Field(
         ..., description="Whether the query can be answered from conversation history"
     )
@@ -143,8 +147,10 @@ class ContextDetectionSignature(dspy.Signature):
     )
     user_query: str = dspy.InputField(desc="Current user query to classify")
     detection_result: str = dspy.OutputField(
-        desc='JSON object with: {"is_greeting": bool, "can_answer_from_context": bool, '
+        desc='JSON object with: {"is_greeting": bool, "greeting_type": str, "can_answer_from_context": bool, '
         '"reasoning": str, "context_snippet": str|null}. '
+        'greeting_type must be one of: "hello", "goodbye", "thanks", "casual" — '
+        'set it only when is_greeting is true, defaulting to "hello" otherwise. '
         "context_snippet should contain the relevant excerpt from history if can_answer_from_context is true, "
         "or null otherwise. Do NOT generate the final answer — only detect and extract."
     )
@@ -323,6 +329,7 @@ class ContextAnalyzer:
 
             result = ContextDetectionResult(
                 is_greeting=detection_data.get("is_greeting", False),
+                greeting_type=detection_data.get("greeting_type", "hello"),
                 can_answer_from_context=detection_data.get(
                     "can_answer_from_context", False
                 ),
@@ -890,4 +897,4 @@ class ContextAnalyzer:
             "et": "Tere! Kuidas ma saan sind aidata?",
             "en": "Hello! How can I help you?",
         }
-        return greetings.get(language, greetings["en"])
+        return greetings.get(language, greetings["et"])

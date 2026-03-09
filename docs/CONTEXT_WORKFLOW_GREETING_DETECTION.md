@@ -144,9 +144,9 @@ Calls `stream_context_response(query, context_snippet)` which uses DSPy native s
 
 ### Greeting Response Generation
 
-The LLM generates contextually appropriate responses in the **same language** as the query. If the LLM detects a greeting but fails to produce an answer (e.g., JSON parse error), the system falls back to predefined static responses from `greeting_constants.py`.
-
-**Fallback responses (`greeting_constants.py`):**
+Greeting detection is handled in **Phase 1 (`detect_context`)**, where the LLM classifies whether the query is a greeting and, if so, identifies the language and greeting type. This phase does **not** generate the final natural-language reply.
+In **Phase 2**, `ContextWorkflowExecutor` calls `get_greeting_response(...)`, which returns a response based on predefined static templates in `greeting_constants.py`, ensuring the reply is in the detected language. If greeting detection fails or the greeting type is unsupported, the query falls through to the next workflow layer instead of attempting LLM-based greeting generation.
+**Greeting response templates (`greeting_constants.py`):**
 
 ```python
 GREETINGS_ET = {
