@@ -57,9 +57,9 @@ class ToolClassifier:
 
     def __init__(
         self,
-        llm_manager: Any,
-        orchestration_service: Any,
-    ):
+        llm_manager: Any,  # noqa: ANN401
+        orchestration_service: Any,  # noqa: ANN401
+    ) -> None:
         """
         Initialize tool classifier with required dependencies.
 
@@ -88,6 +88,7 @@ class ToolClassifier:
         )
         self.context_workflow = ContextWorkflowExecutor(
             llm_manager=llm_manager,
+            orchestration_service=orchestration_service,
         )
         self.rag_workflow = RAGWorkflowExecutor(
             orchestration_service=orchestration_service,
@@ -622,7 +623,7 @@ class ToolClassifier:
 
     async def _execute_with_fallback_async(
         self,
-        workflow: Any,
+        workflow: Any,  # noqa: ANN401
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
@@ -696,11 +697,11 @@ class ToolClassifier:
             if rag_result is not None:
                 return rag_result
             else:
-                raise RuntimeError("RAG workflow returned None unexpectedly")
+                raise RuntimeError("RAG workflow returned None unexpectedly") from e
 
     async def _execute_with_fallback_streaming(
         self,
-        workflow: Any,
+        workflow: Any,  # noqa: ANN401
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
@@ -782,4 +783,4 @@ class ToolClassifier:
                 async for chunk in streaming_result:
                     yield chunk
             else:
-                raise RuntimeError("RAG workflow returned None unexpectedly")
+                raise RuntimeError("RAG workflow returned None unexpectedly") from e

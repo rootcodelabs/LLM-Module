@@ -6,6 +6,7 @@ import dspy
 import httpx
 from loguru import logger
 
+from src.guardrails.nemo_rails_adapter import NeMoRailsAdapter
 from src.utils.cost_utils import get_lm_usage_since
 
 from models.request_models import (
@@ -72,6 +73,22 @@ class LLMServiceProtocol(Protocol):
         Args:
             costs_metric: Dictionary of costs per component
         """
+        ...
+
+    def _initialize_service_components(
+        self, request: OrchestrationRequest
+    ) -> Dict[str, Any]:
+        """Initialize and return service components dictionary."""
+        ...
+
+    async def handle_output_guardrails(
+        self,
+        guardrails_adapter: Optional[NeMoRailsAdapter],
+        generated_response: OrchestrationResponse,
+        request: OrchestrationRequest,
+        costs_metric: Dict[str, Dict[str, Any]],
+    ) -> OrchestrationResponse:
+        """Apply output guardrails to the generated response."""
         ...
 
 

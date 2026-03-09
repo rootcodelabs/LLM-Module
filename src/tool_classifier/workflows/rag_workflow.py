@@ -64,7 +64,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
 
         Args:
             request: Orchestration request with user query
-            context: Unused (RAG doesn't need classification metadata)
+            context: May contain pre-initialized "components" to avoid duplicate init
             time_metric: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
@@ -79,8 +79,12 @@ class RAGWorkflowExecutor(BaseWorkflow):
         if time_metric is None:
             time_metric = {}
 
-        # Initialize service components
-        components = self.orchestration_service._initialize_service_components(request)
+        # Reuse components from context if available, otherwise initialize
+        components = context.get("components")
+        if components is None:
+            components = self.orchestration_service._initialize_service_components(
+                request
+            )
 
         # Call existing RAG pipeline with "rag" prefix for namespacing
         response = await self.orchestration_service._execute_orchestration_pipeline(
@@ -105,6 +109,11 @@ class RAGWorkflowExecutor(BaseWorkflow):
         """
         Execute RAG workflow in streaming mode.
 
+        Coroutine that returns an AsyncIterator so callers can safely use
+        ``await workflow.execute_streaming(...)`` and then iterate over the
+        returned stream without hitting a TypeError from awaiting an async
+        generator.
+
         Delegates to existing streaming pipeline which handles:
         - Prompt refinement (blocking)
         - Chunk retrieval (blocking)
@@ -118,7 +127,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
 
         Args:
             request: Orchestration request with user query
-            context: Unused (RAG doesn't need classification metadata)
+            context: May contain pre-initialized "components" and "stream_ctx"
             time_metric: Optional timing dictionary from parent (for unified tracking)
 
         Returns:
@@ -143,8 +152,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         # Get stream context from context if provided, otherwise create minimal tracking
         stream_ctx = context.get("stream_ctx")
         if stream_ctx is None:
-            # Create minimal stream context when called via tool classifier
-            # In production flow, this is provided by stream_orchestration_response
+
             class MinimalStreamContext:
                 """Minimal stream context for RAG workflow when called directly."""
 
@@ -154,25 +162,29 @@ class RAGWorkflowExecutor(BaseWorkflow):
                     self.bot_generator = None
 
                 def mark_completed(self) -> None:
-                    """No-op: Tracking handled by orchestration service."""
+                    # Intentionally empty: lifecycle tracking is handled by the orchestration service, not this minimal context
                     pass
 
                 def mark_cancelled(self) -> None:
-                    """No-op: Tracking handled by orchestration service."""
+                    # Intentionally empty: lifecycle tracking is handled by the orchestration service, not this minimal context
                     pass
 
                 def mark_error(self, error_id: str) -> None:
-                    """No-op: Tracking handled by orchestration service."""
+                    # Intentionally empty: lifecycle tracking is handled by the orchestration service, not this minimal context
                     pass
 
             stream_ctx = MinimalStreamContext(request.chatId)
 
-        # Delegate to core RAG pipeline (bypasses classifier to avoid recursion)
-        async for sse_chunk in self.orchestration_service._stream_rag_pipeline(
-            request=request,
-            components=components,
-            stream_ctx=stream_ctx,
-            costs_metric=costs_metric,
-            time_metric=time_metric,
-        ):
-            yield sse_chunk
+        # Return an inner async generator so this method stays a coroutine.
+        # This avoids the TypeError when callers do ``await execute_streaming(...)``.
+        async def _stream() -> AsyncIterator[str]:
+            async for sse_chunk in self.orchestration_service._stream_rag_pipeline(
+                request=request,
+                components=components,
+                stream_ctx=stream_ctx,
+                costs_metric=costs_metric,
+                time_metric=time_metric,
+            ):
+                yield sse_chunk
+
+        return _stream()

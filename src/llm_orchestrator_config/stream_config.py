@@ -21,8 +21,7 @@ class StreamConfig:
 
     # Rate Limiting Configuration
     RATE_LIMIT_ENABLED: bool = True  # Enable/disable rate limiting
-    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 10  # Max requests per user per minute
-    RATE_LIMIT_TOKENS_PER_SECOND: int = (
-        100  # Max tokens per user per second (burst control)
-    )
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 20  # Max requests per user per minute
+    RATE_LIMIT_TOKENS_PER_MINUTE: int = 40_000  # Max tokens per user per minute
     RATE_LIMIT_CLEANUP_INTERVAL: int = 300  # Cleanup old entries every 5 minutes
+    RATE_LIMIT_TOKEN_WINDOW_SECONDS: int = 60  # Sliding window size for token tracking
