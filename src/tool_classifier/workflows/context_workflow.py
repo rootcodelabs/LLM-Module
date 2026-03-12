@@ -1,6 +1,6 @@
 """Context workflow executor - Layer 2: Conversation history and greetings."""
 
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict, Optional, cast
 import time
 import dspy
 from loguru import logger
@@ -77,10 +77,19 @@ class ContextWorkflowExecutor(BaseWorkflow):
         time_metric: Dict[str, float],
         costs_metric: Dict[str, Dict[str, Any]],
     ) -> Optional[ContextDetectionResult]:
-        """Phase 1: run context detection. Returns ContextDetectionResult or None on error."""
+        """Phase 1: run context detection with summary fallback.
+
+        Checks the last 10 conversation turns first. If the query cannot be
+        answered from those and the history exceeds 10 turns, falls back to a
+        summary-based check over the older turns. Returns None on error so the
+        caller falls through to RAG.
+        """
         try:
             start = time.time()
-            result, cost = await self.context_analyzer.detect_context(
+            (
+                result,
+                cost,
+            ) = await self.context_analyzer.detect_context_with_summary_fallback(
                 query=message, conversation_history=history
             )
             time_metric["context.detection"] = time.time() - start
@@ -267,12 +276,29 @@ class ContextWorkflowExecutor(BaseWorkflow):
         language = detect_language(request.message)
         history = self._build_history(request)
 
-        detection_result = await self._detect(
-            request.message, history, time_metric, costs_metric
-        )
-        if detection_result is None:
-            self._log_costs(costs_metric)
-            return None
+        # Check if analysis is pre-computed (e.g. from classifier classify step)
+        pre_computed = context.get("analysis_result")
+        if (
+            pre_computed is not None
+            and hasattr(pre_computed, "is_greeting")
+            and hasattr(pre_computed, "can_answer_from_context")
+        ):
+            detection_result: ContextDetectionResult = cast(
+                ContextDetectionResult, pre_computed
+            )
+            costs_metric.setdefault(
+                "context_detection",
+                {"total_cost": 0.0, "total_tokens": 0, "num_calls": 0},
+            )
+        else:
+            _detected = await self._detect(
+                request.message, history, time_metric, costs_metric
+            )
+            if _detected is None:
+                self._log_costs(costs_metric)
+                context["costs_dict"] = costs_metric
+                return None
+            detection_result = _detected
 
         logger.info(
             f"[{request.chatId}] Detection: greeting={detection_result.is_greeting} "
@@ -286,6 +312,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
                 greeting_type=detection_result.greeting_type, language=language
             )
             self._log_costs(costs_metric)
+            context["costs_dict"] = costs_metric
             return OrchestrationResponse(
                 chatId=request.chatId,
                 llmServiceActive=True,
@@ -298,6 +325,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
             detection_result.can_answer_from_context
             and detection_result.context_snippet
         ):
+            context["costs_dict"] = costs_metric
             return await self._generate_response_async(
                 request, detection_result.context_snippet, time_metric, costs_metric
             )
@@ -306,6 +334,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
             f"[{request.chatId}] Cannot answer from context — falling back to RAG"
         )
         self._log_costs(costs_metric)
+        context["costs_dict"] = costs_metric
         return None
 
     async def execute_streaming(
