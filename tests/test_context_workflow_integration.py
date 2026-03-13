@@ -253,7 +253,7 @@ class TestClassifyAndRouteGreeting:
             request = _make_request("Hello!")
             with patch.object(
                 classifier.context_workflow.context_analyzer,
-                "detect_context",
+                "detect_context_with_summary_fallback",
                 new_callable=AsyncMock,
                 return_value=(
                     ContextDetectionResult(
@@ -295,7 +295,7 @@ class TestClassifyAndRouteGreeting:
             request = _make_request("Tere!")
             with patch.object(
                 classifier.context_workflow.context_analyzer,
-                "detect_context",
+                "detect_context_with_summary_fallback",
                 new_callable=AsyncMock,
                 return_value=(
                     ContextDetectionResult(
@@ -329,7 +329,7 @@ class TestClassifyAndRouteGreeting:
             request = _make_request("Goodbye!")
             with patch.object(
                 classifier.context_workflow.context_analyzer,
-                "detect_context",
+                "detect_context_with_summary_fallback",
                 new_callable=AsyncMock,
                 return_value=(
                     ContextDetectionResult(
@@ -366,7 +366,7 @@ class TestClassifyAndRouteGreeting:
             request = _make_request("Thank you!")
             with patch.object(
                 classifier.context_workflow.context_analyzer,
-                "detect_context",
+                "detect_context_with_summary_fallback",
                 new_callable=AsyncMock,
                 return_value=(
                     ContextDetectionResult(
@@ -421,7 +421,7 @@ class TestClassifyAndRouteContextAnswer:
             with (
                 patch.object(
                     classifier.context_workflow.context_analyzer,
-                    "detect_context",
+                    "detect_context_with_summary_fallback",
                     new_callable=AsyncMock,
                     return_value=(
                         ContextDetectionResult(
@@ -613,7 +613,7 @@ class TestStreamingIntegration:
             request = _make_request("Hello!")
             with patch.object(
                 classifier.context_workflow.context_analyzer,
-                "detect_context",
+                "detect_context_with_summary_fallback",
                 new_callable=AsyncMock,
                 return_value=(
                     ContextDetectionResult(
@@ -666,6 +666,10 @@ class TestStreamingIntegration:
             ),
         ]
 
+        async def _mock_history_stream() -> AsyncGenerator[str, None]:
+            yield 'data: {"chatId":"integration-test-chat","payload":{"content":"The deadline is March 31st."}}\n\n'
+            yield 'data: {"chatId":"integration-test-chat","payload":{"content":"END"}}\n\n'
+
         with (
             _mock_dspy_context_answer("The deadline is March 31st."),
             _patch_cost_utils(),
@@ -677,13 +681,36 @@ class TestStreamingIntegration:
             )
 
             request = _make_request("When is the deadline?", history=history)
-            stream = await classifier.route_to_workflow(
-                classification=classification,
-                request=request,
-                is_streaming=True,
-            )
+            with (
+                patch.object(
+                    classifier.context_workflow.context_analyzer,
+                    "detect_context_with_summary_fallback",
+                    new_callable=AsyncMock,
+                    return_value=(
+                        ContextDetectionResult(
+                            is_greeting=False,
+                            greeting_type="hello",
+                            can_answer_from_context=True,
+                            reasoning="Deadline referenced in history",
+                            context_snippet="The deadline is March 31st.",
+                        ),
+                        {"total_cost": 0.001, "total_tokens": 50, "num_calls": 1},
+                    ),
+                ),
+                patch.object(
+                    classifier.context_workflow,
+                    "_create_history_stream",
+                    new_callable=AsyncMock,
+                    return_value=_mock_history_stream(),
+                ),
+            ):
+                stream = await classifier.route_to_workflow(
+                    classification=classification,
+                    request=request,
+                    is_streaming=True,
+                )
 
-            chunks = [chunk async for chunk in stream]
+                chunks = [chunk async for chunk in stream]
 
         assert len(chunks) >= 2
         last_payload = json.loads(chunks[-1][6:-2])
