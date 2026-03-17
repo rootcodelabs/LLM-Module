@@ -70,13 +70,15 @@ HYBRID_SEARCH_TOP_K = 5
 DENSE_SEARCH_TOP_K = 3
 """Number of top results from dense-only search for relevance scoring."""
 
-DENSE_MIN_THRESHOLD = 0.38
+# DENSE_MIN_THRESHOLD = 0.38
+DENSE_MIN_THRESHOLD = 0.5
 """Minimum dense cosine similarity to consider a result as a potential match.
 Below this → skip SERVICE entirely, go to CONTEXT/RAG.
 Note: Multilingual embeddings (Estonian/short queries) typically yield
 lower cosine scores (0.25-0.40) than English. Tune based on observed scores."""
 
-DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40
+# DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40
+DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.55
 """Dense cosine similarity for high-confidence service classification.
 Above this AND score gap is large → SERVICE without LLM confirmation."""
 
