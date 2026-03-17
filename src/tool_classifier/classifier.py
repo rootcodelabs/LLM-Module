@@ -57,8 +57,8 @@ class ToolClassifier:
 
     def __init__(
         self,
-        llm_manager: Any,  # noqa: ANN401
-        orchestration_service: Any,  # noqa: ANN401
+        llm_manager: Any,
+        orchestration_service: Any,
     ) -> None:
         """
         Initialize tool classifier with required dependencies.
@@ -623,7 +623,7 @@ class ToolClassifier:
 
     async def _execute_with_fallback_async(
         self,
-        workflow: Any,  # noqa: ANN401
+        workflow: Any,
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
@@ -701,7 +701,7 @@ class ToolClassifier:
 
     async def _execute_with_fallback_streaming(
         self,
-        workflow: Any,  # noqa: ANN401
+        workflow: Any,
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
