@@ -59,32 +59,45 @@ Handle queries that require calling external services/APIs:
 
 ### High-Level Flow
 
+The service workflow has **3 routing paths** based on classification metadata from hybrid search:
+
 ```
-1. Service Discovery
-   ↓
-2. Service Selection (Semantic Search or LLM-based)
-   ↓
-3. Intent Detection (DSPy LLM Call)
-   ↓
-4. Entity Extraction (From LLM Output)
-   ↓
-5. Entity Validation (Against Service Schema)
-   ↓
-6. Entity Transformation (Dict → Ordered Array)
-   ↓
-7. Service Call (TODO: Ruuter endpoint invocation)
+Classification Result (from classifier.py)
+│
+├─ needs_llm_confirmation = False (HIGH-CONFIDENCE)
+│    → Skip discovery, run intent detection on matched service only
+│
+├─ needs_llm_confirmation = True (AMBIGUOUS)
+│    → Run LLM intent detection on top candidate services
+│
+└─ No metadata (LEGACY / fallback)
+     → Full service discovery + optional semantic search + intent detection
+```
+
+Each path then continues through:
+```
+1. Entity Extraction (from LLM output)
+↓
+2. Entity Validation (against service schema)
+↓
+3. Entity Transformation (Dict → Ordered Array)
+↓
+4. Service Endpoint Construction
+↓
+5. Service Call (Ruuter endpoint invocation)
 ```
 
 ---
 
-## 1. Service Discovery
+## Service Discovery (Legacy Path)
 
 ### Method: `_call_service_discovery()`
 
 Calls Ruuter public endpoint to fetch available services:
 
 ```python
-GET /rag-search/get-services-from-llm
+GET {RAG_SEARCH_RUUTER_PUBLIC}/services/get-services
+# Default: http://ruuter-public:8086/rag-search/services/get-services
 ```
 
 **Response Structure:**
@@ -122,16 +135,14 @@ if service_count <= 10:
     
 elif service_count > 10:
     # Many services → Use semantic search to narrow down
-    services = await _semantic_search_services(query, top_k=5)
+    services = await _semantic_search_services(query, top_k=10)
 ```
 
 ---
 
-## 2. Service Selection
+## Semantic Search (When Many Services)
 
-### Semantic Search (When Many Services)
-
-**Method:** `_semantic_search_services()`
+### Method: `_semantic_search_services()`
 
 Uses Qdrant vector database to find relevant services:
 
@@ -142,8 +153,8 @@ embedding = orchestration_service.create_embeddings_for_indexer([query])
 # 2. Search Qdrant collection
 search_payload = {
     "vector": query_embedding,
-    "limit": 5,                        # Top 5 services
-    "score_threshold": 0.4,            # Minimum similarity
+    "limit": 10,                       # Top 10 services (SEMANTIC_SEARCH_TOP_K)
+    "score_threshold": 0.2,            # Minimum similarity (SEMANTIC_SEARCH_THRESHOLD)
     "with_payload": True
 }
 
@@ -157,7 +168,7 @@ response = qdrant_client.post(
 
 ---
 
-## 3. Intent Detection (LLM-Based)
+## Intent Detection (LLM-Based)
 
 ### Method: `_detect_service_intent()`
 
@@ -189,23 +200,24 @@ services_formatted = [
         "name": "Currency Conversion",
         "description": "Convert EUR to other currencies",
         "required_entities": ["target_currency"],
-        "examples": ["How much is EUR in USD?", "Convert EUR to JPY"]
+        "examples": ["How much is EUR in USD?", "Convert EUR to JPY"]  # Top 3 examples
     }
 ]
 
 # 2. Prepare conversation context (last 3 turns)
 conversation_context = """
-user: Hello
-assistant: Hi! How can I help?
-user: How much is 100 EUR in USD?
+end_user: Hello
+backoffice_user: Hi! How can I help?
+end_user: How much is 100 EUR in USD?
 """
 
-# 3. Call DSPy module
-intent_result = intent_detector.forward(
-    user_query="How much is 100 EUR in USD?",
-    services=services_formatted,
-    conversation_history=conversation_history
-)
+# 3. Call DSPy module (uses dspy.Predict, not ChainOfThought)
+with self.llm_manager.use_task_local():
+    intent_result = intent_module.forward(
+        user_query="How much is 100 EUR in USD?",
+        services=services_formatted,
+        conversation_history=conversation_history
+    )
 ```
 
 ### LLM Output Format
@@ -226,8 +238,8 @@ The LLM returns structured JSON:
 ### Confidence Threshold
 
 ```python
-if confidence < 0.7:
-    # Low confidence → Service workflow returns None → Fallback to RAG
+if matched_service_id is None or confidence < 0.7:
+    # Low confidence → Service workflow returns None → Fallback to Context/RAG
     return None
 ```
 
@@ -251,7 +263,7 @@ costs_metric["intent_detection"] = usage_info
 
 ---
 
-## 4. Entity Extraction
+## Entity Extraction
 
 ### From LLM Output
 
@@ -299,7 +311,7 @@ Entities are extracted as **key-value pairs** where:
 
 ---
 
-## 5. Entity Validation
+## Entity Validation
 
 ### Method: `_validate_entities()`
 
@@ -367,7 +379,7 @@ validation_errors = ["Entity 'target_currency' has empty value"]
 
 ---
 
-## 6. Entity Transformation
+## Entity Transformation
 
 ### Method: `_transform_entities_to_array()`
 
@@ -397,18 +409,14 @@ entities_array = ["USD", "EUR", "100"]
 
 ```python
 def _transform_entities_to_array(
+    self,
     entities_dict: Dict[str, str],
     entity_order: List[str]
 ) -> List[str]:
     """Transform entity dict to ordered array."""
-    ordered_array = []
-    
-    for entity_key in entity_order:
-        # Get value from dict, or empty string if missing
-        value = entities_dict.get(entity_key, "")
-        ordered_array.append(value)
-    
-    return ordered_array
+    if not entity_order:
+        return []
+    return [entities_dict.get(key, "") for key in entity_order]
 ```
 
 ### Example
@@ -435,40 +443,62 @@ def _transform_entities_to_array(
 
 ---
 
-## 7. Service Call (TODO: Step 7)
+## Service Call (Step 7 — Implemented)
 
 ### Endpoint Construction
 
 ```python
-endpoint_url = f"{RUUTER_BASE_URL}/services/active{service_name}"
-# Example: "http://ruuter:8080/services/active/currency-conversion"
-# (Note: service_name from service metadata, e.g., "/currency-conversion")
+def _construct_service_endpoint(self, service_name: str, chat_id: str) -> str:
+    # Clean service name: strip whitespace, remove invisible Unicode chars, replace spaces with _
+    clean_name = service_name.strip().translate(INVISIBLE_CHAR_TABLE).replace(" ", "_")
+    return f"{RUUTER_SERVICE_BASE_URL}/services/active/{clean_name}"
+    # Example: "http://ruuter-public:8086/services/services/active/Currency_Conversion"
 ```
 
-### Payload Construction (Planned)
+### Payload Construction
 
 ```python
 payload = {
+    "chatId": chat_id,
+    "authorId": author_id,
     "input": entities_array,         # ["USD", "EUR", "100"]
-    "authorId": request.authorId,
-    "chatId": request.chatId
 }
 ```
 
-### HTTP Call (Planned)
+### HTTP Call
 
 ```python
-# Non-streaming
-response = await httpx.post(
-    endpoint_url,
-    json=payload,
-    timeout=5.0
-)
+async def _call_service_endpoint(
+    self, endpoint_url, http_method, entities_array, chat_id, author_id
+) -> Optional[str]:
+    async with httpx.AsyncClient(timeout=SERVICE_CALL_TIMEOUT) as client:
+        if http_method.upper() == "POST":
+            response = await client.post(endpoint_url, json=payload)
+        else:
+            response = await client.get(endpoint_url, params=payload)
 
-# Streaming
-async with httpx.stream("POST", endpoint_url, json=payload) as stream:
-    async for line in stream.aiter_lines():
-        yield orchestration_service.format_sse(chat_id, line)
+        response.raise_for_status()
+        data = response.json()
+
+        # Ruuter wraps the DSL return value in {"response": ...}
+        if isinstance(data, dict) and "response" in data:
+            data = data["response"]
+
+        # DMapper returns a JSON array; each item has a "content" field
+        if isinstance(data, list) and len(data) > 0:
+            content = data[0].get("content", "")
+            return content if content else None
+```
+
+### Streaming Mode
+
+In streaming mode, the service content is wrapped as SSE events:
+
+```python
+async def service_stream() -> AsyncIterator[str]:
+    yield orchestration_service.format_sse(chat_id, service_content)
+    yield orchestration_service.format_sse(chat_id, "END")
+    orchestration_service.log_costs(costs_metric)
 ```
 
 ---
@@ -483,28 +513,14 @@ async with httpx.stream("POST", endpoint_url, json=payload) as stream:
 
 ### Step-by-Step Execution
 
-#### 1. Service Discovery
-```json
-{
-  "service_count": 5,
-  "services": [
-    {
-      "serviceId": "currency_conversion_eur",
-      "name": "Currency Conversion (EUR)",
-      "entities": ["target_currency"],
-      "examples": ["How much is EUR in USD?"]
-    }
-  ]
-}
-```
-
-#### 2. Service Selection
+#### 1. Classification (Hybrid Search)
 ```python
-# Few services (5 <= 10) → Use all for intent detection
-services = discovery_result["services"]
+# Dense search finds best service match
+# cosine=0.5511, gap=0.2371
+# → HIGH-CONFIDENCE path (needs_llm_confirmation=False)
 ```
 
-#### 3. Intent Detection (LLM Call)
+#### 2. Intent Detection (LLM Call on matched service only)
 ```json
 {
   "matched_service_id": "currency_conversion_eur",
@@ -516,12 +532,12 @@ services = discovery_result["services"]
 }
 ```
 
-#### 4. Entity Extraction
+#### 3. Entity Extraction
 ```python
 entities_dict = {"target_currency": "THB"}
 ```
 
-#### 5. Entity Validation
+#### 4. Entity Validation
 ```python
 validation_result = {
   "is_valid": True,
@@ -531,7 +547,7 @@ validation_result = {
 }
 ```
 
-#### 6. Entity Transformation
+#### 5. Entity Transformation
 ```python
 # Schema: ["target_currency"]
 # Dict: {"target_currency": "THB"}
@@ -539,14 +555,17 @@ validation_result = {
 entities_array = ["THB"]
 ```
 
-#### 7. Service Call (TODO)
+#### 6. Service Call
 ```python
-# Planned implementation
-response = await call_service(
-    url="http://ruuter:8080/currency/convert",
-    method="POST",
-    payload={"input": ["THB"], "chatId": "..."}
+endpoint_url = "http://ruuter-public:8086/services/services/active/Currency_Conversion"
+response = await _call_service_endpoint(
+    endpoint_url=endpoint_url,
+    http_method="POST",
+    entities_array=["THB"],
+    chat_id="...",
+    author_id="..."
 )
+# Returns content string from Ruuter response
 ```
 
 ---
@@ -580,16 +599,16 @@ LLM USAGE COSTS BREAKDOWN:
 ### When Service Workflow Returns None
 
 ```python
-# Scenario 1: No service match (confidence < 0.7)
-if not intent_result or intent_result.get("confidence", 0) < 0.7:
+# Scenario 1: No service_id in context after intent detection
+if not context.get("service_id"):
     return None  # Fallback to CONTEXT layer
 
-# Scenario 2: Service validation failed
-if not validated_service:
+# Scenario 2: Service metadata extraction failed
+if not service_metadata:
     return None  # Fallback to CONTEXT layer
 
-# Scenario 3: No services discovered
-if not services:
+# Scenario 3: Service endpoint call failed
+if service_content is None:
     return None  # Fallback to CONTEXT layer
 ```
 
@@ -607,22 +626,31 @@ Query: "What is VAT?"
 ## Configuration Constants
 
 ```python
-# Service discovery
-RUUTER_BASE_URL = "http://ruuter.public:8080"
-SERVICE_DISCOVERY_TIMEOUT = 5.0  # seconds
+# Ruuter service configuration
+RUUTER_BASE_URL = "http://ruuter-private:8086"
+RUUTER_SERVICE_BASE_URL = "http://ruuter-public:8086/services"
+RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
+
+# Service call timeouts
+SERVICE_CALL_TIMEOUT = 10             # seconds for external service calls
+SERVICE_DISCOVERY_TIMEOUT = 10.0      # seconds for service discovery
 
 # Service selection thresholds
-SERVICE_COUNT_THRESHOLD = 10      # Switch to semantic search if exceeded
-MAX_SERVICES_FOR_LLM_CONTEXT = 20 # Max services to pass to LLM
+SERVICE_COUNT_THRESHOLD = 10          # Switch to semantic search if exceeded
+MAX_SERVICES_FOR_LLM_CONTEXT = 50    # Max services to pass to LLM
 
 # Semantic search
-QDRANT_COLLECTION = "services_collection"
-SEMANTIC_SEARCH_TOP_K = 5         # Top 5 relevant services
-SEMANTIC_SEARCH_THRESHOLD = 0.4   # Minimum similarity score
-QDRANT_TIMEOUT = 2.0              # seconds
+QDRANT_COLLECTION = "intent_collections"
+SEMANTIC_SEARCH_TOP_K = 10            # Top 10 relevant services
+SEMANTIC_SEARCH_THRESHOLD = 0.2       # Minimum similarity score
+QDRANT_TIMEOUT = 10.0                 # seconds
 
-# Intent detection
-INTENT_CONFIDENCE_THRESHOLD = 0.7 # Minimum confidence to proceed
+# Hybrid search classification (see HYBRID_SEARCH_CLASSIFICATION.md)
+DENSE_MIN_THRESHOLD = 0.38            # Minimum cosine to consider service match
+DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40  # Cosine for high-confidence path
+DENSE_SCORE_GAP_THRESHOLD = 0.05     # Required gap between top two services
+DENSE_SEARCH_TOP_K = 3               # Unique services from dense search
+HYBRID_SEARCH_TOP_K = 5              # Results from hybrid RRF search
 ```
 
 ---
@@ -639,11 +667,13 @@ INTENT_CONFIDENCE_THRESHOLD = 0.7 # Minimum confidence to proceed
 - Schema defines canonical order
 - Missing entities → empty strings
 
-### 3. **Two-Stage Service Selection**
-- Few services (≤10): Pass all to LLM
-- Many services (>10): Semantic search first
+### 3. **Three Routing Paths**
+- **High-confidence**: Hybrid search matched → skip discovery, intent on 1 service
+- **Ambiguous**: Moderate match → intent detection on top candidates
+- **Legacy**: No classification metadata → full discovery flow
 
 ### 4. **LLM-Based Intent Detection**
+- Uses DSPy `dspy.Predict` (not ChainOfThought) for direct prediction
 - Intelligent service matching
 - Natural language understanding
 - Multilingual support (Estonian, English, Russian)
@@ -653,8 +683,14 @@ INTENT_CONFIDENCE_THRESHOLD = 0.7 # Minimum confidence to proceed
 - Tracks intent detection LLM costs
 - Integrated with budget system
 
+### 6. **Implemented Service Call**
+- Calls Ruuter active service endpoint via httpx
+- Handles POST and GET methods
+- Parses DMapper response format (`{"response": [{"content": "..."}]}`)
+- Cleans service name (invisible chars, whitespace → underscore)
+
 ---
 
 ## Summary
 
-The Tool Classifier's layer architecture enables intelligent query routing with graceful fallbacks. The Service Workflow (Layer 1) uses **LLM-based intent detection** to match user queries to external services, extract entities, validate them against service schemas, and prepare them for service invocation—all while maintaining comprehensive cost tracking and seamless integration with the broader RAG pipeline.
+The Tool Classifier's layer architecture enables intelligent query routing with graceful fallbacks. The Service Workflow (Layer 1) uses **hybrid search classification** (dense + sparse + RRF) to route queries into 3 paths: high-confidence (skip discovery), ambiguous (LLM confirmation on candidates), or legacy (full discovery). It then uses **LLM-based intent detection** (DSPy Predict) to match user queries to external services, extract entities, validate them against service schemas, transform to ordered arrays, and **call the Ruuter active service endpoint** — all while maintaining comprehensive cost tracking and seamless integration with the broader RAG pipeline.
