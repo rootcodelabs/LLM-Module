@@ -7,7 +7,7 @@ import dspy
 
 from src.tool_classifier.workflows.context_workflow import ContextWorkflowExecutor
 from src.tool_classifier.context_analyzer import ContextDetectionResult
-from models.request_models import (
+from src.models.request_models import (
     OrchestrationRequest,
     OrchestrationResponse,
     ConversationItem,
@@ -113,12 +113,13 @@ class TestExecuteAsyncGreeting:
 
         with patch.object(
             context_workflow.context_analyzer,
-            "detect_context",
-            return_value=(
+            "detect_context_with_summary_fallback",
+            new_callable=AsyncMock,
+        ) as mock_detect:
+            mock_detect.return_value = (
                 mock_analysis,
                 {"total_cost": 0.001, "total_tokens": 50, "num_calls": 1},
-            ),
-        ):
+            )
             context_dict = {}
             response = await context_workflow.execute_async(
                 sample_request, context_dict
@@ -155,12 +156,13 @@ class TestExecuteAsyncGreeting:
 
         with patch.object(
             context_workflow.context_analyzer,
-            "detect_context",
-            return_value=(
+            "detect_context_with_summary_fallback",
+            new_callable=AsyncMock,
+        ) as mock_detect:
+            mock_detect.return_value = (
                 mock_analysis,
                 {"total_cost": 0.001, "total_tokens": 50, "num_calls": 1},
-            ),
-        ):
+            )
             response = await context_workflow.execute_async(sample_request, {})
 
         assert response is not None

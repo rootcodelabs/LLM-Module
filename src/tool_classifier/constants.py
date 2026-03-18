@@ -37,6 +37,9 @@ Lowered from 0.4 to handle broader queries."""
 RUUTER_BASE_URL = "http://ruuter-private:8086"
 """Base URL for Ruuter private service endpoints."""
 
+RUUTER_SERVICE_BASE_URL = "http://ruuter:8086/services"
+"""Base URL for Ruuter public service endpoints (active services)."""
+
 RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
 """Public Ruuter endpoint for RAG search service discovery."""
 
