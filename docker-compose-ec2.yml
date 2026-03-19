@@ -481,6 +481,7 @@ services:
       - 5436:5432
     volumes:
       - rag-search-db:/var/lib/postgresql/data
+      - ./DSL/Liquibase/langfuse-init/init-langfuse.sql:/docker-entrypoint-initdb.d/init-langfuse.sql:ro
     networks:
       - bykstack
 
