@@ -281,6 +281,7 @@ async def orchestrate_llm_request(
         # Process the request
         response = await orchestration_service.process_orchestration_request(request)
 
+        logger.info(f"[orchestrate] buttons in response: {response.buttons}")
         logger.info(f"Successfully processed request for chatId: {request.chatId}")
         return response
 
@@ -364,6 +365,7 @@ async def test_orchestrate_llm_request(
 
         # If response is already TestOrchestrationResponse (when environment is testing), return it directly
         if isinstance(response, TestOrchestrationResponse):
+            logger.info(f"[test_orchestrate] buttons in response: {response.buttons}")
             logger.info(
                 f"Successfully processed test request for environment: {request.environment}"
             )
@@ -375,9 +377,9 @@ async def test_orchestrate_llm_request(
             questionOutOfLLMScope=response.questionOutOfLLMScope,
             inputGuardFailed=response.inputGuardFailed,
             content=response.content,
+            buttons=response.buttons,
             chunks=None,  # OrchestrationResponse doesn't have chunks
         )
-
         logger.info(
             f"Successfully processed test request for environment: {request.environment}"
         )

@@ -150,6 +150,10 @@ class OrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+    buttons: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Optional list of choice buttons for MCQ step responses",
+    )
 
 
 # New models for embedding and context generation
@@ -261,6 +265,10 @@ class TestOrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
+    buttons: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Optional list of choice buttons for MCQ step responses",
+    )
     chunks: Optional[List[ChunkInfo]] = Field(
         default=None, description="Retrieved chunks with rank and content"
     )
