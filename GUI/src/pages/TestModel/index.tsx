@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, FormSelect, FormTextarea, Collapsible } from 'components';
 import CircularSpinner from 'components/molecules/CircularSpinner/CircularSpinner';
-import { FC, useState } from 'react';
+import { ComponentPropsWithoutRef, FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -87,6 +87,17 @@ const TestLLM: FC = () => {
     }));
   };
 
+  const markdownComponents = {
+    ol: ({children}: any) => (
+      <ol style={{ paddingLeft: '1.5rem', listStyleType: 'decimal' }}>
+        {children}
+      </ol>
+    ),
+    a: (props: ComponentPropsWithoutRef<"a">) => (
+      <a {...props} target="_blank" rel="noopener noreferrer" />
+    ),
+  };
+
   return (
     <div>
       {isLoadingConnections ? (
@@ -141,7 +152,7 @@ const TestLLM: FC = () => {
               <div className="result-item">
                 <strong>Response:</strong>
                 <div className="response-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {inferenceResult.content}
                   </ReactMarkdown>
                 </div>
@@ -159,7 +170,7 @@ const TestLLM: FC = () => {
                               <strong>Rank {contextItem.rank}</strong>
                             </div>
                             <div className="context-content">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                 {contextItem.chunkRetrieved}
                               </ReactMarkdown>
                             </div>
