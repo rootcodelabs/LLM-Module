@@ -56,6 +56,19 @@ class TestSanitizeMessageHtmlStripping:
         )
         assert result == "#service, /POST/foo"
 
+    def test_entity_encoded_script_tag_stripped_path_survives(self) -> None:
+        """Entity-encoded <script> tag is decoded then stripped; path remainder survives.
+
+        If html.unescape() ran *after* tag stripping, &lt;script&gt;...&lt;/script&gt;
+        would survive all three stripping passes and be decoded into a live <script>
+        tag in the output.  The sanitizer must unescape *before* stripping to close
+        this bypass.
+        """
+        result = InputSanitizer.sanitize_message(
+            "#service, /POST/&lt;script&gt;alert(1)&lt;/script&gt;foo"
+        )
+        assert result == "#service, /POST/foo"
+
     def test_html_entities_unescaped_prefix_intact(self) -> None:
         """html.unescape() runs inside strip_html_tags(); confirm it does not alter #, comma, or /."""
         result = InputSanitizer.sanitize_message("#service, /POST/foo&amp;bar")
@@ -107,6 +120,6 @@ class TestSanitizeMessageWhitespace:
         assert result == "#service, /POST/services/active/foo"
 
     def test_tab_in_prefix_converted_to_space_then_collapsed(self) -> None:
-        """Tabs are replaced with a space then deduplication runs; tab after comma becomes single space."""
+        """Tabs within the prefix are normalised along with spaces; a tab after the comma becomes a single space."""
         result = InputSanitizer.sanitize_message("#service,\t/POST/services/active/foo")
         assert result == "#service, /POST/services/active/foo"

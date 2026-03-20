@@ -138,6 +138,16 @@ class DocumentReference(BaseModel):
     relevance_score: float = Field(..., description="Relevance score (0-1)")
 
 
+class ChoiceButton(BaseModel):
+    """A single MCQ choice button returned in an orchestration response."""
+
+    title: str = Field(..., description="Button label shown to the user")
+    payload: str = Field(
+        ...,
+        description="Routing string sent when the button is clicked (e.g. '#service, /POST/...')",
+    )
+
+
 class OrchestrationResponse(BaseModel):
     """Model for LLM orchestration response."""
 
@@ -150,7 +160,7 @@ class OrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
-    buttons: Optional[List[Dict[str, Any]]] = Field(
+    buttons: Optional[List[ChoiceButton]] = Field(
         default=None,
         description="Optional list of choice buttons for MCQ step responses",
     )
@@ -265,7 +275,7 @@ class TestOrchestrationResponse(BaseModel):
         ..., description="Whether input guard validation failed"
     )
     content: str = Field(..., description="Response content with citations")
-    buttons: Optional[List[Dict[str, Any]]] = Field(
+    buttons: Optional[List[ChoiceButton]] = Field(
         default=None,
         description="Optional list of choice buttons for MCQ step responses",
     )

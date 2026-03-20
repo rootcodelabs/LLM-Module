@@ -57,6 +57,8 @@ class InputSanitizer:
         if not text:
             return text
 
+        text = html.unescape(text)
+
         # First pass: Remove dangerous tags and their content
         for tag in InputSanitizer.DANGEROUS_TAGS:
             # Remove opening tag, content, and closing tag
@@ -73,9 +75,6 @@ class InputSanitizer:
 
         # Third pass: Remove all remaining HTML tags
         text = re.sub(r"<[^>]+>", "", text)
-
-        # Unescape HTML entities (e.g., &lt; -> <)
-        text = html.unescape(text)
 
         return text
 
