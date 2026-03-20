@@ -5,6 +5,12 @@ databases:
     password: "{{ ragSearchDB.password }}" 
     db: rag-search
     storage: 8Gi
+    initdbScripts:
+      init-langfuse.sql: |
+        SELECT 'CREATE DATABASE "langfuse-db"'
+        WHERE NOT EXISTS (
+            SELECT FROM pg_catalog.pg_database WHERE datname = 'langfuse-db'
+        )\gexec
   - name: tim-postgresql
     username: tim
     password: "{{ TIMDB.password }}"  
@@ -22,4 +28,5 @@ service:
 persistence:
   storageClass: ""  # specify your own
   accessModes: ["ReadWriteOnce"]
+
 
