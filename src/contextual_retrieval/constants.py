@@ -15,7 +15,7 @@ class HttpClientConstants:
     DEFAULT_FAILURE_THRESHOLD = 5
     DEFAULT_RECOVERY_TIMEOUT = 60.0
 
-    # Timeouts (seconds)
+    # Timeouts in seconds
     DEFAULT_READ_TIMEOUT = 30.0
     DEFAULT_CONNECT_TIMEOUT = 10.0
     DEFAULT_WRITE_TIMEOUT = 10.0

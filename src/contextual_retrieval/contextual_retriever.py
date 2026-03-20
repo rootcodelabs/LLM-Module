@@ -43,7 +43,7 @@ class ContextualRetriever:
         config_path: Optional[str] = None,
         llm_service: Optional["LLMOrchestrationService"] = None,
         shared_bm25: Optional[SmartBM25Search] = None,
-    ):
+    ) -> None:
         """
         Initialize contextual retriever.
 
@@ -120,7 +120,7 @@ class ContextualRetriever:
             logger.error(f"Failed to initialize Contextual Retriever: {e}")
             return False
 
-    def _get_session_llm_service(self):
+    def _get_session_llm_service(self) -> "LLMOrchestrationService":
         """
         Get cached LLM service for current retrieval session.
         Uses injected service if available, creates new instance as fallback.
@@ -140,7 +140,7 @@ class ContextualRetriever:
 
         return self._session_llm_service
 
-    def _clear_session_cache(self):
+    def _clear_session_cache(self) -> None:
         """Clear cached connections at end of retrieval session."""
         if self._session_llm_service is not None:
             logger.debug("Clearing session LLM service cache")
@@ -374,7 +374,9 @@ class ContextualRetriever:
                 self._search_single_query_with_embedding(
                     query, i, embedding, collections, limit
                 )
-                for i, (query, embedding) in enumerate(zip(queries, batch_embeddings))
+                for i, (query, embedding) in enumerate(
+                    zip(queries, batch_embeddings, strict=True)
+                )
             ]
 
             # Execute all searches in parallel
@@ -621,7 +623,7 @@ class ContextualRetriever:
 
         return health_status
 
-    async def close(self):
+    async def close(self) -> None:
         """Clean up resources."""
         try:
             await self.provider_detection.close()

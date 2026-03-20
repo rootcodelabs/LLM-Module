@@ -14,7 +14,7 @@ from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
 class DynamicRankFusion:
     """Dynamic score fusion without hardcoded collection weights."""
 
-    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None):
+    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None) -> None:
         """
         Initialize rank fusion with configuration.
 
@@ -184,7 +184,7 @@ class DynamicRankFusion:
 
         # Calculate final fused scores
         fused_results: List[Dict[str, Any]] = []
-        for chunk_id, data in chunk_scores.items():
+        for data in chunk_scores.values():
             chunk = data["chunk"].copy()
 
             # Calculate fused RRF score

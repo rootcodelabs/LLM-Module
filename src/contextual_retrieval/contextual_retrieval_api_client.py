@@ -24,7 +24,7 @@ from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
 class ServiceResilienceManager:
     """Service resilience manager with circuit breaker functionality for HTTP requests."""
 
-    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None):
+    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None) -> None:
         # Load configuration if not provided
         if config is None:
             config = ConfigLoader.load_config()
@@ -81,7 +81,7 @@ class HTTPClientManager:
     _instance: Optional["HTTPClientManager"] = None
     _lock = asyncio.Lock()
 
-    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None):
+    def __init__(self, config: Optional["ContextualRetrievalConfig"] = None) -> None:
         """Initialize HTTP client manager."""
         # Load configuration if not provided
         self._config = config if config is not None else ConfigLoader.load_config()
@@ -169,7 +169,7 @@ class HTTPClientManager:
                             SecureErrorHandler.sanitize_error_message(
                                 e, "HTTP client initialization"
                             )
-                        )
+                        ) from e
 
         return self._client
 

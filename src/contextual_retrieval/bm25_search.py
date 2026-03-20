@@ -5,7 +5,7 @@ Implements fast lexical search on contextual content with smart refresh
 when collection data changes.
 """
 
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, TYPE_CHECKING
 from loguru import logger
 from rank_bm25 import BM25Okapi
 import re
@@ -20,13 +20,16 @@ from contextual_retrieval.constants import (
 )
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
 
+if TYPE_CHECKING:
+    from contextual_retrieval.contextual_retrieval_api_client import HTTPClientManager
+
 
 class SmartBM25Search:
     """In-memory BM25 search with smart refresh capabilities."""
 
     def __init__(
         self, qdrant_url: str, config: Optional["ContextualRetrievalConfig"] = None
-    ):
+    ) -> None:
         self.qdrant_url = qdrant_url
         self._config = config if config is not None else ConfigLoader.load_config()
         self._http_client_manager = None
@@ -40,7 +43,7 @@ class SmartBM25Search:
         # Strong references to background tasks to prevent premature GC
         self._background_tasks: Set[asyncio.Task[None]] = set()
 
-    async def _get_http_client_manager(self):
+    async def _get_http_client_manager(self) -> "HTTPClientManager":
         """Get the HTTP client manager instance."""
         if self._http_client_manager is None:
             self._http_client_manager = await get_http_client_manager()
@@ -356,7 +359,7 @@ class SmartBM25Search:
         tokens = self.tokenizer_pattern.findall(text.lower())
         return tokens
 
-    async def close(self):
+    async def close(self) -> None:
         """Close HTTP client."""
         if self._http_client_manager:
             await self._http_client_manager.close()
