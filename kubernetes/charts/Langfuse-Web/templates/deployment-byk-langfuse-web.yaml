@@ -17,6 +17,31 @@ spec:
         app: "{{ .Values.release_name }}"
         component: langfuse-web
     spec:
+      initContainers:
+        - name: wait-for-clickhouse
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for ClickHouse on port 9000..."
+              until nc -z clickhouse 9000 2>/dev/null; do
+                echo "ClickHouse not ready yet, retrying in 5s..."
+                sleep 5
+              done
+              echo "ClickHouse is ready."
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL on port 5432..."
+              until nc -z rag-search-db 5432 2>/dev/null; do
+                echo "PostgreSQL not ready yet, retrying in 5s..."
+                sleep 5
+              done
+              echo "PostgreSQL is ready."
       containers:
         - name: "{{ .Values.release_name }}"
           image: "{{ .Values.images.langfuse_web.registry }}/{{ .Values.images.langfuse_web.repository }}:{{ .Values.images.langfuse_web.tag }}"
@@ -25,22 +50,16 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
-          # Non-sensitive env's from values.yaml
           env:
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-          # Sensitive env's from Kubernetes Secret
-          {{- if .Values.envFrom }}
-          envFrom:
-            {{- toYaml .Values.envFrom | nindent 12 }}
-          {{- end }}
           {{- if .Values.healthcheck.enabled }}
           livenessProbe:
             httpGet:
               path: /api/public/health
-              port: {{ .Values.service.port }}
+              port: {{ .Values.service.targetPort }}
             initialDelaySeconds: {{ .Values.healthcheck.initialDelaySeconds }}
             periodSeconds: {{ .Values.healthcheck.periodSeconds }}
             timeoutSeconds: {{ .Values.healthcheck.timeoutSeconds }}
@@ -48,7 +67,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /api/public/health
-              port: {{ .Values.service.port }}
+              port: {{ .Values.service.targetPort }}
             initialDelaySeconds: {{ .Values.healthcheck.initialDelaySeconds }}
             periodSeconds: {{ .Values.healthcheck.periodSeconds }}
             timeoutSeconds: {{ .Values.healthcheck.timeoutSeconds }}
