@@ -2,9 +2,9 @@ services:
   # === Core Infrastructure ===
   
   # Shared PostgreSQL database (used by both application and Langfuse)
-  rag_search_db:
+  rag-search-db:
     image: postgres:14.1
-    container_name: rag_search_db
+    container_name: rag-search-db
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -89,11 +89,11 @@ services:
     container_name: resql
     image: ghcr.io/buerokratt/resql:v1.3.6
     depends_on:
-      rag_search_db:
+      rag-search-db:
         condition: service_started
     environment:
       - sqlms.datasources.[0].name=byk
-      - sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://rag_search_db:5432/rag-search #For LocalDb Use
+      - sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://rag-search-db:5432/rag-search #For LocalDb Use
       # sqlms.datasources.[0].jdbcUrl=jdbc:postgresql://171.22.247.13:5435/byk?sslmode=require
       - sqlms.datasources.[0].username=postgres
       - sqlms.datasources.[0].password=dbadmin
@@ -222,7 +222,7 @@ services:
     container_name: langfuse-worker
     restart: always
     depends_on:
-      - rag_search_db
+      - rag-search-db
       - minio
       - redis
       - clickhouse
@@ -230,7 +230,7 @@ services:
       - "127.0.0.1:3030:3030"
     environment:
       # Database
-      DATABASE_URL: postgresql://postgres:dbadmin@rag_search_db:5432/rag-search
+      DATABASE_URL: postgresql://postgres:dbadmin@rag-search-db:5432/rag-search
       
       # Auth & Security (TEST VALUES ONLY - NOT FOR PRODUCTION)
       # gitleaks:allow - These are test-only hex strings
@@ -279,13 +279,13 @@ services:
     restart: always
     depends_on:
       - langfuse-worker
-      - rag_search_db
+      - rag-search-db
       - clickhouse
     ports:
       - "3000:3000"
     environment:
       # Database
-      DATABASE_URL: postgresql://postgres:dbadmin@rag_search_db:5432/rag-search
+      DATABASE_URL: postgresql://postgres:dbadmin@rag-search-db:5432/rag-search
       
       # Auth & Security (TEST VALUES ONLY - NOT FOR PRODUCTION)
       # gitleaks:allow - These are test-only hex strings

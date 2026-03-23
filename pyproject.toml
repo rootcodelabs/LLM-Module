@@ -90,6 +90,24 @@ ignore = []
 fixable = ["ALL"]
 unfixable = []
 
+# Per-file ignores for special cases
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "ANN",    # Ignore all missing type annotations (ANN001, ANN201, etc.)
+    "T201",   # Allow print statements
+]
+
+"src/models/request_models.py" = ["N815"]  # camelCase fields required for API contract
+"src/optimization/optimized_module_loader.py" = ["N815"]  # Pydantic model fields
+"src/optimization/optimizers/generator_optimizer.py" = ["N815"]  # Pydantic model fields
+"src/response_generator/response_generate.py" = ["N815", "ANN401"]  # Pydantic model fields + DSPy streamify Any type
+
+# Library interface patterns - legitimate Any usage
+"src/contextual_retrieval/contextual_retrieval_api_client.py" = ["ANN401"]  # httpx **kwargs pass-through
+"src/guardrails/dspy_nemo_adapter.py" = ["ANN401"]  # LangChain LLM interface + DSPy dynamic types
+"src/llm_orchestrator_config/context_manager.py" = ["ANN401"]  # MockResponse with dynamic attributes
+"src/optimization/metrics/*.py" = ["ANN401"]  # DSPy optimizer trace parameter (internal type)
+"byk-stack-setup/script.py" = ["T201"]  # CLI script uses print 
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.

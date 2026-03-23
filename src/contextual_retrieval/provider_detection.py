@@ -7,7 +7,7 @@ Intelligently selects optimal Qdrant collections based on:
 - No hardcoded weights or preferences
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from loguru import logger
 from contextual_retrieval.contextual_retrieval_api_client import get_http_client_manager
 from contextual_retrieval.error_handler import SecureErrorHandler
@@ -18,18 +18,21 @@ from contextual_retrieval.constants import (
 )
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
 
+if TYPE_CHECKING:
+    from contextual_retrieval.contextual_retrieval_api_client import HTTPClientManager
+
 
 class DynamicProviderDetection:
     """Dynamic collection selection without hardcoded preferences."""
 
     def __init__(
         self, qdrant_url: str, config: Optional["ContextualRetrievalConfig"] = None
-    ):
+    ) -> None:
         self.qdrant_url = qdrant_url
         self._config = config if config is not None else ConfigLoader.load_config()
         self._http_client_manager = None
 
-    async def _get_http_client_manager(self):
+    async def _get_http_client_manager(self) -> "HTTPClientManager":
         """Get the HTTP client manager instance."""
         if self._http_client_manager is None:
             self._http_client_manager = await get_http_client_manager()
@@ -212,7 +215,7 @@ class DynamicProviderDetection:
 
         return stats
 
-    async def close(self):
+    async def close(self) -> None:
         """Close HTTP client."""
         if self._http_client_manager:
             await self._http_client_manager.close()

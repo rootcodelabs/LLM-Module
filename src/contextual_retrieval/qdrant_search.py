@@ -5,7 +5,7 @@ Handles semantic search against contextual chunk collections using
 existing contextual embeddings created by the vector indexer.
 """
 
-from typing import List, Dict, Any, Optional, Protocol
+from typing import List, Dict, Any, Optional, Protocol, TYPE_CHECKING
 from loguru import logger
 import asyncio
 from contextual_retrieval.contextual_retrieval_api_client import get_http_client_manager
@@ -16,6 +16,9 @@ from contextual_retrieval.constants import (
     LoggingConstants,
 )
 from contextual_retrieval.config import ConfigLoader, ContextualRetrievalConfig
+
+if TYPE_CHECKING:
+    from contextual_retrieval.contextual_retrieval_api_client import HTTPClientManager
 
 
 class LLMServiceProtocol(Protocol):
@@ -47,12 +50,12 @@ class QdrantContextualSearch:
 
     def __init__(
         self, qdrant_url: str, config: Optional["ContextualRetrievalConfig"] = None
-    ):
+    ) -> None:
         self.qdrant_url = qdrant_url
         self._config = config if config is not None else ConfigLoader.load_config()
         self._http_client_manager = None
 
-    async def _get_http_client_manager(self):
+    async def _get_http_client_manager(self) -> "HTTPClientManager":
         """Get the HTTP client manager instance."""
         if self._http_client_manager is None:
             self._http_client_manager = await get_http_client_manager()
@@ -345,7 +348,7 @@ class QdrantContextualSearch:
             logger.error(f"Failed to get batch embeddings: {e}")
             return None
 
-    async def close(self):
+    async def close(self) -> None:
         """Close HTTP client."""
         if self._http_client_manager:
             await self._http_client_manager.close()
