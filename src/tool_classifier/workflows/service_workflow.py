@@ -1,6 +1,6 @@
 """Service workflow executor - Layer 1: External service/API calls."""
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Protocol
+from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Union
 
 import dspy
 import httpx
@@ -10,8 +10,10 @@ from src.guardrails.nemo_rails_adapter import NeMoRailsAdapter
 from src.utils.cost_utils import get_lm_usage_since
 
 from models.request_models import (
+    ChoiceButton,
     OrchestrationRequest,
     OrchestrationResponse,
+    TestOrchestrationResponse,
 )
 from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.constants import (
@@ -27,6 +29,7 @@ from tool_classifier.constants import (
     SERVICE_CALL_TIMEOUT,
     SERVICE_COUNT_THRESHOLD,
     SERVICE_DISCOVERY_TIMEOUT,
+    SERVICE_STEP_PREFIXES,
 )
 from tool_classifier.intent_detector import IntentDetectionModule
 import time
@@ -55,12 +58,18 @@ class LLMServiceProtocol(Protocol):
         """
         ...
 
-    def format_sse(self, chat_id: str, content: str) -> str:
+    def format_sse(
+        self,
+        chat_id: str,
+        content: str,
+        buttons: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """Format content as SSE message.
 
         Args:
             chat_id: Chat/channel identifier
             content: Content to send (token, "END", error message, etc.)
+            buttons: Optional list of choice button dicts for MCQ step responses
 
         Returns:
             SSE-formatted string: "data: {json}\\n\\n"
@@ -84,10 +93,10 @@ class LLMServiceProtocol(Protocol):
     async def handle_output_guardrails(
         self,
         guardrails_adapter: Optional[NeMoRailsAdapter],
-        generated_response: OrchestrationResponse,
+        generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
         request: OrchestrationRequest,
         costs_metric: Dict[str, Dict[str, Any]],
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """Apply output guardrails to the generated response."""
         ...
 
@@ -406,9 +415,11 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                 validation_errors.append(f"Entity '{schema_key}' has empty value")
 
         # Check for extra entities (extracted but not in schema)
-        for entity_key in extracted_entities:
-            if entity_key not in service_schema:
-                extra_entities.append(entity_key)
+        extra_entities = [
+            entity_key
+            for entity_key in extracted_entities
+            if entity_key not in service_schema
+        ]
 
         is_valid = True
 
@@ -431,6 +442,68 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         "", "", "\u2060\u200b\u200c\u200d\ufeff\u00ad\u200e\u200f"
     )
 
+    @staticmethod
+    def _parse_service_prefix(
+        payload: str,
+    ) -> Optional[tuple[str, str]]:
+        """Parse a button-payload string into an (http_method, endpoint_url) tuple.
+
+        Button payloads emitted by the MCQ widget have the shape:
+            "#service, /POST/services/active/<step_name>"
+            "#common_service, /GET/some/path"
+
+        The path segment following the HTTP method is appended to
+        RUUTER_SERVICE_BASE_URL to construct the full endpoint URL, consistent
+        with how _construct_service_endpoint() builds regular service URLs.
+
+        Args:
+            payload: Raw user message string containing a #service prefix.
+
+        Returns:
+            ``(http_method, full_url)`` tuple on success, or ``None`` if the
+            payload does not match the expected format.
+
+        Examples:
+            >>> ServiceWorkflowExecutor._parse_service_prefix(
+            ...     "#service, /POST/services/active/application_mcq_step_passport"
+            ... )
+            ('POST', 'http://ruuter-public:8086/services/services/active/application_mcq_step_passport')
+        """
+        stripped = payload.strip()
+
+        # Identify and remove the prefix
+        matched_prefix: Optional[str] = None
+        for prefix in SERVICE_STEP_PREFIXES:
+            if stripped.startswith(prefix):
+                matched_prefix = prefix
+                break
+
+        if matched_prefix is None:
+            return None
+
+        # Remainder after prefix, e.g. " /POST/services/active/foo"
+        remainder = stripped[len(matched_prefix) :].strip()
+
+        # Must start with '/' followed by the HTTP method
+        if not remainder.startswith("/"):
+            return None
+
+        # Split into segments: ['', 'POST', 'services', 'active', 'foo']
+        segments = remainder.split("/")
+        # segments[0] == '' (empty before leading /);
+        # segments[1] == HTTP method; segments[2:] == resource path parts
+        if len(segments) < 3:  # noqa: PLR2004
+            return None
+
+        http_method = segments[1].upper()
+        if not http_method.isalpha():
+            return None
+
+        resource_path = "/" + "/".join(segments[2:])
+        full_url = f"{RUUTER_SERVICE_BASE_URL}{resource_path}"
+
+        return (http_method, full_url)
+
     def _construct_service_endpoint(self, service_name: str, chat_id: str) -> str:
         """Construct the full service endpoint URL for Ruuter."""
         clean_name = (
@@ -445,7 +518,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         entities_array: List[str],
         chat_id: str,
         author_id: str,
-    ) -> Optional[str]:
+    ) -> Optional[Dict[str, Any]]:
         """Call the Ruuter active service endpoint and extract response content.
 
         Args:
@@ -456,7 +529,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             author_id: Author/user ID
 
         Returns:
-            Service response content string, or None on failure.
+            Dict with "content" (str) and "buttons" (List[Dict]) keys, or None on failure.
         """
         payload = {
             "chatId": chat_id,
@@ -479,20 +552,19 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                 if isinstance(data, dict) and "response" in data:
                     data = data["response"]
 
-                # DMapper returns a JSON array; each item has a "content" field
+                # DMapper returns a JSON array; item 0 has "content", items 1+ are buttons
                 if isinstance(data, list) and len(data) > 0:
                     content = data[0].get("content", "")
-                    if content:
-                        logger.info(
-                            f"[{chat_id}] Service endpoint returned content "
-                            f"({len(content)} chars)"
+                    buttons = data[1:]
+                    if not content:
+                        logger.warning(
+                            f"[{chat_id}] Service response missing 'content' field"
                         )
-                        return content
-
-                    logger.warning(
-                        f"[{chat_id}] Service response missing 'content' field"
+                    logger.info(
+                        f"[{chat_id}] Service endpoint returned content "
+                        f"({len(content)} chars, {len(buttons)} buttons)"
                     )
-                    return None
+                    return {"content": content, "buttons": buttons}
 
                 logger.warning(
                     f"[{chat_id}] Unexpected service response format: {type(data)}"
@@ -721,7 +793,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         context["http_method"] = service_metadata["ruuter_type"]
 
         start_time = time.time()
-        service_content = await self._call_service_endpoint(
+        service_result = await self._call_service_endpoint(
             endpoint_url=endpoint_url,
             http_method=service_metadata["ruuter_type"],
             entities_array=entities_array,
@@ -733,9 +805,17 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         if self.orchestration_service:
             self.orchestration_service.log_costs(costs_metric)
 
-        if service_content is None:
+        if service_result is None:
             logger.warning(f"[{chat_id}] Service endpoint call failed, falling back")
             return None
+
+        service_content = service_result["content"]
+        service_buttons = service_result["buttons"]
+        buttons_list = [
+            ChoiceButton(**b)
+            for b in service_buttons
+            if "title" in b and "payload" in b
+        ]
 
         return OrchestrationResponse(
             chatId=request.chatId,
@@ -743,6 +823,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             questionOutOfLLMScope=False,
             inputGuardFailed=False,
             content=service_content,
+            buttons=buttons_list if buttons_list else None,
         )
 
     async def execute_streaming(
@@ -860,7 +941,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         context["endpoint_url"] = endpoint_url
         context["http_method"] = service_metadata["ruuter_type"]
 
-        service_content = await self._call_service_endpoint(
+        service_result = await self._call_service_endpoint(
             endpoint_url=endpoint_url,
             http_method=service_metadata["ruuter_type"],
             entities_array=entities_array,
@@ -868,7 +949,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             author_id=request.authorId,
         )
 
-        if service_content is None:
+        if service_result is None:
             logger.warning(f"[{chat_id}] Service endpoint call failed, falling back")
             return None
 
@@ -876,10 +957,141 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             raise RuntimeError("Orchestration service not initialized for streaming")
 
         orchestration_service = self.orchestration_service
+        service_content = service_result["content"]
+        service_buttons = service_result["buttons"]
 
         async def service_stream() -> AsyncIterator[str]:
-            yield orchestration_service.format_sse(chat_id, service_content)
+            yield orchestration_service.format_sse(
+                chat_id, service_content, service_buttons or None
+            )
             yield orchestration_service.format_sse(chat_id, "END")
             orchestration_service.log_costs(costs_metric)
 
         return service_stream()
+
+    async def execute_direct_step(
+        self,
+        request: OrchestrationRequest,
+        time_metric: Optional[Dict[str, float]] = None,
+    ) -> Optional[OrchestrationResponse]:
+        """Execute a direct service step from a #service button payload.
+
+        Bypasses discovery, intent detection, and entity extraction entirely.
+        The endpoint URL and HTTP method are parsed directly from the payload
+        string embedded in the button click.
+
+        Args:
+            request: Orchestration request whose message is a #service payload.
+            time_metric: Optional timing dictionary for unified tracking.
+
+        Returns:
+            OrchestrationResponse with content and buttons, or None on failure.
+        """
+        chat_id = request.chatId
+        if time_metric is None:
+            time_metric = {}
+
+        parsed = self._parse_service_prefix(request.message)
+        if parsed is None:
+            logger.warning(
+                f"[{chat_id}] Failed to parse #service prefix: {request.message}"
+            )
+            return None
+
+        http_method, endpoint_url = parsed
+        logger.info(f"[{chat_id}] DIRECT STEP: {endpoint_url}")
+
+        start_time = time.time()
+        service_result = await self._call_service_endpoint(
+            endpoint_url=endpoint_url,
+            http_method=http_method,
+            entities_array=[],
+            chat_id=chat_id,
+            author_id=request.authorId,
+        )
+        time_metric["service.direct_step"] = time.time() - start_time
+
+        if service_result is None:
+            logger.warning(
+                f"[{chat_id}] Direct step endpoint call failed: {endpoint_url}"
+            )
+            return None
+
+        service_content = service_result["content"]
+        service_buttons = service_result["buttons"]
+        buttons_list = [
+            ChoiceButton(**b)
+            for b in service_buttons
+            if "title" in b and "payload" in b
+        ]
+
+        return OrchestrationResponse(
+            chatId=chat_id,
+            llmServiceActive=True,
+            questionOutOfLLMScope=False,
+            inputGuardFailed=False,
+            content=service_content,
+            buttons=buttons_list if buttons_list else None,
+        )
+
+    async def execute_direct_step_streaming(
+        self,
+        request: OrchestrationRequest,
+        time_metric: Optional[Dict[str, float]] = None,
+    ) -> Optional[AsyncIterator[str]]:
+        """Execute a direct service step and return an SSE stream.
+
+        Same logic as execute_direct_step but wraps the response in an SSE
+        async generator suitable for the streaming endpoint.
+
+        Args:
+            request: Orchestration request whose message is a #service payload.
+            time_metric: Optional timing dictionary for unified tracking.
+
+        Returns:
+            AsyncIterator yielding SSE-formatted strings, or None on failure.
+        """
+        chat_id = request.chatId
+        if time_metric is None:
+            time_metric = {}
+
+        parsed = self._parse_service_prefix(request.message)
+        if parsed is None:
+            logger.warning(
+                f"[{chat_id}] Failed to parse #service prefix: {request.message}"
+            )
+            return None
+
+        http_method, endpoint_url = parsed
+        logger.info(f"[{chat_id}] DIRECT STEP (stream): {endpoint_url}")
+
+        start_time = time.time()
+        service_result = await self._call_service_endpoint(
+            endpoint_url=endpoint_url,
+            http_method=http_method,
+            entities_array=[],
+            chat_id=chat_id,
+            author_id=request.authorId,
+        )
+        time_metric["service.direct_step"] = time.time() - start_time
+
+        if service_result is None:
+            logger.warning(
+                f"[{chat_id}] Direct step endpoint call failed: {endpoint_url}"
+            )
+            return None
+
+        if self.orchestration_service is None:
+            raise RuntimeError("Orchestration service not initialized for streaming")
+
+        orchestration_service = self.orchestration_service
+        service_content = service_result["content"]
+        service_buttons = service_result["buttons"]
+
+        async def step_stream() -> AsyncIterator[str]:
+            yield orchestration_service.format_sse(
+                chat_id, service_content, service_buttons or None
+            )
+            yield orchestration_service.format_sse(chat_id, "END")
+
+        return step_stream()

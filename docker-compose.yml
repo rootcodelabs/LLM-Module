@@ -87,7 +87,7 @@ services:
     volumes:
       - ./tim-db:/var/lib/postgresql/data
     ports:
-      - 9876:5432
+      - 9875:5432
     networks:
       - bykstack
 
