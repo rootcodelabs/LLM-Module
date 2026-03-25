@@ -1,15 +1,12 @@
 # Global configuration for RAG Module
 global:
-  domain: "rag-module.local"
+  domain: "<your-domain>"  # Update with actual domain
   namespace: "rag-module"
   storageClass: "local-path"
   
 # Individual service configurations
 database:
   enabled: true
-  
-TIM-database:
-  enabled: false  # tim-postgresql is now managed by the database chart
   
 resql:
   enabled: true

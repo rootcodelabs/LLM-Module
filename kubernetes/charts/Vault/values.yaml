@@ -19,7 +19,7 @@ service:
 persistence:
   enabled: true
   storageClass: ""
-  accessMode: ReadWriteMany
+  accessMode: ReadWriteOnce
   size: 10Gi
   mountPath: "/vault/file"
 
@@ -37,11 +37,11 @@ vault:
 
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "100m"
+    memory: "128Mi"
+    cpu: "50m"
   limits:
-    memory: "1Gi"
-    cpu: "500m"
+    memory: "512Mi"
+    cpu: "200m"
 
 pullPolicy: IfNotPresent
 

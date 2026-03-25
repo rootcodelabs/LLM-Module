@@ -1,48 +1,52 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Values.release_name }}-config
+  name: vault-agent-llm-config
   labels:
-    app: {{ .Values.release_name }}
-    component: vault-agent-llm
+    app: vault-agent-llm
+    component: vault-agent
 data:
   agent.hcl: |
-    # Vault agent configuration for LLM Orchestration Service
-    
+    # Vault Agent Configuration for LLM Orchestration Service
+
     vault {
       address = "http://vault:8200"
+      retry {
+        num_retries = 5
+      }
     }
-    
-    pid_file = "/agent/out/pidfile"
     
     auto_auth {
       method "approle" {
         mount_path = "auth/approle"
         config = {
-          role_id_file_path                   = "/agent/credentials/role_id"
-          secret_id_file_path                 = "/agent/credentials/secret_id"
+          role_id_file_path   = "/agent/credentials/llm_role_id"
+          secret_id_file_path = "/agent/credentials/llm_secret_id"
           remove_secret_id_file_after_reading = false
         }
       }
       
+      # Write token to shared volume for agent to use
       sink "file" {
         config = {
-          path = "/agent/out/token"
+          path = "/agent/llm-token/token"
+          mode = 0640
         }
       }
     }
     
+    # Caching configuration for LLM (longer TTL)
     cache {
       default_lease_duration = "1h"
     }
     
     listener "tcp" {
-      address     = "127.0.0.1:8201"
+      address     = "0.0.0.0:8201"
       tls_disable = true
     }
     
     api_proxy {
       use_auto_auth_token = true
       enforce_consistency = "always"
-      when_inconsistent   = "forward"
+      when_inconsistent = "forward"
     }

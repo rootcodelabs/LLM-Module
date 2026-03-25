@@ -36,11 +36,15 @@ constants:
 
 resources:
   requests:
-    memory: "1Gi"
-    cpu: "500m"
+    memory: "512Mi"
+    cpu: "100m"
   limits:
-    memory: "4Gi"
-    cpu: "2000m"
+    memory: "2Gi"
+    cpu: "500m"
 
 podAnnotations: 
   dsl-checksum: "initial"
+
+# Vault Agent sidecar configuration
+vaultAgent:
+  enabled: true
