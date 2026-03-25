@@ -1,0 +1,58 @@
+{{- if .Values.enabled }}
+# ConfigMap for GUI Vault Agent Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-gui-config
+  labels:
+    app: vault-agent-gui
+    component: vault-agent
+data:
+  gui-agent.hcl: |
+    # Vault Agent Configuration for GUI Service
+    
+    vault {
+      address = "http://vault:8200"
+      retry {
+        num_retries = 5
+      }
+    }
+
+    # Auto-authentication using AppRole
+    auto_auth {
+      method "approle" {
+        mount_path = "auth/approle"
+        config = {
+          role_id_file_path   = "{{ .Values.agent.credentialsPath }}/gui_role_id"
+          secret_id_file_path = "{{ .Values.agent.credentialsPath }}/gui_secret_id"
+          remove_secret_id_file_after_reading = false
+        }
+      }
+
+      # Write token to shared volume for agent to use
+      sink "file" {
+        config = {
+          path = "{{ .Values.agent.tokenPath }}/token"
+          mode = 0640
+        }
+      }
+    }
+
+    # Caching configuration for GUI
+    cache {
+      default_lease_duration = "{{ .Values.agent.tokenTTL }}"
+    }
+
+    # API proxy listener - GUI connects to localhost:{{ .Values.agent.port }}
+    listener "tcp" {
+      address     = "0.0.0.0:{{ .Values.agent.port }}"
+      tls_disable = true
+    }
+
+    # API proxy configuration
+    api_proxy {
+      use_auto_auth_token = true
+      enforce_consistency = "always"
+      when_inconsistent = "forward"
+    }
+{{- end }}
