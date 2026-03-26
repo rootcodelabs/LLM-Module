@@ -34,14 +34,7 @@ volumes:
     enabled: true
     mountPath: "/agent/credentials"
     size: "100Mi"
-    accessMode: "ReadWriteMany"
-    storageClass: ""
-  
-  agentToken:
-    enabled: true
-    mountPath: "/agent/out"
-    size: "100Mi"
-    accessMode: "ReadWriteMany" 
+    accessMode: "ReadWriteOnce"
     storageClass: ""
 
 # Init script configuration
@@ -54,7 +47,7 @@ pullPolicy: IfNotPresent
 resources:
   requests:
     memory: "128Mi"
-    cpu: "100m"
+    cpu: "50m"
   limits:
     memory: "256Mi"
     cpu: "200m"

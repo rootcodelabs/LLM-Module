@@ -19,10 +19,11 @@ affinity:
   # Ensure this pod is scheduled on same node as Vault pod
   colocateWithVault: true
 
-# Deployment configuration
+
+# DEPRECATED: Standalone deployment disabled - agent runs as sidecar
 deployment:
+  standalone: false  # Set to true only for testing/debugging
   replicas: 1
-  # Use Deployment for consistent agent behavior
   type: "Deployment"
 
 # Shared volumes for vault ecosystem
@@ -78,7 +79,7 @@ pullPolicy: IfNotPresent
 resources:
   requests:
     memory: "128Mi"
-    cpu: "100m"
+    cpu: "50m"
   limits:
     memory: "256Mi"
     cpu: "200m"
