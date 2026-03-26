@@ -39,13 +39,18 @@ class ContextAnalysisSignature(dspy.Signature):
     This signature instructs the LLM to:
     1. Detect greetings in multiple languages (Estonian, English)
     2. Check if query references conversation history
-    3. Generate appropriate responses or extract answers from history
+    3. Generate appropriate responses based on context
 
     Supported greeting types:
     - hello: Tere, Hello, Hi, Hei, Hey, Moi, Good morning, Good afternoon, Good evening
     - goodbye: Nägemist, Bye, Goodbye, See you, Good night
     - thanks: Tänan, Aitäh, Thank you, Thanks, Much appreciated
     - casual: Tervist, Tšau, Moikka
+
+    IMPORTANT — Greeting + Question distinction:
+    - A message is a greeting ONLY if it contains NOTHING beyond the greeting itself.
+    - If the message contains a greeting AND a substantive question or request,
+      set is_greeting to FALSE so the question is answered properly.
 
     The LLM should respond in the SAME language as the user's query.
     """
@@ -139,6 +144,15 @@ class ContextDetectionSignature(dspy.Signature):
     - thanks: Tänan, Aitäh, Thank you, Thanks, Much appreciated
     - casual: Tervist, Tšau, Moikka
 
+    IMPORTANT — Greeting + Question distinction:
+    - A message is a greeting ONLY if it contains NOTHING beyond the greeting itself
+      (e.g. "Hello!", "Tere!", "Thanks!", "Aitäh!").
+    - If the message contains a greeting AND a substantive question or request
+      (e.g. "Hello, how to show uninterest to a policy?",
+       "Tere, mis on sünnitoetus?", "Hi, what are the tax benefits?"),
+      set is_greeting to FALSE. The question must be answered via RAG, not a greeting template.
+    - When in doubt, prefer is_greeting=false so the user's question is answered.
+
     Do NOT generate the answer here — only detect and extract a relevant context snippet.
     """
 
@@ -152,7 +166,8 @@ class ContextDetectionSignature(dspy.Signature):
         'greeting_type must be one of: "hello", "goodbye", "thanks", "casual" — '
         'set it only when is_greeting is true, defaulting to "hello" otherwise. '
         "context_snippet should contain the relevant excerpt from history if can_answer_from_context is true, "
-        "or null otherwise. Do NOT generate the final answer — only detect and extract."
+        "or null otherwise. Do NOT generate the final answer — only detect and extract. "
+        "CRITICAL: is_greeting must be false when the message contains a question or request alongside the greeting."
     )
 
 

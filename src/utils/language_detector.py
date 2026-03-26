@@ -83,6 +83,14 @@ def detect_language(text: str) -> LanguageCode:
         "nagu",
         "oli",
         "mis",
+        # Estonian greeting words
+        "tere",
+        "hei",
+        "tervist",
+        "tänan",
+        "aitäh",
+        "nägemist",
+        "moi",
     ]
 
     # Tokenize and check for Estonian markers
