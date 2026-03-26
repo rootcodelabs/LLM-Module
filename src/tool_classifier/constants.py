@@ -40,6 +40,10 @@ RUUTER_BASE_URL = "http://ruuter-private:8086"
 RUUTER_SERVICE_BASE_URL = "http://ruuter:8086/services"
 """Base URL for Ruuter service endpoints (active services)."""
 
+RUUTER_COMMON_SERVICE_BASE_URL = "http://ruuter-test:8086/common-services"
+"""Base URL for Ruuter common service endpoints.
+This is a placeholder test URL — replace with the real URL when available."""
+
 RAG_SEARCH_RUUTER_PUBLIC = "http://ruuter-public:8086/rag-search"
 """Public Ruuter endpoint for RAG search service discovery."""
 
@@ -90,14 +94,12 @@ HYBRID_SEARCH_TOP_K = 5
 DENSE_SEARCH_TOP_K = 3
 """Number of top results from dense-only search for relevance scoring."""
 
-# DENSE_MIN_THRESHOLD = 0.38
 DENSE_MIN_THRESHOLD = 0.5
 """Minimum dense cosine similarity to consider a result as a potential match.
 Below this → skip SERVICE entirely, go to CONTEXT/RAG.
 Note: Multilingual embeddings (Estonian/short queries) typically yield
 lower cosine scores (0.25-0.40) than English. Tune based on observed scores."""
 
-# DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.40
 DENSE_HIGH_CONFIDENCE_THRESHOLD = 0.55
 """Dense cosine similarity for high-confidence service classification.
 Above this AND score gap is large → SERVICE without LLM confirmation."""

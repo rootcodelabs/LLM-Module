@@ -1,5 +1,6 @@
 """Service workflow executor - Layer 1: External service/API calls."""
 
+import json
 from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Union
 
 import dspy
@@ -23,6 +24,7 @@ from tool_classifier.constants import (
     QDRANT_PORT,
     QDRANT_TIMEOUT,
     RAG_SEARCH_RUUTER_PUBLIC,
+    RUUTER_COMMON_SERVICE_BASE_URL,
     RUUTER_SERVICE_BASE_URL,
     SEMANTIC_SEARCH_THRESHOLD,
     SEMANTIC_SEARCH_TOP_K,
@@ -369,6 +371,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         entity_schema = service_data.get("entities", []) or []
         service_name = service_data.get("name", service_id)
         ruuter_type = service_data.get("ruuter_type", "POST")
+        is_common = bool(service_data.get("is_common", False))
 
         return {
             "service_id": service_id,
@@ -376,6 +379,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             "entities_dict": entities_dict,
             "entity_schema": entity_schema,
             "ruuter_type": ruuter_type,
+            "is_common": is_common,
             "service_data": service_data,
         }
 
@@ -504,12 +508,27 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
         return (http_method, full_url)
 
-    def _construct_service_endpoint(self, service_name: str, chat_id: str) -> str:
-        """Construct the full service endpoint URL for Ruuter."""
+    def _construct_service_endpoint(
+        self, service_name: str, chat_id: str, is_common: bool = False
+    ) -> str:
+        """Construct the full service endpoint URL for Ruuter.
+
+        Args:
+            service_name: Name of the service to call.
+            chat_id: Chat ID for logging.
+            is_common: When True, routes to the common-service Ruuter base URL.
+        """
         clean_name = (
             service_name.strip().translate(self._INVISIBLE_CHAR_TABLE).replace(" ", "_")
         )
-        return f"{RUUTER_SERVICE_BASE_URL}/services/active/{clean_name}"
+        base_url = (
+            RUUTER_COMMON_SERVICE_BASE_URL if is_common else RUUTER_SERVICE_BASE_URL
+        )
+        service_type = "common" if is_common else "regular"
+        logger.debug(
+            f"[{chat_id}] Routing to {service_type} service base URL: {base_url}"
+        )
+        return f"{base_url}/services/active/{clean_name}"
 
     async def _call_service_endpoint(
         self,
@@ -551,11 +570,25 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                 # The inner value is the DMapper array from bot_responses_to_messages
                 if isinstance(data, dict) and "response" in data:
                     data = data["response"]
-
-                # DMapper returns a JSON array; item 0 has "content", items 1+ are buttons
+                # "buttons" is a JSON-encoded string, not a sub-array.
                 if isinstance(data, list) and len(data) > 0:
-                    content = data[0].get("content", "")
-                    buttons = data[1:]
+                    item = data[0]
+                    content = item.get("content", "")
+                    raw_buttons = item.get("buttons", "[]") or "[]"
+
+                    if isinstance(raw_buttons, str):
+                        try:
+                            buttons = json.loads(raw_buttons)
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"[{chat_id}] Failed to parse buttons JSON string: {raw_buttons}"
+                            )
+                            buttons = []
+                    elif isinstance(raw_buttons, list):
+                        buttons = raw_buttons
+                    else:
+                        buttons = []
+
                     if not content:
                         logger.warning(
                             f"[{chat_id}] Service response missing 'content' field"
@@ -564,6 +597,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                         f"[{chat_id}] Service endpoint returned content "
                         f"({len(content)} chars, {len(buttons)} buttons)"
                     )
+                    logger.debug(f"[{chat_id}] Parsed buttons: {buttons}")
                     return {"content": content, "buttons": buttons}
 
                 logger.warning(
@@ -787,7 +821,9 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         context["validation_result"] = validation_result
 
         endpoint_url = self._construct_service_endpoint(
-            service_name=service_metadata["service_name"], chat_id=chat_id
+            service_name=service_metadata["service_name"],
+            chat_id=chat_id,
+            is_common=service_metadata["is_common"],
         )
         context["endpoint_url"] = endpoint_url
         context["http_method"] = service_metadata["ruuter_type"]
@@ -936,7 +972,9 @@ class ServiceWorkflowExecutor(BaseWorkflow):
         context["validation_result"] = validation_result
 
         endpoint_url = self._construct_service_endpoint(
-            service_name=service_metadata["service_name"], chat_id=chat_id
+            service_name=service_metadata["service_name"],
+            chat_id=chat_id,
+            is_common=service_metadata["is_common"],
         )
         context["endpoint_url"] = endpoint_url
         context["http_method"] = service_metadata["ruuter_type"]

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, FormTextarea } from 'components';
 import { useToast } from 'hooks/useToast';
 import { useStreamingResponse } from 'hooks/useStreamingResponse';
+import { ChoiceButton } from 'services/inference';
 import './TestProductionLLM.scss';
 import MessageContent from 'components/MessageContent';
 interface Message {
@@ -12,6 +13,7 @@ interface Message {
   timestamp: string;
   hasError?: boolean;
   errorMessage?: string;
+  buttons?: ChoiceButton[];
 }
 
 const TestProductionLLM: FC = () => {
@@ -20,6 +22,7 @@ const TestProductionLLM: FC = () => {
   const [inputMessage, setInputMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [pendingButtons, setPendingButtons] = useState<ChoiceButton[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Generate a unique channel ID for this session
@@ -115,6 +118,17 @@ const TestProductionLLM: FC = () => {
       });
     };
 
+    const onButtons = (buttons: ChoiceButton[]) => {
+      setPendingButtons(buttons);
+      setMessages(prev => {
+        const botMsgIndex = prev.findIndex(msg => msg.id === botMessageId);
+        if (botMsgIndex === -1) return prev;
+        const updated = [...prev];
+        updated[botMsgIndex] = { ...updated[botMsgIndex], buttons };
+        return updated;
+      });
+    };
+
     const onComplete = () => {
       console.log('[Component] Stream completed');
       // Always reset loading state on completion
@@ -160,7 +174,7 @@ const TestProductionLLM: FC = () => {
 
     // Start streaming
     try {
-      await startStreaming(userMessageText, streamingOptions, onToken, onComplete, onError);
+      await startStreaming(userMessageText, streamingOptions, onToken, onComplete, onError, onButtons);
     } catch (error) {
       console.error('[Component] Failed to start streaming:', error);
       // Reset loading state if streaming fails to start
@@ -172,6 +186,64 @@ const TestProductionLLM: FC = () => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleButtonClick = async (title: string, payload: string) => {
+    if (isLoading || isStreaming) return;
+    setPendingButtons([]);
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      content: title,
+      isUser: true,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    const botMessageId = `bot-${Date.now()}`;
+    const conversationHistory = messages.map(msg => ({
+      authorRole: msg.isUser ? 'user' : 'bot',
+      message: msg.content,
+      timestamp: msg.timestamp,
+    }));
+    const streamingOptions = {
+      authorId: 'test-user-456',
+      conversationHistory,
+      url: 'opensearch-dashboard-test',
+    };
+
+    const onToken = (token: string) => {
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.id === botMessageId);
+        if (idx === -1) return [...prev, { id: botMessageId, content: token, isUser: false, timestamp: new Date().toISOString() }];
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], content: updated[idx].content + token };
+        return updated;
+      });
+    };
+    const onButtons = (buttons: ChoiceButton[]) => {
+      setPendingButtons(buttons);
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.id === botMessageId);
+        if (idx === -1) return prev;
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], buttons };
+        return updated;
+      });
+    };
+    const onComplete = () => setIsLoading(false);
+    const onError = (error: string) => {
+      setIsLoading(false);
+      toast.open({ type: 'error', title: t('testProductionLLM.streamingErrorTitle'), message: error });
+    };
+
+    try {
+      await startStreaming(payload, streamingOptions, onToken, onComplete, onError, onButtons);
+    } catch (error) {
+      console.error('[Component] Failed to start streaming for button click:', error);
+      setIsLoading(false);
     }
   };
 
@@ -215,6 +287,20 @@ const TestProductionLLM: FC = () => {
               >
                 <div className="test-production-llm__message-content">
                   <MessageContent content={msg.content} />
+                  {!msg.isUser && msg.buttons && msg.buttons.length > 0 && (
+                    <div className="mcq-buttons">
+                      {msg.buttons.map((btn) => (
+                        <Button
+                          key={btn.payload}
+                          onClick={() => handleButtonClick(btn.title, btn.payload)}
+                          disabled={isLoading || isStreaming}
+                          appearance="secondary"
+                        >
+                          {btn.title}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                   {msg.hasError && (
                     <div className="test-production-llm__message-error">
                       <span className="test-production-llm__message-error-icon">⚠️</span>

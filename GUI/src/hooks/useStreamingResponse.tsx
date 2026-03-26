@@ -20,8 +20,13 @@ interface StreamingOptions {
   url: string;
 }
 
+interface ChoiceButton {
+  title: string;
+  payload: string;
+}
+
 interface UseStreamingResponseReturn {
-  startStreaming: (message: string, options: StreamingOptions, onToken: (token: string) => void, onComplete: () => void, onError: (error: string) => void) => Promise<void>;
+  startStreaming: (message: string, options: StreamingOptions, onToken: (token: string) => void, onComplete: () => void, onError: (error: string) => void, onButtons?: (buttons: ChoiceButton[]) => void) => Promise<void>;
   stopStreaming: () => void;
   isStreaming: boolean;
 }
@@ -54,7 +59,8 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
       options: StreamingOptions,
       onToken: (token: string) => void,
       onComplete: () => void,
-      onError: (error: string) => void
+      onError: (error: string) => void,
+      onButtons?: (buttons: ChoiceButton[]) => void
     ) => {
       console.log('[SSE] Starting streaming for channel:', channelId);
       
@@ -85,6 +91,9 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
             } else if (data.type === 'stream_chunk' && data.content) {
               console.log('[SSE] Token:', data.content);
               onToken(data.content);
+              if (data.buttons && data.buttons.length > 0 && onButtons) {
+                onButtons(data.buttons);
+              }
             } else if (data.type === 'stream_end') {
               console.log('[SSE] Stream ended');
               setIsStreaming(false);

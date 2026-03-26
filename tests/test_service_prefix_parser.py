@@ -65,9 +65,7 @@ class TestParseServicePrefixInvalidInputs:
 
     def test_no_prefix(self) -> None:
         assert (
-            ServiceWorkflowExecutor._parse_service_prefix(
-                "/POST/services/active/foo"
-            )
+            ServiceWorkflowExecutor._parse_service_prefix("/POST/services/active/foo")
             is None
         )
 
@@ -84,10 +82,7 @@ class TestParseServicePrefixInvalidInputs:
 
     def test_prefix_missing_method(self) -> None:
         """Path with only one segment after the leading slash is malformed."""
-        assert (
-            ServiceWorkflowExecutor._parse_service_prefix("#service, /POST")
-            is None
-        )
+        assert ServiceWorkflowExecutor._parse_service_prefix("#service, /POST") is None
 
     def test_prefix_no_leading_slash(self) -> None:
         """Path not starting with '/' is malformed."""
@@ -110,8 +105,8 @@ class TestParseServicePrefixInvalidInputs:
     @pytest.mark.parametrize(
         "payload",
         [
-            "#service, /123/services/active/foo",   # numeric "method"
-            "#service, /PO ST/services/active/foo", # method with space
+            "#service, /123/services/active/foo",  # numeric "method"
+            "#service, /PO ST/services/active/foo",  # method with space
         ],
     )
     def test_non_alpha_method(self, payload: str) -> None:

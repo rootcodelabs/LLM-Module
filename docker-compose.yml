@@ -52,7 +52,7 @@ services:
     volumes:
       - ./DSL:/data
       - ./DSL/DMapper/rag-search/hbs:/workspace/app/views/rag-search
-      - ./DSL/DMapper/rag-search/lib:/workspace/app/lib
+      - ./DSL/DMapper/rag-search/js:/workspace/app/js/rag-search
     ports:
       - 3001:3000
     networks:
