@@ -22,7 +22,6 @@ const TestProductionLLM: FC = () => {
   const [inputMessage, setInputMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [pendingButtons, setPendingButtons] = useState<ChoiceButton[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Generate a unique channel ID for this session
@@ -119,7 +118,6 @@ const TestProductionLLM: FC = () => {
     };
 
     const onButtons = (buttons: ChoiceButton[]) => {
-      setPendingButtons(buttons);
       setMessages(prev => {
         const botMsgIndex = prev.findIndex(msg => msg.id === botMessageId);
         if (botMsgIndex === -1) return prev;
@@ -191,7 +189,6 @@ const TestProductionLLM: FC = () => {
 
   const handleButtonClick = async (title: string, payload: string) => {
     if (isLoading || isStreaming) return;
-    setPendingButtons([]);
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -224,7 +221,6 @@ const TestProductionLLM: FC = () => {
       });
     };
     const onButtons = (buttons: ChoiceButton[]) => {
-      setPendingButtons(buttons);
       setMessages(prev => {
         const idx = prev.findIndex(m => m.id === botMessageId);
         if (idx === -1) return prev;

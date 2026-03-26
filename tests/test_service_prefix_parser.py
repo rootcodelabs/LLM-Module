@@ -7,10 +7,14 @@ input that does not match the expected format.
 
 import pytest
 
+from src.tool_classifier.constants import (
+    RUUTER_COMMON_SERVICE_BASE_URL,
+    RUUTER_SERVICE_BASE_URL,
+)
 from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
 
 
-class TestParsServicePrefixValidInputs:
+class TestParseServicePrefixValidInputs:
     """Happy-path cases: well-formed payloads must produce correct tuples."""
 
     def test_post_service_prefix(self) -> None:
@@ -19,7 +23,7 @@ class TestParsServicePrefixValidInputs:
         )
         assert result == (
             "POST",
-            "http://ruuter-public:8086/services/services/active/application_mcq_step_passport",
+            f"{RUUTER_SERVICE_BASE_URL}/services/active/application_mcq_step_passport",
         )
 
     def test_get_service_prefix(self) -> None:
@@ -28,7 +32,7 @@ class TestParsServicePrefixValidInputs:
         )
         assert result == (
             "GET",
-            "http://ruuter-public:8086/services/services/active/some_service",
+            f"{RUUTER_SERVICE_BASE_URL}/services/active/some_service",
         )
 
     def test_common_service_prefix(self) -> None:
@@ -37,7 +41,7 @@ class TestParsServicePrefixValidInputs:
         )
         assert result == (
             "POST",
-            "http://ruuter-public:8086/services/common/some_step",
+            f"{RUUTER_COMMON_SERVICE_BASE_URL}/common/some_step",
         )
 
     def test_method_uppercased(self) -> None:

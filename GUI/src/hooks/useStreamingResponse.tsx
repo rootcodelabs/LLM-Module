@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import { ChoiceButton } from 'services/inference';
 
 const getNotificationNodeUrl = (): string => {
   const value = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
@@ -18,11 +19,6 @@ interface StreamingOptions {
   authorId: string;
   conversationHistory: Array<{ authorRole: string; message: string; timestamp: string }>;
   url: string;
-}
-
-interface ChoiceButton {
-  title: string;
-  payload: string;
 }
 
 interface UseStreamingResponseReturn {

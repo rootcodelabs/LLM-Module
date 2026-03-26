@@ -450,28 +450,13 @@ class ServiceWorkflowExecutor(BaseWorkflow):
     def _parse_service_prefix(
         payload: str,
     ) -> Optional[tuple[str, str]]:
-        """Parse a button-payload string into an (http_method, endpoint_url) tuple.
+        """Parse a ``#service`` or ``#common_service`` button-payload into an ``(http_method, url)`` tuple.
 
-        Button payloads emitted by the MCQ widget have the shape:
-            "#service, /POST/services/active/<step_name>"
-            "#common_service, /GET/some/path"
-
-        The path segment following the HTTP method is appended to
-        RUUTER_SERVICE_BASE_URL to construct the full endpoint URL, consistent
-        with how _construct_service_endpoint() builds regular service URLs.
-
-        Args:
-            payload: Raw user message string containing a #service prefix.
-
-        Returns:
-            ``(http_method, full_url)`` tuple on success, or ``None`` if the
-            payload does not match the expected format.
-
-        Examples:
-            >>> ServiceWorkflowExecutor._parse_service_prefix(
-            ...     "#service, /POST/services/active/application_mcq_step_passport"
-            ... )
-            ('POST', 'http://ruuter-public:8086/services/services/active/application_mcq_step_passport')
+        Extracts the HTTP method and resource path from payloads of the form
+        ``"#service, /POST/services/active/<step_name>"`` and appends the path to
+        the appropriate base URL (``RUUTER_COMMON_SERVICE_BASE_URL`` for
+        ``#common_service`` prefixes, ``RUUTER_SERVICE_BASE_URL`` otherwise).
+        Returns ``None`` for any malformed input.
         """
         stripped = payload.strip()
 
@@ -504,7 +489,12 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             return None
 
         resource_path = "/" + "/".join(segments[2:])
-        full_url = f"{RUUTER_SERVICE_BASE_URL}{resource_path}"
+        base_url = (
+            RUUTER_COMMON_SERVICE_BASE_URL
+            if matched_prefix.startswith("#common_service")
+            else RUUTER_SERVICE_BASE_URL
+        )
+        full_url = f"{base_url}{resource_path}"
 
         return (http_method, full_url)
 
