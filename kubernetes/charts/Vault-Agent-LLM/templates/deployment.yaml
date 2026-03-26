@@ -1,3 +1,8 @@
+# DEPRECATED: This standalone deployment is no longer used
+# WHY: Vault Agent now runs as a SIDECAR in LLM-Orchestration-Service pod
+# This ensures LLM cannot bypass the agent and access Vault directly
+# Keeping this file for any future reference
+{{- if .Values.deployment.standalone }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -99,3 +104,4 @@ spec:
           capabilities:
             add:
               - IPC_LOCK
+{{- end }}

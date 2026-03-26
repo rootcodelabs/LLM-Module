@@ -37,11 +37,6 @@ spec:
           persistentVolumeClaim:
             claimName: vault-agent-creds
         {{- end }}
-        {{- if .Values.volumes.agentToken.enabled }}
-        - name: vault-agent-token
-          persistentVolumeClaim:
-            claimName: vault-agent-token
-        {{- end }}
         {{- if .Values.initScript.enabled }}
         - name: init-script
           configMap:
@@ -55,15 +50,22 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
-            # Install dependencies and setup permissions
-            apk add --no-cache curl jq
-            mkdir -p /agent/credentials /agent/out
-            chmod -R 755 /agent/credentials
-            chmod -R 770 /agent/out
-            echo "Permissions set successfully"
-            
-            # Run the init script
-            /bin/sh /scripts/{{ .Values.initScript.filename }}
+            apk add --no-cache curl jq uuidgen openssl
+        
+            mkdir -p \
+              /agent/credentials \
+              /agent/out
+        
+            chown -R vault:vault \
+              /agent/credentials \
+              /agent/out
+        
+            chmod 755 \
+              /agent/credentials \
+              /agent/out
+        
+            su vault -s /bin/sh /scripts/{{ .Values.initScript.filename }}
+
         env:
           - name: VAULT_ADDR
             value: {{ .Values.vault.addr | quote }}
@@ -77,10 +79,6 @@ spec:
           {{- if .Values.volumes.agentCredentials.enabled }}
           - name: vault-agent-creds
             mountPath: {{ .Values.volumes.agentCredentials.mountPath }}
-          {{- end }}
-          {{- if .Values.volumes.agentToken.enabled }}
-          - name: vault-agent-token
-            mountPath: {{ .Values.volumes.agentToken.mountPath }}
           {{- end }}
           {{- if .Values.initScript.enabled }}
           - name: init-script
