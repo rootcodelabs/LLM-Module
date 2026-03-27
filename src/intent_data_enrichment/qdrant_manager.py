@@ -239,6 +239,7 @@ class QdrantManager:
                     "entities": enriched_service.entities,
                     "context": enriched_service.context,
                     "point_type": enriched_service.point_type,
+                    "is_common": enriched_service.is_common,
                 }
 
                 # Add example_text for example points

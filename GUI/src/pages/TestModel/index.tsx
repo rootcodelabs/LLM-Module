@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 import './TestLLM.scss';
 import { useDialog } from 'hooks/useDialog';
 import { fetchLLMConnectionsPaginated, LegacyLLMConnectionFilters } from 'services/llmConnections';
-import { viewInferenceResult, InferenceRequest, InferenceResponse } from 'services/inference';
+import { viewInferenceResult, InferenceRequest, InferenceResponse, ChoiceButton } from 'services/inference';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
 import { ButtonAppearanceTypes } from 'enums/commonEnums';
 
@@ -16,6 +16,7 @@ const TestLLM: FC = () => {
   const { t } = useTranslation();
   const { open: openDialog, close: closeDialog } = useDialog();
   const [inferenceResult, setInferenceResult] = useState<InferenceResponse['response'] | null>(null);
+  const [pendingButtons, setPendingButtons] = useState<ChoiceButton[]>([]);
   const [testLLM, setTestLLM] = useState({
     connectionId: null,
     text: '',
@@ -49,6 +50,7 @@ const TestLLM: FC = () => {
     mutationFn: (request: InferenceRequest) => viewInferenceResult(request),
     onSuccess: (data: InferenceResponse) => {
       setInferenceResult(data?.response);
+      setPendingButtons(data?.response?.buttons ?? []);
     },
     onError: (error: any) => {
       console.error('Error getting inference result:', error);
@@ -74,6 +76,15 @@ const TestLLM: FC = () => {
         message: testLLM.text,
       });
     }
+  };
+
+  const handleButtonClick = (payload: string) => {
+    if (!testLLM.connectionId) return;
+    setPendingButtons([]);
+    inferenceMutation.mutate({
+      llmConnectionId: Number(testLLM.connectionId),
+      message: payload,
+    });
   };
 
   const handleChange = (key: string, value: string | number) => {
@@ -157,6 +168,22 @@ const TestLLM: FC = () => {
                   </ReactMarkdown>
                 </div>
               </div>
+
+              {/* MCQ Buttons */}
+              {pendingButtons.length > 0 && (
+                <div className="mcq-buttons">
+                  {pendingButtons.map((btn) => (
+                    <Button
+                      key={btn.payload}
+                      appearance={ButtonAppearanceTypes.SECONDARY}
+                      onClick={() => handleButtonClick(btn.payload)}
+                      disabled={inferenceMutation.isLoading}
+                    >
+                      {btn.title}
+                    </Button>
+                  ))}
+                </div>
+              )}
 
               {/* Context Section */}
               {

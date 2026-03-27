@@ -104,6 +104,7 @@ unfixable = []
 
 # Library interface patterns - legitimate Any usage
 "src/contextual_retrieval/contextual_retrieval_api_client.py" = ["ANN401"]  # httpx **kwargs pass-through
+"src/tool_classifier/workflows/service_workflow.py" = ["ANN401"]  # LLMManager passed as Any - dynamic multi-provider LLM interface
 "src/guardrails/dspy_nemo_adapter.py" = ["ANN401"]  # LangChain LLM interface + DSPy dynamic types
 "src/llm_orchestrator_config/context_manager.py" = ["ANN401"]  # MockResponse with dynamic attributes
 "src/optimization/metrics/*.py" = ["ANN401"]  # DSPy optimizer trace parameter (internal type)
