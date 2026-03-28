@@ -169,6 +169,7 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
                         sparse_values=sparse_vec.values,
                         example_text=example,
                         point_type="example",
+                        is_common=service_data.is_common or False,
                     )
                 )
 
@@ -208,6 +209,7 @@ async def enrich_service(service_data: ServiceData) -> EnrichmentResult:
                     sparse_values=summary_sparse.values,
                     example_text=None,
                     point_type="summary",
+                    is_common=service_data.is_common or False,
                 )
             )
 

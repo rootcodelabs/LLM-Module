@@ -19,12 +19,18 @@ export interface ProductionInferenceRequest {
   url: string;
 }
 
+export interface ChoiceButton {
+  title: string;
+  payload: string;
+}
+
 export interface InferenceResponse {
   response: {
     chatId: number;
     llmServiceActive: boolean;
     questionOutOfLlmScope: boolean;
     content: string;
+    buttons?: ChoiceButton[];
     chunks?: {
       rank: number,
       chunkRetrieved: string

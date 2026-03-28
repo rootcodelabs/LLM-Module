@@ -91,6 +91,7 @@ async function createLLMOrchestrationStreamRequest({ channelId, message, options
             try {
               const data = JSON.parse(line.slice(6)); // Remove 'data: ' prefix
               const content = data.payload?.content;
+              const buttons = data.payload?.buttons;
               
               if (!content) continue;
 
@@ -105,14 +106,18 @@ async function createLLMOrchestrationStreamRequest({ channelId, message, options
                 break;
               }
 
-              // Regular token - send to client
-              sender({
+              // Regular token - send to client (include buttons when present)
+              const chunkMessage = {
                 type: "stream_chunk",
                 content: content,
                 streamId: channelId,
                 channelId,
                 isComplete:false
-              });
+              };
+              if (buttons && buttons.length > 0) {
+                chunkMessage.buttons = buttons;
+              }
+              sender(chunkMessage);
 
             } catch (parseError) {
               console.error(`Failed to parse SSE data for channel ${channelId}:`, parseError, line);
