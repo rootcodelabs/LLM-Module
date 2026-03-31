@@ -579,6 +579,275 @@ User              TestProductionLLM     useStreaming    Notif Server       Backe
 
 ---
 
+## Streaming Payloads Reference
+
+This section documents the **exact payload shape** at each boundary in the three-hop streaming chain for both streaming flows (natural-language service detection and MCQ button click).
+
+---
+
+### Hop 1 — Browser → Notification Server
+
+**Endpoint:** `POST /channels/:channelId/orchestrate/stream`
+
+The browser's `useStreamingResponse.tsx` sends an HTTP POST immediately after the SSE connection is established.
+
+#### Natural-Language Query Payload
+```json
+{
+  "message": "My keyboard is not working",
+  "options": {
+    "authorId": "user-channel-abc123",
+    "conversationHistory": [
+      {
+        "role": "user",
+        "content": "My keyboard is not working"
+      }
+    ],
+    "url": "sse-stream-context",
+    "connection_id": "conn-xyz"
+  }
+}
+```
+
+#### MCQ Button-Click Payload
+```json
+{
+  "message": "#service, /POST/dmapper/v2/keyboard/os-select",
+  "options": {
+    "authorId": "user-channel-abc123",
+    "conversationHistory": [
+      {
+        "role": "user",
+        "content": "My keyboard is not working"
+      },
+      {
+        "role": "assistant",
+        "content": "Which operating system are you using?"
+      },
+      {
+        "role": "user",
+        "content": "Windows"
+      }
+    ],
+    "url": "sse-stream-context",
+    "connection_id": "conn-xyz"
+  }
+}
+```
+
+> **Key difference:** For MCQ button clicks, `message` contains the raw `#service, /METHOD/...` payload (not the button title shown to the user). The button title (`"Windows"`) is only stored in the local `messages` state for display purposes.
+
+---
+
+### Hop 2 — Notification Server → Backend
+
+**Endpoint:** `POST /orchestrate/stream` (Python FastAPI)
+
+`streamingService.js` maps the incoming request onto the `OrchestrationRequest` model:
+
+#### Natural-Language Query Payload
+```json
+{
+  "chatId": "channel-abc123",
+  "message": "My keyboard is not working",
+  "authorId": "user-channel-abc123",
+  "conversationHistory": [
+    {
+      "role": "user",
+      "content": "My keyboard is not working"
+    }
+  ],
+  "url": "sse-stream-context",
+  "environment": "production",
+  "connection_id": "conn-xyz"
+}
+```
+
+#### MCQ Button-Click Payload
+```json
+{
+  "chatId": "channel-abc123",
+  "message": "#service, /POST/dmapper/v2/keyboard/os-select",
+  "authorId": "user-channel-abc123",
+  "conversationHistory": [
+    {
+      "role": "user",
+      "content": "My keyboard is not working"
+    },
+    {
+      "role": "assistant",
+      "content": "Which operating system are you using?"
+    },
+    {
+      "role": "user",
+      "content": "Windows"
+    }
+  ],
+  "url": "sse-stream-context",
+  "environment": "production",
+  "connection_id": "conn-xyz"
+}
+```
+
+> **`environment` is always `"production"`** for this page — it is hardcoded in `streamingService.js` and is not derived from user-selected connections.
+
+---
+
+### Hop 3 — Backend → Notification Server (SSE Stream)
+
+The Python backend yields SSE-formatted strings. Each line follows the `data: {json}\n\n` format.
+
+#### Message 1 — Service Response (with buttons)
+
+Emitted by `format_sse(chat_id, content, buttons)`:
+
+```
+data: {
+  "chatId": "channel-abc123",
+  "payload": {
+    "content": "Which operating system are you using?",
+    "buttons": [
+      { "title": "Windows", "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=windows" },
+      { "title": "Mac",     "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=mac" },
+      { "title": "Linux",   "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=linux" }
+    ]
+  },
+  "timestamp": "1711512000000",
+  "sentTo": []
+}
+
+```
+
+#### Message 1 — Service Response (without buttons / final answer)
+
+```
+data: {
+  "chatId": "channel-abc123",
+  "payload": {
+    "content": "To fix your keyboard on Windows, please try the following steps: ..."
+  },
+  "timestamp": "1711512001000",
+  "sentTo": []
+}
+
+```
+
+#### Message 2 — END Marker (always the final SSE frame)
+
+Emitted by `format_sse(chat_id, "END")`:
+
+```
+data: {
+  "chatId": "channel-abc123",
+  "payload": {
+    "content": "END"
+  },
+  "timestamp": "1711512001001",
+  "sentTo": []
+}
+
+```
+
+> **Service workflows always yield exactly 2 SSE frames:** the content frame (Message 1) and the END frame (Message 2). RAG workflows yield many content frames (one per token) before the END frame.
+
+#### Error Frame (e.g. guardrail violation, rate limit, timeout)
+
+```
+data: {
+  "chatId": "channel-abc123",
+  "payload": {
+    "content": "I'm sorry, I can only assist with topics related to e-government services."
+  },
+  "timestamp": "1711512001000",
+  "sentTo": []
+}
+
+```
+
+Followed immediately by the END frame.
+
+---
+
+### Hop 4 — Notification Server → Browser (SSE Stream)
+
+After parsing each `data:` line from the backend, `streamingService.js` re-emits to the browser via its own SSE channel. The format changes: the outer `chatId`/`timestamp` wrapper is dropped and a `type` discriminator is added.
+
+#### `stream_start` — Sent once, before any backend data
+
+```json
+{
+  "type": "stream_start",
+  "streamId": "channel-abc123",
+  "channelId": "channel-abc123",
+  "isComplete": false
+}
+```
+
+#### `stream_chunk` — Sent once per parsed SSE frame (except END)
+
+With buttons (MCQ step):
+```json
+{
+  "type": "stream_chunk",
+  "content": "Which operating system are you using?",
+  "buttons": [
+    { "title": "Windows", "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=windows" },
+    { "title": "Mac",     "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=mac" },
+    { "title": "Linux",   "payload": "#service, /POST/dmapper/v2/keyboard/os-select?os=linux" }
+  ],
+  "streamId": "channel-abc123",
+  "channelId": "channel-abc123",
+  "isComplete": false
+}
+```
+
+Without buttons (final answer or RAG token):
+```json
+{
+  "type": "stream_chunk",
+  "content": "To fix your keyboard on Windows, please try the following steps: ...",
+  "streamId": "channel-abc123",
+  "channelId": "channel-abc123",
+  "isComplete": false
+}
+```
+
+#### `stream_end` — Sent when backend `payload.content === "END"`
+
+```json
+{
+  "type": "stream_end",
+  "streamId": "channel-abc123",
+  "channelId": "channel-abc123",
+  "isComplete": true
+}
+```
+
+#### `stream_error` — Sent on fetch failure or uncaught exception in `streamingService.js`
+
+```json
+{
+  "type": "stream_error",
+  "error": "Failed to connect to LLM orchestration service",
+  "streamId": "channel-abc123",
+  "channelId": "channel-abc123",
+  "isComplete": true
+}
+```
+
+---
+
+### Payload Shape Summary
+
+| Hop | Direction | Content Key | Envelope |
+|---|---|---|---|
+| **1** | Browser → Notification Server | `message` (string) | `{ message, options: { authorId, conversationHistory, url, connection_id } }` |
+| **2** | Notification Server → Backend | `message` (string) | `{ chatId, message, authorId, conversationHistory, url, environment, connection_id }` |
+| **3** | Backend → Notification Server | `payload.content` (string), optional `payload.buttons` | `data: { chatId, payload, timestamp, sentTo }\n\n` |
+| **4** | Notification Server → Browser | `content` (string), optional `buttons` | `data: { type, content?, buttons?, streamId, channelId, isComplete }\n` |
+
+---
+
 ## Error Handling in Streaming Flow
 
 | Error Scenario | Where Handled | Behavior |
