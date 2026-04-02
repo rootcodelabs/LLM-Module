@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import { ChoiceButton } from 'services/inference';
 
 const getNotificationNodeUrl = (): string => {
   const value = import.meta.env.REACT_APP_NOTIFICATION_NODE_URL;
@@ -21,7 +22,7 @@ interface StreamingOptions {
 }
 
 interface UseStreamingResponseReturn {
-  startStreaming: (message: string, options: StreamingOptions, onToken: (token: string) => void, onComplete: () => void, onError: (error: string) => void) => Promise<void>;
+  startStreaming: (message: string, options: StreamingOptions, onToken: (token: string) => void, onComplete: () => void, onError: (error: string) => void, onButtons?: (buttons: ChoiceButton[]) => void) => Promise<void>;
   stopStreaming: () => void;
   isStreaming: boolean;
 }
@@ -54,7 +55,8 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
       options: StreamingOptions,
       onToken: (token: string) => void,
       onComplete: () => void,
-      onError: (error: string) => void
+      onError: (error: string) => void,
+      onButtons?: (buttons: ChoiceButton[]) => void
     ) => {
       console.log('[SSE] Starting streaming for channel:', channelId);
       
@@ -85,6 +87,9 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
             } else if (data.type === 'stream_chunk' && data.content) {
               console.log('[SSE] Token:', data.content);
               onToken(data.content);
+              if (data.buttons && data.buttons.length > 0 && onButtons) {
+                onButtons(data.buttons);
+              }
             } else if (data.type === 'stream_end') {
               console.log('[SSE] Stream ended');
               setIsStreaming(false);

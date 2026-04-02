@@ -14,7 +14,7 @@ s3_client = boto3.client(
 
 # List of files to process
 files_to_process: List[Dict[str, str]] = [
-    {"bucket": "ckb", "key": "ID.ee/ID.ee.zip"},
+    {"bucket": "ckb", "key": "ID.ee/ID.zip"},
 ]
 
 # Generate presigned URLs
