@@ -62,7 +62,7 @@ class DSPyNeMoLLM(LLM):
             "streaming": self.streaming,
         }
 
-    def _get_dspy_lm(self) -> Any:
+    def _get_dspy_lm(self) -> dspy.LM:
         """
         Get the active DSPy LM from settings.
 
@@ -264,9 +264,9 @@ class DSPyNeMoLLM(LLM):
         loop = asyncio.get_running_loop()
 
         # Sentinel to mark end of stream
-        SENTINEL = object()
+        sentinel = object()
 
-        def producer():
+        def producer() -> None:
             """
             Synchronous producer running in a thread.
             Calls DSPy's LM with stream=True and pushes chunks to queue.
@@ -289,7 +289,7 @@ class DSPyNeMoLLM(LLM):
                     loop.call_soon_threadsafe(queue.put_nowait, chunk)
 
                 # Signal completion
-                loop.call_soon_threadsafe(queue.put_nowait, SENTINEL)
+                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
 
             except Exception as e:
                 # Pass exception to async consumer
@@ -305,7 +305,7 @@ class DSPyNeMoLLM(LLM):
                 chunk = await queue.get()
 
                 # Check for completion
-                if chunk is SENTINEL:
+                if chunk is sentinel:
                     break
 
                 # Check for errors from producer
