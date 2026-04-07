@@ -5,7 +5,7 @@ import time
 import dspy
 from loguru import logger
 
-from models.request_models import OrchestrationRequest, OrchestrationResponse
+from src.models.request_models import OrchestrationRequest, OrchestrationResponse
 from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.context_analyzer import ContextAnalyzer, ContextDetectionResult
 from tool_classifier.workflows.service_workflow import LLMServiceProtocol
@@ -150,11 +150,14 @@ class ContextWorkflowExecutor(BaseWorkflow):
                 components = self.orchestration_service._initialize_service_components(
                     request
                 )
-                response = await self.orchestration_service.handle_output_guardrails(
-                    guardrails_adapter=components.get("guardrails_adapter"),
-                    generated_response=response,
-                    request=request,
-                    costs_metric=costs_metric,
+                response = cast(
+                    OrchestrationResponse,
+                    await self.orchestration_service.handle_output_guardrails(
+                        guardrails_adapter=components.get("guardrails_adapter"),
+                        generated_response=response,
+                        request=request,
+                        costs_metric=costs_metric,
+                    ),
                 )
             except Exception as e:
                 logger.warning(

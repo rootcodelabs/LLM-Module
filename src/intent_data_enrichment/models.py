@@ -46,6 +46,7 @@ class EnrichedService(BaseModel):
     point_type: str = Field(
         default="summary", description="Point type: 'example' or 'summary'"
     )
+    is_common: bool = Field(default=False, description="Is common service")
 
 
 class EnrichmentResult(BaseModel):

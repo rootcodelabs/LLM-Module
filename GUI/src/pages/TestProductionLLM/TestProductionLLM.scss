@@ -3,6 +3,13 @@
   margin: 0 auto;
   padding: 2rem;
 
+.mcq-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
   &__header {
     display: flex;
     justify-content: space-between;

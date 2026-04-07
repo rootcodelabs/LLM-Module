@@ -62,6 +62,8 @@ from src.llm_orchestrator_config.exceptions import (
 )
 from src.llm_orchestrator_config.feature_flags import FeatureFlags
 from src.tool_classifier import ToolClassifier
+from src.tool_classifier.constants import SERVICE_STEP_PREFIXES
+from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
 
 
 class LangfuseConfig:
@@ -259,6 +261,20 @@ class LLMOrchestrationService:
             await self.tool_classifier.aclose()
             logger.debug("LLMOrchestrationService async resources closed")
 
+    def _get_service_workflow_executor(self) -> ServiceWorkflowExecutor:
+        """Return the ServiceWorkflowExecutor, reusing the ToolClassifier instance
+        when available, or creating a lightweight standalone executor otherwise.
+
+        Direct MCQ steps do not invoke any LLM, so llm_manager=None is safe.
+        orchestration_service=self is needed for format_sse() in the streaming path.
+        """
+        if self.tool_classifier is not None:
+            return self.tool_classifier.service_workflow
+        return ServiceWorkflowExecutor(
+            llm_manager=None,
+            orchestration_service=self,
+        )
+
     @observe(name="orchestration_request", as_type="agent")
     async def process_orchestration_request(
         self, request: OrchestrationRequest
@@ -304,6 +320,24 @@ class LLMOrchestrationService:
             # Store detected language in request for use throughout pipeline
             # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
             setattr(request, "_detected_language", detected_language)
+
+            # STEP 0.1: Multi-step service prefix check (bypass NLU pipeline)
+            if request.message.startswith(SERVICE_STEP_PREFIXES):
+                logger.info(
+                    f"[{request.chatId}] #service prefix detected - direct step execution"
+                )
+                executor = self._get_service_workflow_executor()
+                direct_response = await executor.execute_direct_step(
+                    request=request,
+                    time_metric=time_metric,
+                )
+                if direct_response is not None:
+                    log_step_timings(time_metric, request.chatId)
+                    return direct_response
+                # Parse failed — fall through to normal pipeline
+                logger.warning(
+                    f"[{request.chatId}] Direct step failed, falling through to normal pipeline"
+                )
 
             # STEP 0.5: Basic Query Validation (before expensive component initialization)
             start_time = time.time()
@@ -547,6 +581,26 @@ class LLMOrchestrationService:
         # Store detected language in request for use throughout pipeline
         # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
         setattr(request, "_detected_language", detected_language)
+
+        # STEP 0.1: Multi-step service prefix check (bypass NLU pipeline)
+        if request.message.startswith(SERVICE_STEP_PREFIXES):
+            logger.info(
+                f"[{request.chatId}] #service prefix detected - direct step stream"
+            )
+            executor = self._get_service_workflow_executor()
+            step_stream = await executor.execute_direct_step_streaming(
+                request=request,
+                time_metric=time_metric,
+            )
+            if step_stream is not None:
+                async for chunk in step_stream:
+                    yield chunk
+                log_step_timings(time_metric, request.chatId)
+                return
+            # Parse failed — fall through to normal pipeline
+            logger.warning(
+                f"[{request.chatId}] Direct step stream failed, falling through to normal pipeline"
+            )
 
         # Step 0.5: Basic Query Validation (before guardrails, with timing)
         start_time = time.time()
@@ -1138,21 +1192,31 @@ class LLMOrchestrationService:
                 request.connection_id, costs_metric, request.environment
             )
 
-    def format_sse(self, chat_id: str, content: str) -> str:
+    def format_sse(
+        self,
+        chat_id: str,
+        content: str,
+        buttons: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """
         Format SSE message with exact specification.
 
         Args:
             chat_id: Chat/channel identifier
             content: Content to send (token, "END", error message, etc.)
+            buttons: Optional list of choice button dicts for MCQ step responses
 
         Returns:
             SSE-formatted string: "data: {json}\\n\\n"
         """
 
+        inner_payload: Dict[str, Any] = {"content": content}
+        if buttons:
+            inner_payload["buttons"] = buttons
+
         payload: Dict[str, Any] = {
             "chatId": chat_id,
-            "payload": {"content": content},
+            "payload": inner_payload,
             "timestamp": str(int(datetime.now().timestamp() * 1000)),
             "sentTo": [],
         }
