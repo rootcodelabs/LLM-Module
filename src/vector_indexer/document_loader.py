@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
+
 from loguru import logger
 
 from vector_indexer.config.config_loader import VectorIndexerConfig
@@ -20,9 +22,18 @@ class DocumentLoadError(Exception):
 class DocumentLoader:
     """Handles document discovery and loading from datasets folder."""
 
-    def __init__(self, config: VectorIndexerConfig):
+    def __init__(self, config: VectorIndexerConfig) -> None:
         self.config = config
         self.datasets_path = Path(config.dataset_base_path)
+
+    @staticmethod
+    def _is_valid_url(url: str) -> bool:
+        """Validate that a URL has a proper scheme and network location."""
+        try:
+            parsed = urlparse(url)
+            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+        except Exception:
+            return False
 
     def discover_all_documents(self) -> List[DocumentInfo]:
         """
@@ -88,22 +99,44 @@ class DocumentLoader:
 
             # Check metadata file exists
             metadata_file = hash_dir / self.config.metadata_file
-            if metadata_file.exists():
-                documents.append(
-                    DocumentInfo(
-                        document_hash=content_hash,  # Use content hash consistently
-                        cleaned_txt_path=str(cleaned_file),
-                        source_meta_path=str(metadata_file),
-                        dataset_collection=collection_name,
-                    )
-                )
-                logger.debug(
-                    f"Found document: {content_hash[:12]}... in collection: {collection_name}"
-                )
-            else:
+            if not metadata_file.exists():
                 logger.warning(
-                    f"Skipping document in {hash_dir.name}: missing {self.config.metadata_file}"
+                    f"Skipping document in {hash_dir.name}: "
+                    f"missing {self.config.metadata_file}"
                 )
+                continue
+
+            # Validate source_url before accepting the document
+            try:
+                with open(metadata_file, "r", encoding="utf-8") as mf:
+                    meta = json.load(mf)
+                source_url = meta.get("source_url") or ""
+            except Exception as e:
+                logger.warning(
+                    f"Skipping document in {hash_dir.name}: "
+                    f"failed to read metadata: {e}"
+                )
+                continue
+
+            if not self._is_valid_url(source_url):
+                logger.warning(
+                    f"Skipping document in {hash_dir.name}: "
+                    f"invalid source_url '{source_url}'"
+                )
+                continue
+
+            documents.append(
+                DocumentInfo(
+                    document_hash=content_hash,  # Use content hash consistently
+                    cleaned_txt_path=str(cleaned_file),
+                    source_meta_path=str(metadata_file),
+                    dataset_collection=collection_name,
+                )
+            )
+            logger.debug(
+                f"Found document: {content_hash[:12]}... "
+                f"in collection: {collection_name}"
+            )
 
         logger.info(f"Discovered {len(documents)} documents for processing")
         return documents
