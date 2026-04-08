@@ -74,9 +74,10 @@ const PromptConfigurations: FC = () => {
                     <FormTextarea
                         label={t('promptConfigurations.promptLabel')}
                         name="promptText"
+                        maxLength={10000}
                         value={promptText}
                         onChange={(e) => setPromptText(e.target.value)}
-                        minRows={10}
+                        maxRows={15}
                     />
 
                     <div className="form-actions">
