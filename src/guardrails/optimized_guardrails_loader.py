@@ -19,7 +19,7 @@ class OptimizedGuardrailsLoader:
     - Falls back to base config if optimization not found
     """
 
-    def __init__(self, optimized_modules_dir: Optional[Path] = None):
+    def __init__(self, optimized_modules_dir: Optional[Path] = None) -> None:
         """
         Initialize the guardrails loader.
 
