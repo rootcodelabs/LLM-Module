@@ -148,9 +148,9 @@ class PromptConfigurationLoader:
                     return prompt_text
 
                 elif prompt_text is None and fetch_error is None:
-                    # No configuration found - cache empty result to avoid repeated loads
+                    # Prompt field not found - cache empty result to avoid repeated loads
                     logger.warning(
-                        "No prompt configuration found in database; caching empty result"
+                        "Prompt field not found in database; caching empty result"
                     )
                     self._cached_prompt = ""
                     self._cache_timestamp = time.time()
@@ -233,6 +233,8 @@ class PromptConfigurationLoader:
                         data = data["response"]
 
                     # Now extract prompt from the unwrapped data
+                    prompt = None  # None means field doesn't exist (not found)
+
                     if isinstance(data, list) and len(data) > 0:
                         # Array format: [{"id": 1, "prompt": "..."}]
                         first_elem_keys = (
@@ -241,28 +243,33 @@ class PromptConfigurationLoader:
                         logger.debug(
                             f"Extracting from list, first element keys: {first_elem_keys}"
                         )
-                        prompt = data[0].get("prompt", "").strip()
+                        # Check if 'prompt' KEY exists (distinguish from missing field)
+                        if isinstance(data[0], dict) and "prompt" in data[0]:
+                            prompt = data[0].get("prompt", "").strip()
                     elif isinstance(data, dict):
                         # Dict format: {"id": 1, "prompt": "..."}
                         logger.debug(f"Extracting from dict, keys: {list(data.keys())}")
-                        prompt = data.get("prompt", "").strip()
+                        # Check if 'prompt' KEY exists (distinguish from missing field)
+                        if "prompt" in data:
+                            prompt = data.get("prompt", "").strip()
                     else:
                         logger.warning(
                             f"Unexpected data type: {type(data).__name__}, structure not recognized"
                         )
 
-                    logger.debug(
-                        f"Extracted prompt length: {len(prompt) if prompt else 0}"
-                    )
-
-                    if prompt:
+                    # Distinguish between: exists and empty ("") vs doesn't exist (None)
+                    if prompt is not None:
+                        # Field exists - valid state (even if empty)
                         logger.debug(
                             f"Loaded prompt on attempt {attempt} ({len(prompt)} chars)"
                         )
-                        return prompt
+                        return prompt  # Return actual value (may be empty string)
                     else:
-                        logger.warning(f"Prompt field is empty (attempt {attempt})")
-                        return None  # Database has no configuration
+                        # Field doesn't exist - configuration not found
+                        logger.warning(
+                            f"Prompt field not found or missing (attempt {attempt})"
+                        )
+                        return None
 
                 else:
                     logger.warning(
@@ -348,8 +355,8 @@ class PromptConfigurationLoader:
 
         # Determine status and update cache
         with self._cache_condition:
-            if prompt_text:
-                # Success - update cache
+            if prompt_text is not None:
+                # Success - field exists
                 self._cached_prompt = prompt_text
                 self._cache_timestamp = time.time()
                 self._last_error = None
@@ -363,14 +370,14 @@ class PromptConfigurationLoader:
                 }
 
             elif prompt_text is None and fetch_error is None:
-                # No configuration found (explicit empty response from Ruuter)
+                # No configuration found (prompt field missing in response from Ruuter)
                 self._cached_prompt = ""
                 self._cache_timestamp = time.time()
                 self._last_error = None
-                logger.warning("No prompt configuration found in database")
+                logger.warning("Prompt field not found in database")
                 return {
                     "status": RefreshStatus.NOT_FOUND,
-                    "message": "No prompt configuration found in database",
+                    "message": "Prompt field not found in database",
                     "error": None,
                 }
 

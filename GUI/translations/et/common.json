@@ -433,6 +433,7 @@
   "promptConfigurations": {
     "title": "Viiba Seaded",
     "subtitle": "Seadista ja halda oma viiba malle",
+    "enableToggleLabel": "Luba kohandatud viiba seadistus",
     "promptLabel": "Viiba Mall",
     "promptPlaceholder": "Sisesta siia oma viiba mall...",
     "submitButton": "Salvesta",
@@ -440,6 +441,8 @@
     "saving": "Salvestan...",
     "updating": "Uuendan...",
     "submitSuccess": "Viiba seadistus salvestati edukalt",
-    "submitError": "Viiba seadistuse salvestamine ebaõnnestus. Palun proovi uuesti."
+    "submitError": "Viiba seadistuse salvestamine ebaõnnestus. Palun proovi uuesti.",
+    "deleteSuccess": "Viiba seadistus kustutati edukalt",
+    "deleteError": "Viiba seadistuse kustutamine ebaõnnestus. Palun proovi uuesti."
   }
 }
