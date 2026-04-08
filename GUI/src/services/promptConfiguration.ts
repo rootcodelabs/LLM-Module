@@ -21,3 +21,10 @@ export const savePromptConfiguration = async (prompt: string): Promise<PromptCon
     });
     return data?.response;
 };
+
+export const disablePromptConfiguration = async (): Promise<PromptConfiguration[]> => {
+    const { data } = await apiDev.post(promptConfigurationEndpoints.SAVE_PROMPT_CONFIGURATION(), {
+        prompt: "",
+    });
+    return data?.response;
+};

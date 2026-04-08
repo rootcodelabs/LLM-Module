@@ -15,6 +15,12 @@ declaration:
 extract_request_data:
   assign:
     prompt: ${incoming.body.prompt ?? ""}
+  next: initialize_results
+
+initialize_results:
+  assign:
+    update_result: null
+    insert_result: null
   next: get_existing_prompt
 
 get_existing_prompt:
