@@ -143,6 +143,7 @@ const TestLLM: FC = () => {
               label=""
               name=""
               maxLength={1000}
+              maxRows={15}
               onChange={(e) => handleChange('text', e.target.value)}
               showMaxLength={true}
             />
