@@ -12,6 +12,12 @@ from loguru import logger
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
+from src.utils.redis_client import (
+    init_redis_client,
+    close_redis_client,
+    check_redis_health,
+)
+from src.utils.api_tool_session_store import APIToolSessionStore
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     STREAMING_ALLOWED_ENVS,
     STREAM_TIMEOUT_MESSAGE,
@@ -81,6 +87,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error(f"Failed to initialize LLM Orchestration Service: {e}")
         raise
 
+    # Initialize Redis session store (non-fatal: service continues without it)
+    try:
+        await init_redis_client()
+        app.state.session_store = APIToolSessionStore()
+        logger.info("Redis session store initialized successfully")
+    except Exception as e:
+        logger.warning(f"Redis session store unavailable, continuing without it: {e}")
+        app.state.session_store = None
+
     yield
 
     # Shutdown
@@ -91,6 +106,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ):
         await app.state.orchestration_service.aclose()
         app.state.orchestration_service = None
+
+    await close_redis_client()
 
 
 # Create FastAPI application
@@ -220,7 +237,7 @@ async def pydantic_validation_exception_handler(
 
 
 @app.get("/health")
-def health_check(request: Request) -> dict[str, str]:
+async def health_check(request: Request) -> dict[str, str]:
     """Health check endpoint."""
     service_status = (
         "initialized"
@@ -228,10 +245,12 @@ def health_check(request: Request) -> dict[str, str]:
         and request.app.state.orchestration_service is not None
         else "not_initialized"
     )
+    redis_status = await check_redis_health()
     return {
         "status": "healthy",
         "service": "llm-orchestration-service",
         "orchestration_service": service_status,
+        "redis_session_store": redis_status,
     }
 
 
