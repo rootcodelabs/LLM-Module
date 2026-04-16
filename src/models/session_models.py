@@ -33,3 +33,11 @@ class APIToolSession(BaseModel):
         ge=1,
         description="Maximum turns allowed before the session is abandoned",
     )
+    awaiting_continuation: bool = Field(
+        default=False,
+        description=(
+            "True when the loop has reached the continuation threshold and is waiting "
+            "for the user to decide whether to continue collecting parameters or exit "
+            "to the RAG workflow."
+        ),
+    )
