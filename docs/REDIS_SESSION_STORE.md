@@ -141,6 +141,11 @@ if session is None:
 # Session exists → merge new params, check if ready
 session = await session_store.get(request.chatId)
 
+# Guard: abandon if turn limit reached
+if session.turn_count >= session.max_turns:
+    await session_store.delete(request.chatId)
+    return "I was unable to collect all required information. Please try again."
+
 new_params = extract_params_from_message(request.message, session)
 merged_params = {**session.collected_params, **new_params}
 
@@ -157,11 +162,6 @@ else:
         turn_count=session.turn_count + 1,
     )
     return ask_for_next_missing_param(session.selected_endpoint, merged_params)
-
-# --- Guard: abandon if turn limit reached ---
-if session.turn_count >= session.max_turns:
-    await session_store.delete(request.chatId)
-    return "I was unable to collect all required information. Please try again."
 ```
 
 ---

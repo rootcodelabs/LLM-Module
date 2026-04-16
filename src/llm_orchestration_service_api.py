@@ -107,7 +107,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await app.state.orchestration_service.aclose()
         app.state.orchestration_service = None
 
-    await close_redis_client()
+    try:
+        await close_redis_client()
+    except Exception as e:
+        logger.warning(f"Error closing Redis client during shutdown: {e}")
 
 
 # Create FastAPI application

@@ -1,6 +1,6 @@
 """Pydantic models for API tool session state."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -15,11 +15,11 @@ class APIToolSession(BaseModel):
         ...,
         description="Current state of the agentic loop (e.g. 'collecting_params', 'ready', 'completed')",
     )
-    selected_endpoint: Optional[Dict[str, Any]] = Field(
+    selected_endpoint: dict[str, Any] | None = Field(
         default=None,
         description="The API endpoint selected for this conversation",
     )
-    collected_params: Dict[str, Any] = Field(
+    collected_params: dict[str, Any] = Field(
         default_factory=dict,
         description="Parameters collected from the user so far",
     )

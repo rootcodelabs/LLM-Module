@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.models.session_models import APIToolSession
-from src.utils.api_tool_session_store import APIToolSessionStore, _key
+from src.utils.api_tool_session_store import (
+    APIToolSessionStore,
+    _key,
+    require_session_store,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -151,11 +155,29 @@ class TestSessionStoreSave:
 
 class TestSessionStoreUpdate:
     @pytest.mark.asyncio
+    async def test_update_rejects_unknown_fields(self):
+        store = APIToolSessionStore()
+
+        with pytest.raises(ValueError, match="Unknown session fields"):
+            await store.update("chat-1", sate="ready")  # typo: sate != state
+
+    @pytest.mark.asyncio
     async def test_update_merges_fields_and_resets_ttl(self):
         store = APIToolSessionStore()
         original = _make_session(turn_count=1, collected_params={"a": "1"})
+
+        pipe_mock = AsyncMock()
+        pipe_mock.get = AsyncMock(return_value=original.model_dump_json())
+        pipe_mock.watch = AsyncMock()
+        pipe_mock.unwatch = AsyncMock()
+        pipe_mock.multi = MagicMock()
+        pipe_mock.set = MagicMock()
+        pipe_mock.execute = AsyncMock(return_value=[True])
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=False)
+
         redis_mock = _make_redis_mock()
-        redis_mock.get = AsyncMock(return_value=original.model_dump_json())
+        redis_mock.pipeline = MagicMock(return_value=pipe_mock)
 
         with patch(
             "src.utils.api_tool_session_store.get_redis_client", return_value=redis_mock
@@ -175,8 +197,16 @@ class TestSessionStoreUpdate:
     @pytest.mark.asyncio
     async def test_update_returns_none_when_session_missing(self):
         store = APIToolSessionStore()
+
+        pipe_mock = AsyncMock()
+        pipe_mock.get = AsyncMock(return_value=None)
+        pipe_mock.watch = AsyncMock()
+        pipe_mock.unwatch = AsyncMock()
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=False)
+
         redis_mock = _make_redis_mock()
-        redis_mock.get = AsyncMock(return_value=None)
+        redis_mock.pipeline = MagicMock(return_value=pipe_mock)
 
         with patch(
             "src.utils.api_tool_session_store.get_redis_client", return_value=redis_mock
@@ -189,16 +219,28 @@ class TestSessionStoreUpdate:
     async def test_update_resets_ttl(self):
         store = APIToolSessionStore()
         session = _make_session()
+
+        pipe_mock = AsyncMock()
+        pipe_mock.get = AsyncMock(return_value=session.model_dump_json())
+        pipe_mock.watch = AsyncMock()
+        pipe_mock.unwatch = AsyncMock()
+        pipe_mock.multi = MagicMock()
+        pipe_mock.set = MagicMock()
+        pipe_mock.execute = AsyncMock(return_value=[True])
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=False)
+
         redis_mock = _make_redis_mock()
-        redis_mock.get = AsyncMock(return_value=session.model_dump_json())
+        redis_mock.pipeline = MagicMock(return_value=pipe_mock)
 
         with patch(
             "src.utils.api_tool_session_store.get_redis_client", return_value=redis_mock
         ):
             await store.update(session.chat_id, state="ready")
 
-        # save() should have been called → set() with ex=1800
-        set_call = redis_mock.set.call_args
+        # pipe.set() should have been called with ex=1800
+        pipe_mock.set.assert_called_once()
+        set_call = pipe_mock.set.call_args
         assert set_call[1]["ex"] == 1800
 
 
@@ -326,3 +368,44 @@ class TestSessionStoreErrorHandling:
             result = await store.exists("chat-xyz")
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# require_session_store dependency
+# ---------------------------------------------------------------------------
+
+
+class TestRequireSessionStore:
+    def test_returns_store_when_available(self):
+        store = APIToolSessionStore()
+        mock_request = MagicMock()
+        mock_request.app.state.session_store = store
+        mock_request.url.path = "/api-tool/invoke"
+
+        result = require_session_store(mock_request)
+        assert result is store
+
+    def test_raises_503_when_store_is_none(self):
+        from fastapi import HTTPException
+
+        mock_request = MagicMock()
+        mock_request.app.state.session_store = None
+        mock_request.url.path = "/api-tool/invoke"
+
+        with pytest.raises(HTTPException) as exc_info:
+            require_session_store(mock_request)
+
+        assert exc_info.value.status_code == 503
+
+    def test_raises_503_when_state_attr_missing(self):
+        from fastapi import HTTPException
+
+        mock_request = MagicMock(spec=["app", "url"])
+        mock_request.app = MagicMock(spec=["state"])
+        mock_request.app.state = MagicMock(spec=[])  # no session_store attr
+        mock_request.url.path = "/api-tool/invoke"
+
+        with pytest.raises(HTTPException) as exc_info:
+            require_session_store(mock_request)
+
+        assert exc_info.value.status_code == 503

@@ -2,17 +2,23 @@
 
 from typing import Any, Optional
 
+from fastapi import HTTPException, Request, status
 from loguru import logger
+from redis import WatchError
 
 from src.models.session_models import APIToolSession
 from src.utils.redis_client import get_redis_client
 
 _SESSION_KEY_PREFIX = "session:"
 _SESSION_TTL_SECONDS = 1800  # 30 minutes, sliding
+_UPDATE_MAX_RETRIES = 3
 
 
 def _key(chat_id: str) -> str:
     return f"{_SESSION_KEY_PREFIX}{chat_id}"
+
+
+_VALID_SESSION_FIELDS = frozenset(APIToolSession.model_fields)
 
 
 class APIToolSessionStore:
@@ -68,9 +74,10 @@ class APIToolSessionStore:
             logger.error("[SessionStore] save({}) failed: {}", session.chat_id, exc)
 
     async def update(self, chat_id: str, **fields: Any) -> Optional[APIToolSession]:
-        """Partially update a session and reset the TTL.
+        """Atomically update a session using optimistic locking (WATCH/MULTI/EXEC).
 
-        Fetches the current session, merges the provided fields, then saves it back.
+        Uses Redis WATCH to detect concurrent modifications. If a conflicting
+        write is detected, the operation retries up to ``_UPDATE_MAX_RETRIES`` times.
 
         Args:
             chat_id: The conversation to update.
@@ -78,17 +85,69 @@ class APIToolSessionStore:
 
         Returns:
             The updated session, or None if the session does not exist or Redis is unavailable.
+
+        Raises:
+            ValueError: If any of the provided field names are not valid
+                ``APIToolSession`` attributes.
         """
-        session = await self.get(chat_id)
-        if session is None:
+        unknown = set(fields) - _VALID_SESSION_FIELDS
+        if unknown:
+            raise ValueError(f"Unknown session fields: {unknown}")
+
+        client = get_redis_client()
+        if client is None:
             logger.warning(
-                "[SessionStore] update({}) - session not found, skipping", chat_id
+                "[SessionStore] Redis unavailable - update({}) skipped", chat_id
             )
             return None
 
-        updated = session.model_copy(update=fields)
-        await self.save(updated)
-        return updated
+        key = _key(chat_id)
+
+        for attempt in range(_UPDATE_MAX_RETRIES):
+            try:
+                async with client.pipeline(transaction=True) as pipe:
+                    await pipe.watch(key)
+
+                    raw = await pipe.get(key)
+                    if raw is None:
+                        await pipe.unwatch()
+                        logger.warning(
+                            "[SessionStore] update({}) - session not found, skipping",
+                            chat_id,
+                        )
+                        return None
+
+                    session = APIToolSession.model_validate_json(raw)
+                    updated = session.model_copy(update=fields)
+
+                    pipe.multi()
+                    pipe.set(key, updated.model_dump_json(), ex=_SESSION_TTL_SECONDS)
+                    await pipe.execute()
+
+                    logger.debug(
+                        "[SessionStore] Session updated for chat_id={}", chat_id
+                    )
+                    return updated
+
+            except WatchError:
+                logger.debug(
+                    "[SessionStore] update({}) - concurrent modification detected, "
+                    "retrying (attempt {}/{})",
+                    chat_id,
+                    attempt + 1,
+                    _UPDATE_MAX_RETRIES,
+                )
+                continue
+            except Exception as exc:
+                logger.error("[SessionStore] update({}) failed: {}", chat_id, exc)
+                return None
+
+        logger.error(
+            "[SessionStore] update({}) - exhausted {} retries due to concurrent writes",
+            chat_id,
+            _UPDATE_MAX_RETRIES,
+        )
+        return None
 
     async def delete(self, chat_id: str) -> None:
         """Remove a session from Redis.
@@ -124,3 +183,25 @@ class APIToolSessionStore:
         except Exception as exc:
             logger.error("[SessionStore] exists({}) failed: {}", chat_id, exc)
             return False
+
+
+def require_session_store(request: Request) -> APIToolSessionStore:
+    """FastAPI dependency that guarantees a live session store.
+
+    Use as a dependency on any endpoint that requires multi-turn session
+    state.  Returns HTTP 503 immediately when Redis is unavailable instead
+    of letting the request silently degrade.
+    """
+    store: Optional[APIToolSessionStore] = getattr(
+        request.app.state, "session_store", None
+    )
+    if store is None:
+        logger.error(
+            "[SessionStore] Session store unavailable — returning 503 for {}",
+            request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session store is currently unavailable. Please try again later.",
+        )
+    return store
