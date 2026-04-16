@@ -37,6 +37,7 @@ dependencies = [
     "langfuse>=3.8.1",
     "minio>=7.2.0",
     "psycopg2-binary>=2.9.11",
+    "redis[hiredis]>=5.0,<6.0",
 ]
 
 [tool.ruff]
@@ -109,6 +110,8 @@ unfixable = []
 "src/llm_orchestrator_config/context_manager.py" = ["ANN401"]  # MockResponse with dynamic attributes
 "src/optimization/metrics/*.py" = ["ANN401"]  # DSPy optimizer trace parameter (internal type)
 "byk-stack-setup/script.py" = ["T201"]  # CLI script uses print 
+
+"src/utils/api_tool_session_store.py" = ["ANN401"]  # Dynamic Pydantic model field updates via **kwargs
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.

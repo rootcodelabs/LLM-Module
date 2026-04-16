@@ -630,6 +630,10 @@ services:
       - ENVIRONMENT=production
       - VAULT_ADDR=http://vault-agent-llm:8201
       # VAULT_TOKEN not set - vault-agent-llm proxy handles authentication
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_AUTH=${REDIS_AUTH}
+      - REDIS_SESSION_DB=${REDIS_SESSION_DB}
     volumes:
       - ./src/llm_config_module/config:/app/src/llm_config_module/config:ro
       - ./src/optimization/optimized_modules:/app/src/optimization/optimized_modules
@@ -638,6 +642,7 @@ services:
       - bykstack
     depends_on:
       - vault-agent-llm
+      - redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://llm-orchestration-service:8100/health"]
       interval: 30s
