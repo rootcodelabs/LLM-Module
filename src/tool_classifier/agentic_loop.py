@@ -114,8 +114,11 @@ class AgenticLoop:
         The returned turn_count is always input turn_count + 1.
         Session state is saved automatically on COMPLETED, NEEDS_INPUT, and
         AWAITING_CONTINUATION_DECISION.
-        It is NOT saved on MAX_TURNS_REACHED or extraction errors — the caller
-        is expected to delete the session in those cases.
+        It is NOT saved on MAX_TURNS_REACHED. It is also generally not saved
+        on extraction errors, except when a continuation decision was consumed
+        and the cleared ``awaiting_continuation`` state must be persisted. The
+        caller is expected to delete the session on MAX_TURNS_REACHED and
+        extraction errors after handling the failure.
 
         Args:
             chat_id: Unique conversation identifier, used as the Redis session key.
