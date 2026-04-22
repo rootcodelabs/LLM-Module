@@ -6,12 +6,23 @@ from typing import Any, Dict, List
 from loguru import logger
 
 from src.utils.api_tool_session_store import APIToolSessionStore
-from tool_classifier.constants import CONTINUATION_QUESTION, CONTINUATION_TURN
+from tool_classifier.constants import (
+    CONTINUATION_QUESTION,
+    CONTINUATION_QUESTION_ET,
+    CONTINUATION_QUESTION_RU,
+    CONTINUATION_TURN,
+)
 from tool_classifier.enums import AgenticLoopStatus
 from tool_classifier.models import AgenticLoopResult
 from tool_classifier.param_extractor import ParamExtractionModule
 
-# Normalised user responses that indicate the user wants to keep collecting params.
+_CONTINUATION_QUESTIONS: dict[str, str] = {
+    "en": CONTINUATION_QUESTION,
+    "et": CONTINUATION_QUESTION_ET,
+    "ru": CONTINUATION_QUESTION_RU,
+}
+
+
 _YES_RESPONSES = frozenset(
     {
         "yes",
@@ -94,6 +105,7 @@ class AgenticLoop:
         max_turns: int = 5,
         awaiting_continuation: bool = False,
         continuation_turn: int = CONTINUATION_TURN,
+        session_language: str = "en",
     ) -> AgenticLoopResult:
         """Process one user turn of the parameter-collection loop.
 
@@ -193,6 +205,7 @@ class AgenticLoop:
                 params_schema,
                 conversation_history,
                 collected_params,
+                session_language,
             )
         except Exception as exc:
             logger.error(
@@ -218,10 +231,13 @@ class AgenticLoop:
                 turn_count=updated_turn_count,
             )
 
-        # Step 3 — Merge: prior values take precedence (already_collected is authoritative)
+        # Step 3 — Merge: newly extracted values override prior ones so the user
+        # can correct a value they provided in an earlier turn (e.g. "actually,
+        # make that Russia instead of Estonia"). Prior values are kept only for
+        # params the extractor did NOT mention in this turn.
         merged_params: Dict[str, Any] = {
-            **extraction["extracted_params"],
             **collected_params,
+            **extraction["extracted_params"],
         }
 
         # Step 4 — Completeness check
@@ -263,13 +279,16 @@ class AgenticLoop:
                 turn_count,
                 chat_id,
             )
+            continuation_q = _CONTINUATION_QUESTIONS.get(
+                session_language, CONTINUATION_QUESTION
+            )
             await self._save_session(
                 chat_id, merged_params, updated_turn_count, awaiting_continuation=True
             )
             return AgenticLoopResult(
                 status=AgenticLoopStatus.AWAITING_CONTINUATION_DECISION,
                 collected_params=merged_params,
-                clarifying_question=CONTINUATION_QUESTION,
+                clarifying_question=continuation_q,
                 turn_count=updated_turn_count,
             )
 
@@ -298,6 +317,12 @@ class AgenticLoop:
         A missing or unavailable session is logged but never raises.
         """
         try:
+            if self._session_store is None:
+                logger.debug(
+                    "AgenticLoop: session store unavailable — skipping save for chat_id={}",
+                    chat_id,
+                )
+                return
             await self._session_store.update(
                 chat_id,
                 collected_params=collected_params,
