@@ -1,9 +1,11 @@
 """Data models for tool classifier system."""
 
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
 
-from tool_classifier.enums import WorkflowType
+from tool_classifier.enums import AgenticLoopStatus, WorkflowType
 
 
 class ClassificationResult(BaseModel):
@@ -79,3 +81,23 @@ class ContextWorkflowMetadata(BaseModel):
     can_answer_from_history: bool = Field(
         default=False, description="Whether conversation history can answer this"
     )
+
+
+@dataclass
+class AgenticLoopResult:
+    """
+    Result returned by AgenticLoop.run_turn() after processing one conversation turn.
+
+    Attributes:
+        status: Outcome of this turn — completed, needs_input, max_turns_reached,
+            or awaiting_continuation_decision.
+        collected_params: All parameters collected so far (prior turns + this turn merged).
+        clarifying_question: Natural-language question to show the user when status is
+            NEEDS_INPUT or AWAITING_CONTINUATION_DECISION. Empty string for other statuses.
+        turn_count: Updated turn counter (input turn_count + 1).
+    """
+
+    status: AgenticLoopStatus
+    collected_params: Dict[str, Any]
+    clarifying_question: str
+    turn_count: int
