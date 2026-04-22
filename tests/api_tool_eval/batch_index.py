@@ -1,10 +1,9 @@
 """
-Batch Indexer — sends all endpoints from endpoints.json to POST /api-tools/index.
+Batch Indexer — sends all endpoints from test-endpoints.json to POST /api-tools/index.
 
 Usage:
     python batch_index.py
     python batch_index.py --ruuter-url http://localhost:8086
-    python batch_index.py --skip-existing  # skip endpoints already in Qdrant
 """
 
 import argparse
@@ -14,7 +13,7 @@ from pathlib import Path
 
 import requests
 
-ENDPOINTS_FILE = Path(__file__).parent / "endpoints.json"
+ENDPOINTS_FILE = Path(__file__).parent / "test-endpoints.json"
 DEFAULT_RUUTER_URL = "http://localhost:8086"
 INDEX_ENDPOINT = "/rag-search/api-tools/index"
 
