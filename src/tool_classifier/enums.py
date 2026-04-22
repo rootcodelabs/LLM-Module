@@ -37,3 +37,23 @@ WORKFLOW_DISPLAY_NAMES = {
     WorkflowType.RAG: "RAG Workflow",
     WorkflowType.OOD: "Out-of-Domain Workflow",
 }
+
+
+class AgenticLoopStatus(str, Enum):
+    """
+    Status values returned by the agentic loop after each turn.
+
+    - COMPLETED: All required parameters have been collected.
+    - NEEDS_INPUT: One or more required parameters are still missing;
+      a clarifying question is available for the user.
+    - MAX_TURNS_REACHED: The turn limit was hit before collection completed;
+      the caller should fall back gracefully.
+    - AWAITING_CONTINUATION_DECISION: The continuation threshold has been reached
+      with params still missing; a yes/no question is returned asking whether to
+      keep collecting or fall back to the RAG workflow.
+    """
+
+    COMPLETED = "completed"
+    NEEDS_INPUT = "needs_input"
+    MAX_TURNS_REACHED = "max_turns_reached"
+    AWAITING_CONTINUATION_DECISION = "awaiting_continuation_decision"
