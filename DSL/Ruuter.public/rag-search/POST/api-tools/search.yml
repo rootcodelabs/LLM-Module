@@ -1,0 +1,81 @@
+declaration:
+  call: declare
+  version: 0.1
+  description: "Search API tool endpoints using semantic (hybrid) search against api_tool_collection(test endpoint)"
+  method: post
+  accepts: json
+  returns: json
+  namespace: rag-search
+  allowlist:
+    body:
+      - field: query
+        type: string
+        description: "Natural-language user query to search API endpoints"
+      - field: top_k
+        type: integer
+        description: "Max number of results to return (default: 5)"
+      - field: environment
+        type: string
+        description: "Embedding environment (default: production)"
+
+extract_request_data:
+  assign:
+    query: ${incoming.body.query}
+    top_k: ${incoming.body.top_k || 5}
+    environment: ${incoming.body.environment || 'production'}
+  next: validate_query
+
+validate_query:
+  switch:
+    - condition: "${!query || query.trim() === ''}"
+      next: return_missing_query
+  next: execute_search
+
+return_missing_query:
+  assign:
+    error_data:
+      success: false
+      error: "MISSING_QUERY"
+      message: "'query' field is required and must be a non-empty string"
+  next: return_bad_request
+
+execute_search:
+  call: http.post
+  args:
+    url: "[#RAG_SEARCH_LLM_SERVICE]/api-tools/search"
+    body:
+      query: ${query}
+      top_k: ${top_k}
+      environment: ${environment}
+  result: search_result
+  on_error: handle_search_error
+  next: check_search_status
+
+check_search_status:
+  switch:
+    - condition: ${200 <= search_result.response.statusCodeValue && search_result.response.statusCodeValue < 300}
+      next: return_ok
+  next: handle_search_error
+
+handle_search_error:
+  assign:
+    error_data:
+      success: false
+      error: "SEARCH_FAILED"
+      message: "Semantic search failed. LLM service may be unavailable."
+  next: return_server_error
+
+return_ok:
+  status: 200
+  return: ${search_result.response.body}
+  next: end
+
+return_bad_request:
+  status: 400
+  return: ${error_data}
+  next: end
+
+return_server_error:
+  status: 500
+  return: ${error_data}
+  next: end

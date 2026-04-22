@@ -110,6 +110,28 @@ Ensures the top result is significantly better than the runner-up."""
 
 
 # ============================================================================
+# API Tool Collection Search Configuration
+# ============================================================================
+
+API_TOOL_COLLECTION = "api_tool_collection"
+"""Qdrant collection name for API endpoint semantic search."""
+
+API_TOOL_SEARCH_TOP_K = 5
+"""Number of top endpoints to return from API tool semantic search."""
+
+API_TOOL_MIN_THRESHOLD = 0.40
+"""Minimum dense cosine similarity to consider a result as an API tool match.
+Below this → no API tool matched, fall through to other workflows."""
+
+API_TOOL_HIGH_CONFIDENCE_THRESHOLD = 0.60
+"""Dense cosine similarity for high-confidence API tool match.
+Above this AND score gap is large → route to API Tool Calling without further LLM disambiguation."""
+
+API_TOOL_SCORE_GAP_THRESHOLD = 0.05
+"""Cosine score gap (top - second) for high-confidence API tool classification."""
+
+
+# ============================================================================
 # Agentic Loop — Continuation Threshold
 # ============================================================================
 

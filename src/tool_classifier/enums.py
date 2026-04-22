@@ -11,12 +11,14 @@ class WorkflowType(Enum):
     workflow should handle each user query:
 
     - SERVICE: External service/API calls (Layer 1)
-    - CONTEXT: Conversation history or greetings (Layer 2)
-    - RAG: Knowledge base retrieval (Layer 3)
-    - OOD: Out-of-domain fallback (Layer 4)
+    - API_TOOL_CALLING: External API tool calling via agentic loop (Layer 2)
+    - CONTEXT: Conversation history or greetings (Layer 3)
+    - RAG: Knowledge base retrieval (Layer 4)
+    - OOD: Out-of-domain fallback (Layer 5)
     """
 
     SERVICE = "service"
+    API_TOOL_CALLING = "api_tool_calling"
     CONTEXT = "context"
     RAG = "rag"
     OOD = "ood"
@@ -25,14 +27,16 @@ class WorkflowType(Enum):
 # Layer configuration - defines the order of workflow evaluation
 WORKFLOW_LAYER_ORDER = [
     WorkflowType.SERVICE,  # Layer 1: Try service first
-    WorkflowType.CONTEXT,  # Layer 2: Then context
-    WorkflowType.RAG,  # Layer 3: Then RAG
-    WorkflowType.OOD,  # Layer 4: Finally OOD (always succeeds)
+    WorkflowType.API_TOOL_CALLING,  # Layer 2: Try API tool calling
+    WorkflowType.CONTEXT,  # Layer 3: Then context
+    WorkflowType.RAG,  # Layer 4: Then RAG
+    WorkflowType.OOD,  # Layer 5: Finally OOD (always succeeds)
 ]
 
 # Workflow display names for logging
 WORKFLOW_DISPLAY_NAMES = {
     WorkflowType.SERVICE: "Service Workflow",
+    WorkflowType.API_TOOL_CALLING: "API Tool Calling Workflow",
     WorkflowType.CONTEXT: "Context Workflow",
     WorkflowType.RAG: "RAG Workflow",
     WorkflowType.OOD: "Out-of-Domain Workflow",
