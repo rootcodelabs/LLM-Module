@@ -25,6 +25,10 @@ class ContextGenerationManager:
 Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk.
 Answer only with the succinct context and nothing else."""
 
+    # Used by the API Tool Calling indexer — passes the caller's prompt through
+    # unmodified so CHUNK_CONTEXT_PROMPT cannot override the caller's own instructions.
+    API_TOOL_CONTEXT_PROMPT = """{chunk_content}"""
+
     def __init__(self, llm_manager: LLMManager) -> None:
         """Initialize context generation manager."""
         self.llm_manager = llm_manager
@@ -43,7 +47,7 @@ Answer only with the succinct context and nothing else."""
 
             # Prepare the full prompt using Anthropic's format
             full_prompt = self._prepare_anthropic_prompt(
-                request.document_prompt, request.chunk_prompt
+                request.document_prompt, request.chunk_prompt, request.context_type
             )
 
             # For now, call LLM directly (caching structure ready for future)
@@ -103,8 +107,22 @@ Answer only with the succinct context and nothing else."""
             logger.error(f"Failed to resolve model for context generation: {e}")
             raise RuntimeError(f"Model resolution failed: {e}") from e
 
-    def _prepare_anthropic_prompt(self, document_prompt: str, chunk_prompt: str) -> str:
-        """Prepare prompt in Anthropic's exact format."""
+    def _prepare_anthropic_prompt(
+        self,
+        document_prompt: str,
+        chunk_prompt: str,
+        context_type: str = "chunk",
+    ) -> str:
+        """Prepare the LLM prompt based on context_type.
+
+        - 'api_tool': returns chunk_prompt as-is using API_TOOL_CONTEXT_PROMPT so the
+          caller's own instructions (including example-query generation) are not
+          overridden by CHUNK_CONTEXT_PROMPT's closing directive.
+        - 'chunk' (default): uses the Anthropic RAG format (document + chunk sections).
+        """
+        if context_type == "api_tool":
+            return self.API_TOOL_CONTEXT_PROMPT.format(chunk_content=chunk_prompt)
+
         # Format document section
         document_section = self.DOCUMENT_CONTEXT_PROMPT.format(
             doc_content=document_prompt
