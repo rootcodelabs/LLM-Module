@@ -258,6 +258,89 @@ async def health_check(request: Request) -> dict[str, str]:
 
 
 @app.post(
+    "/api-tools/search",
+    status_code=status.HTTP_200_OK,
+    summary="[TEST] Search API tool endpoints by natural-language query",
+    description=(
+        "Test-only endpoint for evaluating semantic retrieval accuracy against "
+        "api_tool_collection. Bypasses classifier and all other workflows. "
+        "Returns ranked endpoints with cosine scores and confidence levels."
+    ),
+)
+async def api_tools_search(
+    http_request: Request,
+    body: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run hybrid semantic search against api_tool_collection.
+
+    Use this endpoint from Postman to evaluate whether the correct API endpoint
+    is returned for a given natural-language query.
+
+    Request body:
+        query (str): Natural-language user query. Required.
+        top_k (int): Max results to return. Default: 5.
+        environment (str): Embedding environment. Default: "production".
+
+    Response fields per result:
+        endpoint_id: UUID of the matched endpoint
+        name: Endpoint function name
+        description: Human-readable description
+        method: HTTP method (GET / POST)
+        url: Actual API URL
+        params: List of parameter schemas
+        cosine_score: How similar the query is to this endpoint (0.0 - 1.0)
+        confidence: "high" / "medium" (see threshold constants)
+    """
+    from tool_classifier.api_semantic_searcher import APISemanticSearcher
+
+    query = body.get("query", "").strip()
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'query' field is required and must be a non-empty string",
+        )
+
+    top_k = int(body.get("top_k", 5))
+    environment = body.get("environment", "production")
+
+    orchestration_service = getattr(
+        http_request.app.state, "orchestration_service", None
+    )
+    if orchestration_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Orchestration service not initialized",
+        )
+
+    try:
+        searcher = APISemanticSearcher(embedding_service=orchestration_service)
+        results = await searcher.search(
+            query=query,
+            environment=environment,
+            top_k=top_k,
+        )
+        await searcher.aclose()
+
+        return {
+            "query": query,
+            "total_results": len(results),
+            "results": [r.to_dict() for r in results],
+            "interpretation": {
+                "high_confidence": "Endpoint can be used directly — query is a very clear match",
+                "medium_confidence": "Possible match — may need LLM disambiguation in production",
+                "no_results": "No endpoint matched above the minimum threshold (0.45)",
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"API tools search failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search failed: {str(e)}",
+        )
+
+
+@app.post(
     "/orchestrate",
     response_model=OrchestrationResponse,
     status_code=status.HTTP_200_OK,
