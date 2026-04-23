@@ -13,6 +13,20 @@ get_agency_data:
     url: "[#CKB_RUUTER_INTERNAL]/client/data/import"
   result: agency_data_info
   next: return_result
+  on_error: handle_ckb_error
+
+handle_ckb_error:
+  assign:
+    error_response:
+      success: false
+      message: "CKB data import failed"
+  log: "ERROR: Failed to fetch agency data from CKB - ${agency_data_info.error.message}"
+  next: return_error
+
+return_error:
+  status: 500
+  return: ${error_response}
+  next: end
 
 return_result:
   return: ${agency_data_info.response.body}

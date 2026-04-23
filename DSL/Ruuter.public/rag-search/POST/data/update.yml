@@ -15,12 +15,12 @@ get_agency_id:
   next: log_result
 
 log_result:
-  log: ${get_agency_id_result.response.body[0].agencyId}
+  log: ${get_agency_id_result.response.body[0].id}
   next: extract_params
 
 extract_params:
   assign:
-    single_agency_id: ${get_agency_id_result.response.body[0].agencyId}
+    single_agency_id: ${get_agency_id_result.response.body[0].id}
     agency_ids: 
       - ${single_agency_id}
     current_data_hash: ${get_agency_id_result.response.body[0].agencyDataHash}
@@ -36,6 +36,17 @@ import_agency_data:
     url: "[#RAG_SEARCH_RUUTER_PUBLIC]/ckb/agency-data-import"
   result: importResult
   next: log_import_agency_data_response
+  on_error: handle_import_error
+
+handle_import_error:
+  log: "ERROR: Failed to import agency data - ${importResult.error.message}"
+  assign:
+    format_res: {
+      message: "Failed to fetch data from CKB - data synchronization failed",
+      operationSuccessful: false,
+      error: "CKB_IMPORT_FAILED"
+    }
+  next: return_bad_request
 
 log_import_agency_data_response:
   log: ${JSON.stringify(importResult.response)}
@@ -43,9 +54,19 @@ log_import_agency_data_response:
 
 check_ckb_response:
   switch:
+    - condition: ${importResult.response.body == null || importResult.response.body.response == null || importResult.response.body.response == "Internal Server Error" || importResult.response.body.response.response == null}
+      next: return_ckb_error_response
     - condition: ${importResult.response.body.response.response.length === 0}
       next: return_no_ckb_data
   next: assign_import_agency_data
+
+return_ckb_error_response:
+  assign:
+    format_res:
+      message: "CKB service returned an error - data synchronization aborted"
+      operationSuccessful: false
+      error: "CKB_ERROR"
+  next: return_bad_request
 
 return_no_ckb_data:
   assign:
@@ -71,7 +92,7 @@ sync_current_hash_with_ckb_latest_hash:
   args:
     url: "[#RAG_SEARCH_RESQL]/update-agency-hash"
     body:
-      agencyId: ${single_agency_id}
+      id: ${single_agency_id}
       newAgencyDataHash: ${ckb_data_hash}
       dataUrl: ${signed_s3_url}
   result: sync_agency_hash_result
