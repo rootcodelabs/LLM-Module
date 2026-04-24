@@ -136,6 +136,12 @@ class LLMOrchestrationService:
         # This allows components to be initialized per-request with proper context
         self.tool_classifier = None
 
+        # Redis-backed session store for API Tool Calling agentic loop.
+        # Set to None here; the FastAPI lifespan injects the live store after
+        # Redis initialises (app.state.orchestration_service.session_store = ...).
+        # Workflow executors access it via self.orchestration_service.session_store.
+        self.session_store: Any = None
+
         # Shared BM25 search index pre-warmed at startup.
         # Populated by _prewarm_shared_bm25() which is called from the FastAPI
         # lifespan so it runs inside the async event loop.  Until then it is None
@@ -417,6 +423,7 @@ class LLMOrchestrationService:
                         query=request.message,
                         conversation_history=request.conversationHistory,
                         language=detected_language,
+                        request=request,
                     )
                     time_metric["classifier.classify"] = time.time() - start_time
 
@@ -698,6 +705,7 @@ class LLMOrchestrationService:
                             query=request.message,
                             conversation_history=request.conversationHistory,
                             language=detected_language,
+                            request=request,
                         )
                         time_metric["classifier.classify"] = time.time() - start_time
 

@@ -27,12 +27,15 @@ from tool_classifier.constants import (
     DENSE_SCORE_GAP_THRESHOLD,
 )
 from tool_classifier.sparse_encoder import compute_sparse_vector
+from tool_classifier.api_semantic_searcher import APISemanticSearcher
 from tool_classifier.workflows import (
+    APIToolWorkflowExecutor,
     ServiceWorkflowExecutor,
     ContextWorkflowExecutor,
     RAGWorkflowExecutor,
     OODWorkflowExecutor,
 )
+from llm_orchestrator_config.feature_flags import FeatureFlags
 
 
 class ToolClassifier:
@@ -82,6 +85,9 @@ class ToolClassifier:
         )
 
         # Initialize workflow executors
+        self.api_tool_workflow = APIToolWorkflowExecutor(
+            orchestration_service=orchestration_service,
+        )
         self.service_workflow = ServiceWorkflowExecutor(
             llm_manager=llm_manager,
             orchestration_service=orchestration_service,
@@ -94,6 +100,12 @@ class ToolClassifier:
             orchestration_service=orchestration_service,
         )
         self.ood_workflow = OODWorkflowExecutor()
+
+        # API tool semantic searcher - reuses the shared Qdrant client
+        self.api_tool_searcher = APISemanticSearcher(
+            embedding_service=orchestration_service,
+            qdrant_client=self._qdrant_client,
+        )
 
         logger.info(
             "Tool classifier initialized with hybrid search classification "
@@ -113,6 +125,7 @@ class ToolClassifier:
         query: str,
         conversation_history: List[ConversationItem],
         language: str,
+        request: Optional[OrchestrationRequest] = None,
     ) -> ClassificationResult:
         """
         Classify a user query using a two-step search approach.
@@ -121,14 +134,17 @@ class ToolClassifier:
         Step 2: Hybrid search (dense + sparse + RRF) → service identification
 
         Routing:
-        - cosine < DENSE_MIN_THRESHOLD → CONTEXT/RAG (skip SERVICE)
+        - cosine < DENSE_MIN_THRESHOLD AND no ATC match → CONTEXT/RAG
         - cosine ≥ HIGH_CONFIDENCE + large gap → SERVICE (no LLM needed)
+        - ATC match found (when SERVICE misses) → API_TOOL_CALLING
         - else → SERVICE with LLM confirmation
 
         Args:
             query: User's query string
             conversation_history: List of previous conversation messages
             language: Detected language code (e.g., 'en', 'et')
+            request: Original orchestration request (needed for ATC search
+                which requires environment and connection_id for embedding).
 
         Returns:
             ClassificationResult indicating which workflow to use
@@ -136,6 +152,77 @@ class ToolClassifier:
         logger.info(f"Classifying query: {query[:100]}...")
 
         try:
+            # Pre-classification: if an API tool session already exists for this
+            # chat_id, the user is responding to a param-collection question.
+            # Short-circuit directly to API_TOOL_CALLING — no need to re-classify.
+            if FeatureFlags.API_TOOL_CALLING_WORKFLOW_ENABLED and request is not None:
+                session_store = getattr(
+                    self.orchestration_service, "session_store", None
+                )
+                if session_store is not None:
+                    existing_session = await session_store.get(request.chatId)
+                    if existing_session is not None:
+                        endpoint_name = (
+                            existing_session.selected_endpoint.get("name")
+                            if existing_session.selected_endpoint
+                            else "unknown"
+                        )
+
+                        # Before resuming, check if the user's new message is a
+                        # strong match for a DIFFERENT endpoint (intent switch).
+                        # If so, abandon the old session and start fresh rather
+                        # than treating the new query as a param-collection reply.
+                        new_api_match = await self._try_api_tool_classification(
+                            query, request
+                        )
+                        if (
+                            new_api_match is not None
+                            and new_api_match.metadata.get("matched_endpoint", {}).get(
+                                "name"
+                            )
+                            != endpoint_name
+                        ):
+                            logger.info(
+                                f"[{request.chatId}] Intent switch detected: "
+                                f"active session={endpoint_name!r}, "
+                                f"new match={new_api_match.metadata.get('matched_endpoint', {}).get('name')!r} "
+                                f"— abandoning old session"
+                            )
+                            await session_store.delete(request.chatId)
+                            return new_api_match
+
+                        logger.info(
+                            f"[{request.chatId}] Active API tool session found "
+                            f"(endpoint={endpoint_name!r}) "
+                            f"— short-circuiting to API_TOOL_CALLING"
+                        )
+                        return ClassificationResult(
+                            workflow=WorkflowType.API_TOOL_CALLING,
+                            confidence=1.0,
+                            metadata={
+                                "reason": "active_session_resume",
+                                "matched_endpoint": existing_session.selected_endpoint,
+                            },
+                            reasoning="Resuming active API tool parameter-collection session",
+                        )
+
+            if not FeatureFlags.SERVICE_WORKFLOW_ENABLED:
+                logger.info(
+                    "SERVICE_WORKFLOW_ENABLED=false - skipping standard service search"
+                )
+                api_tool_result = await self._try_api_tool_classification(
+                    query, request
+                )
+                if api_tool_result:
+                    return api_tool_result
+                logger.info("No API tool match either — routing to CONTEXT/RAG")
+                return ClassificationResult(
+                    workflow=WorkflowType.CONTEXT,
+                    confidence=1.0,
+                    metadata={"reason": "service_workflow_disabled"},
+                    reasoning="Service workflow disabled, no ATC match - fallback to Context/RAG",
+                )
+
             # Step 1: Generate dense embedding for query
             query_embedding = self._get_query_embedding(query)
             if query_embedding is None:
@@ -156,7 +243,15 @@ class ToolClassifier:
             )
 
             if not dense_results:
-                logger.info("No dense search results - routing to CONTEXT/RAG")
+                logger.info(
+                    "No dense search results from intent_collections - trying API tools"
+                )
+                api_tool_result = await self._try_api_tool_classification(
+                    query, request, precomputed_embedding=query_embedding
+                )
+                if api_tool_result:
+                    return api_tool_result
+                logger.info("No API tool match either — routing to CONTEXT/RAG")
                 return ClassificationResult(
                     workflow=WorkflowType.CONTEXT,
                     confidence=1.0,
@@ -184,9 +279,15 @@ class ToolClassifier:
             # Decision: Is this a service query at all?
             if top_cosine < DENSE_MIN_THRESHOLD:
                 logger.info(
-                    f"Low relevance (cosine={top_cosine:.4f} < {DENSE_MIN_THRESHOLD}) "
-                    f"- routing to CONTEXT/RAG, skipping SERVICE"
+                    f"Low service relevance (cosine={top_cosine:.4f} < {DENSE_MIN_THRESHOLD}) "
+                    f"— trying API tools before falling to CONTEXT/RAG"
                 )
+                api_tool_result = await self._try_api_tool_classification(
+                    query, request, precomputed_embedding=query_embedding
+                )
+                if api_tool_result:
+                    return api_tool_result
+                logger.info("No API tool match — routing to CONTEXT/RAG")
                 return ClassificationResult(
                     workflow=WorkflowType.CONTEXT,
                     confidence=1.0,
@@ -615,11 +716,81 @@ class ToolClassifier:
         """Get workflow executor instance for given workflow type."""
         workflow_map = {
             WorkflowType.SERVICE: self.service_workflow,
+            WorkflowType.API_TOOL_CALLING: self.api_tool_workflow,
             WorkflowType.CONTEXT: self.context_workflow,
             WorkflowType.RAG: self.rag_workflow,
             WorkflowType.OOD: self.ood_workflow,
         }
         return workflow_map[workflow_type]
+
+    def _is_workflow_enabled(self, workflow_type: WorkflowType) -> bool:
+        """Return True if the given workflow type is enabled via feature flags.
+
+        RAG and OOD are always enabled (they are the safety net fallbacks).
+        """
+        flag_map = {
+            WorkflowType.SERVICE: FeatureFlags.SERVICE_WORKFLOW_ENABLED,
+            WorkflowType.API_TOOL_CALLING: FeatureFlags.API_TOOL_CALLING_WORKFLOW_ENABLED,
+            WorkflowType.CONTEXT: FeatureFlags.CONTEXT_WORKFLOW_ENABLED,
+            WorkflowType.RAG: True,
+            WorkflowType.OOD: True,
+        }
+        return flag_map.get(workflow_type, True)
+
+    async def _try_api_tool_classification(
+        self,
+        query: str,
+        request: Optional[OrchestrationRequest] = None,
+        precomputed_embedding: Optional[List[float]] = None,
+    ) -> Optional[ClassificationResult]:
+        """Search api_tool_collection and return a ClassificationResult if a match is found.
+
+        Called when intent_collections search yields no usable service match.
+
+        Args:
+            query: User's query string.
+            request: Orchestration request (provides environment + connection_id).
+                When None, defaults to production environment.
+            precomputed_embedding: Dense embedding vector already computed for this
+                query by the service search step. When provided, the ATC searcher
+                reuses it instead of making a second embedding API call.
+
+        Returns:
+            ClassificationResult with API_TOOL_CALLING workflow if a match is found,
+            or None if no endpoint matched.
+        """
+        if not FeatureFlags.API_TOOL_CALLING_WORKFLOW_ENABLED:
+            logger.info("API_TOOL_CALLING_WORKFLOW_ENABLED=false — skipping ATC search")
+            return None
+
+        environment = request.environment if request else "production"
+        connection_id = request.connection_id if request else None
+
+        try:
+            results = await self.api_tool_searcher.search(
+                query=query,
+                environment=environment,
+                connection_id=connection_id,
+                precomputed_embedding=precomputed_embedding,
+            )
+            if results:
+                matched = results[0]
+                logger.info(
+                    f"API tool match: {matched.name!r} "
+                    f"(confidence={matched.confidence}, cosine={matched.cosine_score:.4f})"
+                )
+                return ClassificationResult(
+                    workflow=WorkflowType.API_TOOL_CALLING,
+                    confidence=matched.cosine_score,
+                    metadata={"matched_endpoint": matched.to_dict()},
+                    reasoning=(
+                        f"API tool match: {matched.name} "
+                        f"(cosine={matched.cosine_score:.4f}, confidence={matched.confidence})"
+                    ),
+                )
+        except Exception as e:
+            logger.error(f"API tool classification failed: {e}", exc_info=True)
+        return None
 
     async def _execute_with_fallback_async(
         self,
@@ -651,17 +822,23 @@ class ToolClassifier:
         logger.info(f"[{chat_id}] Executing {workflow_name} (non-streaming)")
 
         try:
-            result = await workflow.execute_async(request, context, time_metric)
+            if self._is_workflow_enabled(start_layer):
+                result = await workflow.execute_async(request, context, time_metric)
 
-            if result is not None:
-                logger.info(f"[{chat_id}] {workflow_name} handled successfully")
-                return result
+                if result is not None:
+                    logger.info(f"[{chat_id}] {workflow_name} handled successfully")
+                    return result
 
-            # Implement layer-wise fallback chain
-            logger.info(
-                f"[{chat_id}] {workflow_name} returned None, "
-                f"trying next layer in fallback chain"
-            )
+                # Implement layer-wise fallback chain
+                logger.info(
+                    f"[{chat_id}] {workflow_name} returned None, "
+                    f"trying next layer in fallback chain"
+                )
+            else:
+                logger.info(
+                    f"[{chat_id}] {workflow_name} is disabled via feature flag, "
+                    f"trying next layer in fallback chain"
+                )
 
             # Get the layer order starting from current layer
 
@@ -670,6 +847,11 @@ class ToolClassifier:
 
             # Try each subsequent layer in order
             for next_layer in remaining_layers:
+                if not self._is_workflow_enabled(next_layer):
+                    next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
+                    logger.info(f"[{chat_id}] Skipping disabled workflow: {next_name}")
+                    continue
+
                 next_workflow = self._get_workflow_executor(next_layer)
                 next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
 
@@ -729,19 +911,25 @@ class ToolClassifier:
         logger.info(f"[{chat_id}] Executing {workflow_name} (streaming)")
 
         try:
-            result = await workflow.execute_streaming(request, context, time_metric)
+            if self._is_workflow_enabled(start_layer):
+                result = await workflow.execute_streaming(request, context, time_metric)
 
-            if result is not None:
-                logger.info(f"[{chat_id}] {workflow_name} streaming started")
-                async for chunk in result:
-                    yield chunk
-                return
+                if result is not None:
+                    logger.info(f"[{chat_id}] {workflow_name} streaming started")
+                    async for chunk in result:
+                        yield chunk
+                    return
 
-            # Implement layer-wise fallback chain for streaming
-            logger.info(
-                f"[{chat_id}] {workflow_name} returned None, "
-                f"trying next layer in fallback chain"
-            )
+                # Implement layer-wise fallback chain for streaming
+                logger.info(
+                    f"[{chat_id}] {workflow_name} returned None, "
+                    f"trying next layer in fallback chain"
+                )
+            else:
+                logger.info(
+                    f"[{chat_id}] {workflow_name} is disabled via feature flag, "
+                    f"trying next layer in fallback chain"
+                )
 
             # Get the layer order starting from current layer
 
@@ -750,6 +938,11 @@ class ToolClassifier:
 
             # Try each subsequent layer in order
             for next_layer in remaining_layers:
+                if not self._is_workflow_enabled(next_layer):
+                    next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
+                    logger.info(f"[{chat_id}] Skipping disabled workflow: {next_name}")
+                    continue
+
                 next_workflow = self._get_workflow_executor(next_layer)
                 next_name = WORKFLOW_DISPLAY_NAMES.get(next_layer, next_layer.value)
 

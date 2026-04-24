@@ -44,8 +44,14 @@ class EndpointData(BaseModel):
 class EnrichedEndpoint(BaseModel):
     """Enriched endpoint data ready for storage in Qdrant api_tool_collection.
 
-    One point per endpoint is stored.
-    The payload stored in Qdrant includes all fields needed by the agentic loop
+    Multiple points are stored per endpoint:
+    - One 'example' point per example query — embedded from that sentence alone,
+      so the vector sits in the correct language region of the embedding space.
+    - One 'summary' point — embedded from name + description + full enriched context.
+
+    All points share the same endpoint_id payload field so the searcher can
+    deduplicate results back to a single endpoint after retrieval.
+    The payload on every point contains all fields needed by the agentic loop
     so no additional DB roundtrip is needed after a semantic match.
     """
 
@@ -62,6 +68,16 @@ class EnrichedEndpoint(BaseModel):
         ..., description="LLM-generated rich context for better semantic matching"
     )
     service_id: Optional[str] = Field(default=None, description="Parent service UUID")
+
+    # Point type — controls which text was embedded for this point
+    point_type: str = Field(
+        default="summary",
+        description="'example' (individual query text) or 'summary' (full context)",
+    )
+    example_text: Optional[str] = Field(
+        default=None,
+        description="The example query string for 'example' points; None for 'summary'",
+    )
 
     # Vector fields (populated by indexer pipeline)
     embedding: List[float] = Field(

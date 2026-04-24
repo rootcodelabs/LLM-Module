@@ -9,12 +9,16 @@ whether a user query should be handled by:
 - Layer 4: OOD Workflow (out-of-domain fallback)
 """
 
-from .classifier import ToolClassifier
-from .enums import WorkflowType
-from .models import ClassificationResult
+from tool_classifier.agentic_loop import AgenticLoop
+from tool_classifier.classifier import ToolClassifier
+from tool_classifier.enums import AgenticLoopStatus, WorkflowType
+from tool_classifier.models import AgenticLoopResult, ClassificationResult
 
 __all__ = [
+    "AgenticLoop",
+    "AgenticLoopResult",
+    "AgenticLoopStatus",
+    "ClassificationResult",
     "ToolClassifier",
     "WorkflowType",
-    "ClassificationResult",
 ]

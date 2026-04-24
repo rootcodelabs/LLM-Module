@@ -2,19 +2,27 @@
 
 Receives raw API EndpointData, enriches it with LLM-generated context,
 creates hybrid embeddings (dense + sparse), and stores the result in Qdrant
-api_tool_collection as a single point per endpoint.
+api_tool_collection as multiple points per endpoint.
+
+Multi-point indexing strategy:
+    - One 'example' point per example query extracted from the LLM context.
+      Each query is embedded individually so its vector sits in the correct
+      language region of the embedding space, enabling accurate short-query matching.
+    - One 'summary' point containing the combined name + description + enriched context.
+      This handles broad/paraphrased queries that don't match any single example.
 
 Pipeline steps:
     1. Build LLM prompt from endpoint name, description, and params
     2. Generate context via LLMAPIClient.generate_context()
-    3. Build embed text: name + description + context + param descriptions
-    4. Create dense embedding via LLMAPIClient.create_embedding()
-    5. Create sparse vector via compute_sparse_vector()
-    6. Delete existing Qdrant point for idempotent update
-    7. Upsert EnrichedEndpoint to api_tool_collection
+    3. Parse example query lines from the returned context
+    4. Create dense + sparse embeddings per example query (example points)
+    5. Create dense + sparse embedding for combined summary text (summary point)
+    6. Delete all existing Qdrant points for this endpoint (filter-based, idempotent)
+    7. Upsert all points to api_tool_collection
     8. Return IndexingResult
 """
 
+import re
 import sys
 import json
 import asyncio
@@ -111,10 +119,13 @@ async def _generate_context_for_endpoint(
 
     logger.info(f"params_summary : {params_summary}")
 
+    # Escape braces in the URL to prevent str.format() from treating path
+    # parameter templates like {id} as format placeholders (KeyError).
+    safe_url = endpoint_data.url.replace("{", "{{").replace("}", "}}")
     full_endpoint_info = (
         f"Endpoint: {endpoint_data.name}\n"
         f"Method: {endpoint_data.method}\n"
-        f"URL: {endpoint_data.url}\n"
+        f"URL: {safe_url}\n"
         f"Description: {endpoint_data.description}\n"
         f"Parameters: {params_summary}"
     )
@@ -124,15 +135,25 @@ async def _generate_context_for_endpoint(
         name=endpoint_data.name,
         description=endpoint_data.description,
         params_summary=params_summary,
+        example_count=ApiToolIndexerConstants.EXAMPLE_QUERY_COUNT,
     )
 
-    # Re-use the internal HTTP call of LLMAPIClient - /generate-context endpoint
+    logger.debug(
+        "Generated context prompt for endpoint '{}': {} chars",
+        endpoint_data.endpoint_id,
+        len(context_prompt),
+    )
+
+    # context_type="api_tool" makes context_manager use API_TOOL_CONTEXT_PROMPT,
+    # which passes chunk_prompt through unmodified so CHUNK_CONTEXT_PROMPT cannot
+    # override the instructions in CONTEXT_TEMPLATE (e.g. example query generation).
     request_data = {
         "document_prompt": "",
         "chunk_prompt": context_prompt,
         "environment": api_client.environment,
-        "use_cache": True,
+        "use_cache": False,
         "connection_id": api_client.connection_id,
+        "context_type": "api_tool",
     }
 
     last_error = None
@@ -153,6 +174,13 @@ async def _generate_context_for_endpoint(
             result = response.json()
 
             context = result.get("context", "").strip()
+
+            logger.debug(
+                "context preview: {}{}",
+                context[:200].replace("\n", "\\n"),
+                "..." if len(context) > 200 else "",
+            )
+
             if not context:
                 raise ValueError("Empty context returned from API")
 
@@ -181,8 +209,53 @@ async def _generate_context_for_endpoint(
     raise RuntimeError(error_msg)
 
 
+_EXAMPLE_SECTION_HEADER = re.compile(r"^example queries\s*:", re.IGNORECASE)
+
+
+def _parse_example_queries(context: str) -> List[str]:
+    """Extract example query lines from the LLM-generated context.
+
+    Scans for the 'Example queries:' section header and collects every
+    subsequent '- ' line until the section ends.
+
+    Args:
+        context: Raw LLM-generated context string from generate_context().
+
+    Returns:
+        List of example query strings, deduplicated and preserving order.
+    """
+    examples: List[str] = []
+    in_section = False
+
+    for line in context.splitlines():
+        stripped = line.strip()
+        if _EXAMPLE_SECTION_HEADER.match(stripped):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("- "):
+                examples.append(stripped[2:].strip())
+            elif stripped and not stripped.startswith("#"):
+                # Non-empty, non-comment line that isn't a list item ends the section
+                in_section = False
+
+    # Deduplicate preserving order
+    seen: set[str] = set()
+    unique: List[str] = []
+    for ex in examples:
+        if ex and ex not in seen:
+            seen.add(ex)
+            unique.append(ex)
+    return unique
+
+
 async def index_endpoint(endpoint_data: EndpointData) -> IndexingResult:
     """Index one API endpoint into Qdrant api_tool_collection.
+
+    Creates multiple points per endpoint:
+    - One 'example' point per parsed example query, embedded from that
+      individual sentence so the vector sits in the correct language region.
+    - One 'summary' point embedded from the combined name + description + context.
 
     Args:
         endpoint_data: Raw endpoint data from mock_endpoints table.
@@ -197,7 +270,6 @@ async def index_endpoint(endpoint_data: EndpointData) -> IndexingResult:
     )
 
     try:
-        # Steps 1–5: LLM enrichment and embedding
         async with LLMAPIClient(
             api_base_url=ApiToolIndexerConstants.DEFAULT_API_BASE_URL,
             environment=ApiToolIndexerConstants.DEFAULT_ENVIRONMENT,
@@ -206,84 +278,123 @@ async def index_endpoint(endpoint_data: EndpointData) -> IndexingResult:
             retry_delay_base=ApiToolIndexerConstants.RETRY_DELAY_BASE,
             timeout=ApiToolIndexerConstants.REQUEST_TIMEOUT,
         ) as api_client:
-            # Step 1-2: Generate LLM enriched context
-            logger.info("Step 1/5: Generating LLM enriched context")
+            # Step 1: Generate LLM enriched context (prose + example queries)
+            logger.info("Step 1/4: Generating LLM enriched context")
             enriched_context = await _generate_context_for_endpoint(
                 api_client, endpoint_data
             )
 
-            # Step 3: Build embed text combining all semantic signal
+            # Step 2: Parse example query lines from the context
+            example_queries = _parse_example_queries(enriched_context)
+            if not example_queries:
+                logger.warning(
+                    f"No example queries parsed from context for endpoint '{endpoint_id}'. "
+                    "The LLM output may not contain an 'Example queries:' section. "
+                    "Only a summary point will be indexed — search accuracy may be reduced."
+                )
+            else:
+                logger.info(
+                    f"Step 2/4: Parsed {len(example_queries)} example queries from context"
+                )
+
+            # Step 3: Embed each example query individually → example points
+            logger.info(
+                f"Step 3/4: Creating embeddings for {len(example_queries)} example points"
+            )
+            enriched_points: List[EnrichedEndpoint] = []
+
+            for i, example in enumerate(example_queries):
+                logger.debug(
+                    f"  Embedding example {i + 1}/{len(example_queries)}: "
+                    f"'{example[:80]}{'...' if len(example) > 80 else ''}'"
+                )
+                ex_embedding = await api_client.create_embedding(example)
+                ex_sparse = compute_sparse_vector(example)
+                enriched_points.append(
+                    EnrichedEndpoint(
+                        endpoint_id=endpoint_id,
+                        name=endpoint_data.name,
+                        description=endpoint_data.description,
+                        url=endpoint_data.url,
+                        method=endpoint_data.method,
+                        params=endpoint_data.params,
+                        enriched_context=enriched_context,
+                        service_id=endpoint_data.service_id,
+                        point_type="example",
+                        example_text=example,
+                        embedding=ex_embedding,
+                        sparse_indices=ex_sparse.indices,
+                        sparse_values=ex_sparse.values,
+                    )
+                )
+
+            # Step 4: Embed combined summary text → summary point
+            logger.info("Step 4/4: Creating summary point embedding")
             params_summary = _build_params_summary(endpoint_data.params)
-            embed_text = (
+            summary_text = (
                 f"{endpoint_data.name}. "
                 f"{endpoint_data.description}. "
                 f"{enriched_context}. "
                 f"Parameters: {params_summary}"
             )
+            summary_embedding = await api_client.create_embedding(summary_text)
 
-            # Step 4: Create dense embedding vector
-            logger.info("Step 2/5: Creating dense embedding vector")
-            dense_embedding = await api_client.create_embedding(embed_text)
-
-        # Step 5: Create sparse (BM25) vector - synchronous, after closing HTTP session
-        logger.info("Step 3/5: Computing sparse (BM25) vector")
-        sparse_vec = compute_sparse_vector(embed_text)
-
-        # Build EnrichedEndpoint ready for Qdrant storage
-        enriched = EnrichedEndpoint(
-            endpoint_id=endpoint_id,
-            name=endpoint_data.name,
-            description=endpoint_data.description,
-            url=endpoint_data.url,
-            method=endpoint_data.method,
-            params=endpoint_data.params,
-            enriched_context=enriched_context,
-            service_id=endpoint_data.service_id,
-            embedding=dense_embedding,
-            sparse_indices=sparse_vec.indices,
-            sparse_values=sparse_vec.values,
+        # Sparse vectors are CPU-bound — computed after the HTTP session closes
+        summary_sparse = compute_sparse_vector(summary_text)
+        enriched_points.append(
+            EnrichedEndpoint(
+                endpoint_id=endpoint_id,
+                name=endpoint_data.name,
+                description=endpoint_data.description,
+                url=endpoint_data.url,
+                method=endpoint_data.method,
+                params=endpoint_data.params,
+                enriched_context=enriched_context,
+                service_id=endpoint_data.service_id,
+                point_type="summary",
+                embedding=summary_embedding,
+                sparse_indices=summary_sparse.indices,
+                sparse_values=summary_sparse.values,
+            )
         )
 
-        # Steps 6-7: Qdrant operations (separate try/finally ensures connection is closed)
+        # Qdrant operations — separate block so the connection is always closed
         qdrant = ApiToolQdrantManager()
         try:
             qdrant.connect()
             qdrant.ensure_collection()
 
-            # Step 6: Delete existing point for idempotent update
-            logger.info("Step 4/5: Deleting existing Qdrant point (idempotent update)")
-            deleted = qdrant.delete_endpoint_point(endpoint_id)
+            # Delete all existing points for this endpoint (filter-based, idempotent)
+            deleted = qdrant.delete_endpoint_points(endpoint_id)
             if not deleted:
                 logger.error(
-                    f"Failed to delete existing Qdrant point for endpoint '{endpoint_id}'. "
+                    f"Failed to delete existing points for endpoint '{endpoint_id}'. "
                     "Aborting upsert to prevent stale data."
                 )
                 return IndexingResult(
                     success=False,
                     endpoint_id=endpoint_id,
                     message="Qdrant delete failed before upsert",
-                    error="delete_endpoint_point returned False",
+                    error="delete_endpoint_points returned False",
                 )
 
-            # Step 7: Upsert the enriched endpoint
-            logger.info("Step 5/5: Upserting endpoint into api_tool_collection")
-            upserted = qdrant.upsert_endpoint(enriched)
-
+            upserted = qdrant.upsert_endpoint_points(enriched_points)
         finally:
             qdrant.close()
 
-        # Step 8: Return result
+        n_examples = len(example_queries)
         if upserted:
             logger.success(
-                f"Endpoint '{endpoint_id}' (name='{endpoint_data.name}') "
-                "indexed successfully"
+                f"Endpoint '{endpoint_id}' (name='{endpoint_data.name}') indexed successfully "
+                f"({n_examples} example points + 1 summary point)"
             )
             return IndexingResult(
                 success=True,
                 endpoint_id=endpoint_id,
                 message=(
                     f"Endpoint '{endpoint_data.name}' indexed successfully into "
-                    f"api_tool_collection (dim={len(dense_embedding)})"
+                    f"api_tool_collection "
+                    f"({n_examples} example points + 1 summary point)"
                 ),
             )
         else:
@@ -291,7 +402,7 @@ async def index_endpoint(endpoint_data: EndpointData) -> IndexingResult:
                 success=False,
                 endpoint_id=endpoint_id,
                 message="Qdrant upsert failed",
-                error="upsert_endpoint returned False",
+                error="upsert_endpoint_points returned False",
             )
 
     except Exception as e:
