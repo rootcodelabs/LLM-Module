@@ -1,10 +1,13 @@
 """API parameter extraction using DSPy."""
 
+import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TypedDict
 
 import dspy
+import dspy.streaming
+from dspy.streaming import StreamListener
 from loguru import logger
 
 _TRUTHY_STRINGS = {"true", "yes", "jah", "1", "on", "õige", "да"}
@@ -139,81 +142,7 @@ class ParamExtractionModule(dspy.Module):
                 params_schema=params_schema_json,
                 already_collected=already_collected_json,
             )
-
-            # Parse extracted_params
-            extracted_raw = json.loads(result.extracted_params)
-            if not isinstance(extracted_raw, dict):
-                raise ValueError("extracted_params is not a JSON object")
-
-            # Parse missing_required
-            missing_raw = json.loads(result.missing_required)
-            if not isinstance(missing_raw, list):
-                raise ValueError("missing_required is not a JSON array")
-
-            clarifying_question = (result.clarifying_question or "").strip()
-
-            # Post-process: validate extracted param types against schema
-            schema_map: Dict[str, Dict[str, Any]] = {
-                p["name"]: p for p in params_schema if isinstance(p, dict)
-            }
-            validated_params: Dict[str, Any] = {}
-            type_invalid_params: List[str] = []
-
-            for param_name, raw_value in extracted_raw.items():
-                schema_entry = schema_map.get(param_name)
-                if schema_entry is None:
-                    # Param not in schema — skip silently
-                    continue
-                param_type = schema_entry.get("type", "string")
-                is_valid, coerced = self._validate_param_type(raw_value, param_type)
-                if is_valid:
-                    validated_params[param_name] = coerced
-                else:
-                    logger.warning(
-                        f"Extracted value for '{param_name}' failed type validation "
-                        f"(expected {param_type}, got {raw_value!r})"
-                    )
-                    type_invalid_params.append(param_name)
-
-            # Re-derive missing required params after type validation.
-            # validated_params (current turn) takes precedence over already_collected
-            # so that explicit user corrections override prior values.
-            all_collected = {**already_collected, **validated_params}
-            missing_required: List[str] = [
-                p["name"]
-                for p in params_schema
-                if isinstance(p, dict)
-                and p.get("required", False)
-                and p["name"] not in all_collected
-            ]
-
-            # Add type-invalid required params back to missing list
-            for param_name in type_invalid_params:
-                schema_entry = schema_map.get(param_name)
-                if (
-                    schema_entry is not None
-                    and schema_entry.get("required", False)
-                    and param_name not in missing_required
-                ):
-                    missing_required.append(param_name)
-
-            # Normalise clarifying_question: override with "none" when nothing is missing
-            if not missing_required:
-                clarifying_question = "none"
-            elif clarifying_question.lower() == "none":
-                # LLM incorrectly returned "none" despite missing params — reset to empty
-                # string so callers receive a reliable signal that a follow-up is needed.
-                logger.warning(
-                    "LLM returned clarifying_question='none' but required params are "
-                    f"still missing: {missing_required}. Resetting to empty string."
-                )
-                clarifying_question = ""
-
-            return ParamExtractionResult(
-                extracted_params=validated_params,
-                missing_required=missing_required,
-                clarifying_question=clarifying_question,
-            )
+            return self._parse_prediction(result, params_schema, already_collected)
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse param extraction JSON: {e}")
@@ -229,6 +158,120 @@ class ParamExtractionModule(dspy.Module):
         except Exception as e:
             logger.exception(f"Param extraction forward failed: {e}")
             return self._safe_defaults(params_schema, already_collected)
+
+    def _get_stream_predictor(self) -> Any:
+        """Return a fresh streamified predictor for each call.
+
+        See :meth:`~api_response_formatter.APIResponseFormatterModule._get_stream_predictor`
+        for the rationale — ``dspy.configure(lm=...)`` is called per request so any cached
+        wrapper becomes stale.  Re-creating is cheap (no LLM I/O).
+        """
+        logger.debug(
+            "ParamExtractionModule: creating fresh streamify wrapper "
+            "for clarifying_question field"
+        )
+        listener = StreamListener(signature_field_name="clarifying_question")
+        return dspy.streamify(self.extractor, stream_listeners=[listener])
+
+    async def stream_forward(
+        self,
+        user_message: str,
+        params_schema: List[Dict[str, Any]],
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        already_collected: Optional[Dict[str, Any]] = None,
+        session_language: str = "en",
+    ) -> tuple[List[str], ParamExtractionResult]:
+        """Stream clarifying_question tokens while returning the full extraction result.
+
+        Uses the same DSPy streamify pattern as
+        :meth:`~api_response_formatter.APIResponseFormatterModule.stream_forward`.
+        Collects ``clarifying_question`` tokens as they arrive from the LLM and
+        parses ``extracted_params`` / ``missing_required`` from the final
+        ``dspy.Prediction``.
+
+        If all required params are already collected the question will be ``"none"``
+        and the returned token list will be empty.
+
+        Args:
+            user_message: Current turn message from the user.
+            params_schema: Parameter schema list.
+            conversation_history: Recent conversation messages (optional).
+            already_collected: Parameter values from prior turns (optional).
+            session_language: Language code (``'en'``, ``'et'``, ``'ru'``).
+
+        Returns:
+            Tuple of ``(question_tokens, extraction_result)``.
+            ``question_tokens`` is empty when no clarifying question is needed.
+        """
+        already_collected = already_collected or {}
+
+        history_text = self._format_conversation_history(conversation_history)
+        params_schema_json = json.dumps(params_schema, ensure_ascii=False)
+        already_collected_json = json.dumps(already_collected, ensure_ascii=False)
+
+        try:
+            stream_predictor = self._get_stream_predictor()
+            output_stream = stream_predictor(
+                user_message=user_message,
+                conversation_history=history_text,
+                session_language=session_language,
+                params_schema=params_schema_json,
+                already_collected=already_collected_json,
+            )
+
+            tokens: List[str] = []
+            prediction: Any = None
+
+            async for chunk in output_stream:
+                if isinstance(chunk, dspy.streaming.StreamResponse):
+                    if chunk.signature_field_name == "clarifying_question":
+                        tokens.append(chunk.chunk)
+                elif isinstance(chunk, dspy.Prediction):
+                    prediction = chunk
+
+            if prediction is None:
+                logger.warning(
+                    "ParamExtractionModule.stream_forward: no Prediction received — "
+                    "falling back to blocking forward()"
+                )
+                result = await asyncio.to_thread(
+                    self.forward,
+                    user_message,
+                    params_schema,
+                    conversation_history,
+                    already_collected,
+                    session_language,
+                )
+                fallback_token = result["clarifying_question"]
+                return (
+                    [fallback_token] if fallback_token not in ("", "none") else [],
+                    result,
+                )
+
+            result = self._parse_prediction(
+                prediction, params_schema, already_collected
+            )
+
+            # Clear tokens when no question is needed (all params satisfied)
+            if result["clarifying_question"] in ("", "none"):
+                tokens = []
+
+            if tokens:
+                logger.debug(
+                    f"ParamExtractionModule.stream_forward: streamed {len(tokens)} tokens"
+                )
+
+            return tokens, result
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"ParamExtractionModule.stream_forward failed to parse JSON: {e}"
+            )
+            return [], self._safe_defaults(params_schema, already_collected)
+
+        except Exception as e:
+            logger.exception(f"ParamExtractionModule.stream_forward failed: {e}")
+            return [], self._safe_defaults(params_schema, already_collected)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -260,6 +303,22 @@ class ParamExtractionModule(dspy.Module):
                 # Accept ISO 8601 date strings; datetime.fromisoformat handles YYYY-MM-DD
                 parsed = datetime.fromisoformat(str_value)
                 return True, parsed.date().isoformat()
+            except (ValueError, TypeError):
+                return False, value
+
+        if param_type == "datetime":
+            try:
+                # Accept ISO 8601 datetime strings with or without timezone suffix.
+                # Normalise to UTC zone suffix (Z) if none is present.
+                clean = str_value.replace("Z", "+00:00")
+                parsed_dt = datetime.fromisoformat(clean)
+                # Convert timezone-aware datetimes to UTC before formatting.
+                # Naive datetimes are assumed to already be UTC.
+                if parsed_dt.tzinfo is not None:
+                    parsed_dt = parsed_dt.astimezone(timezone.utc)
+                # Re-serialise in the exact format required by the external APIs:
+                # YYYY-MM-DDTHH:MM:SSZ (no microseconds, UTC Z suffix)
+                return True, parsed_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
             except (ValueError, TypeError):
                 return False, value
 
@@ -336,4 +395,95 @@ class ParamExtractionModule(dspy.Module):
             extracted_params={},
             missing_required=missing_required,
             clarifying_question="none" if not missing_required else "",
+        )
+
+    def _parse_prediction(
+        self,
+        result: Any,
+        params_schema: List[Dict[str, Any]],
+        already_collected: Dict[str, Any],
+    ) -> ParamExtractionResult:
+        """Parse a raw DSPy Prediction into a validated ParamExtractionResult.
+
+        Called by both :meth:`forward` (blocking) and :meth:`stream_forward` (streaming)
+        so JSON parsing and type-validation logic lives in one place.
+
+        Raises:
+            json.JSONDecodeError: If ``extracted_params`` or ``missing_required`` is not
+                valid JSON.
+            ValueError: If the parsed JSON has the wrong container type.
+        """
+        # Parse extracted_params
+        extracted_raw = json.loads(result.extracted_params)
+        if not isinstance(extracted_raw, dict):
+            raise ValueError("extracted_params is not a JSON object")
+
+        # Parse missing_required
+        missing_raw = json.loads(result.missing_required)
+        if not isinstance(missing_raw, list):
+            raise ValueError("missing_required is not a JSON array")
+
+        clarifying_question = (result.clarifying_question or "").strip()
+
+        # Validate extracted param types against schema
+        schema_map: Dict[str, Dict[str, Any]] = {
+            p["name"]: p for p in params_schema if isinstance(p, dict)
+        }
+        validated_params: Dict[str, Any] = {}
+        type_invalid_params: List[str] = []
+
+        for param_name, raw_value in extracted_raw.items():
+            schema_entry = schema_map.get(param_name)
+            if schema_entry is None:
+                # Param not in schema — skip silently
+                continue
+            param_type = schema_entry.get("type", "string")
+            is_valid, coerced = self._validate_param_type(raw_value, param_type)
+            if is_valid:
+                validated_params[param_name] = coerced
+            else:
+                logger.warning(
+                    f"Extracted value for '{param_name}' failed type validation "
+                    f"(expected {param_type}, got {raw_value!r})"
+                )
+                type_invalid_params.append(param_name)
+
+        # Re-derive missing required params after type validation.
+        # validated_params (current turn) takes precedence over already_collected
+        # so that explicit user corrections override prior values.
+        all_collected = {**already_collected, **validated_params}
+        missing_required: List[str] = [
+            p["name"]
+            for p in params_schema
+            if isinstance(p, dict)
+            and p.get("required", False)
+            and p["name"] not in all_collected
+        ]
+
+        # Add type-invalid required params back to missing list
+        for param_name in type_invalid_params:
+            schema_entry = schema_map.get(param_name)
+            if (
+                schema_entry is not None
+                and schema_entry.get("required", False)
+                and param_name not in missing_required
+            ):
+                missing_required.append(param_name)
+
+        # Normalise clarifying_question: override with "none" when nothing is missing
+        if not missing_required:
+            clarifying_question = "none"
+        elif clarifying_question.lower() == "none":
+            # LLM incorrectly returned "none" despite missing params — reset to empty
+            # string so callers receive a reliable signal that a follow-up is needed.
+            logger.warning(
+                "LLM returned clarifying_question='none' but required params are "
+                f"still missing: {missing_required}. Resetting to empty string."
+            )
+            clarifying_question = ""
+
+        return ParamExtractionResult(
+            extracted_params=validated_params,
+            missing_required=missing_required,
+            clarifying_question=clarifying_question,
         )

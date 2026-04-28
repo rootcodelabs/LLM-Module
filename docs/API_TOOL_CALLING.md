@@ -15,7 +15,8 @@ loop collects all required parameters from the user before the API call is made.
 | **Indexing pipeline** | Takes an endpoint definition → enriches it with LLM context → stores hybrid vectors in Qdrant | ✅ Complete |
 | **Tool classifier** | At query time, routes to the best matching endpoint via hybrid search + LLM disambiguation | ✅ Complete |
 | **Agentic loop** | Multi-turn parameter collection with session persistence, language-aware clarifying questions, param correction, continuation prompt, and intent-switch detection | ✅ Complete |
-| **API caller** | Execute the collected params against the real API endpoint and format the response | 🔧 Planned (next task) |
+| **API caller** | Execute collected params against the real API endpoint, with circuit-breaker protection and localized error handling | ✅ Complete |
+| **Response formatter** | Convert raw API JSON into a natural-language answer via DSPy, streamed token-by-token to the GUI | ✅ Complete |
 
 ---
 
@@ -41,6 +42,12 @@ APIToolWorkflowExecutor  (src/tool_classifier/workflows/api_tool_workflow.py)
 AgenticLoop  (src/tool_classifier/agentic_loop.py)
         ↓  session state
 APIToolSessionStore  (Redis, keyed by chat_id, 30-min TTL)
+        ↓  all params collected
+APICaller  (src/tool_classifier/api_caller.py)
+        ↓  raw JSON response
+APIResponseFormatterModule  (src/tool_classifier/api_response_formatter.py)
+        ↓  SSE token stream
+User (GUI)
 ```
 
 ---
@@ -241,9 +248,11 @@ loop can execute the API call without an additional database round-trip.
 | Field | Type | Description |
 |---|---|---|
 | `name` | str | Parameter name |
-| `type` | str | `string`, `date`, `integer`, `boolean`, `number` |
+| `type` | str | `string`, `date`, `datetime`, `integer`, `boolean`, `number` |
 | `required` | bool | Whether the caller must supply this param |
 | `description` | str | Human-readable description |
+
+> **`datetime` type:** normalised to `YYYY-MM-DDTHH:MM:SSZ` by `ParamExtractionModule._validate_param_type()`. Useful for APIs that require ISO 8601 datetime strings (e.g. electricity price endpoints).
 
 ---
 
@@ -391,29 +400,31 @@ Handles `WorkflowType.API_TOOL_CALLING` after `ToolClassifier.classify()` has se
 - **Turn 1 (new session):** reads `context["matched_endpoint"]`, creates a new
   `APIToolSession` in Redis, runs the first agentic loop turn.
 - **Turn 2-N (resume):** loads the existing session from Redis, runs the next turn.
-- **Fast path:** if the endpoint has no required params, immediately returns the
-  completed JSON without starting a session.
-- **Completion:** when all params are collected, deletes the session and returns a
-  JSON response with `status=params_collected`.
+- **Fast path:** if the endpoint has no required params, immediately calls the API
+  without starting a session.
+- **Clarifying question:** when params are still missing, streams the LLM-generated
+  question token-by-token via SSE. Each token is one `format_sse` frame; the stream
+  ends with an `END` frame.
+- **API call:** when all params are collected, calls `APICaller.call()` then streams
+  the natural-language answer from `APIResponseFormatterModule.stream_forward()`
+  token-by-token via SSE.
 - **Max turns:** deletes the session and returns `None` to trigger RAG fallback.
-- **Streaming:** wraps the short clarifying-question response in a single SSE frame
-  + `END` marker.
 
-**Completed response format:**
+**Streaming architecture:**
 
-```json
-{
-  "status": "params_collected",
-  "endpoint": { "name": "get_public_holidays" },
-  "collected_params": {
-    "countryIsoCode": "EE",
-    "validFrom": "2026-01-01",
-    "validTo": "2026-12-31"
-  }
-}
+Both clarifying questions and final responses are streamed token-by-token.
+`_compute_loop_step()` is the single source of truth — it returns a `_LoopStep`
+tagged as `"question"`, `"api_call"`, or `"fallback"`. `execute_streaming()` then
+handles each case:
+
 ```
+"question"  → iterate step.question_tokens (real DSPy tokens)
+              → yield format_sse(chat_id, token) per token → yield END
 
-The actual API call and response formatting are handled by the next planned task.
+"api_call"  → APICaller.call() [blocking HTTP]
+              → async for token in APIResponseFormatterModule.stream_forward()
+              → yield format_sse(chat_id, token) per token → yield END
+```
 
 ---
 
@@ -443,6 +454,7 @@ Stored in Redis keyed by `chat_id` with a **30-minute sliding TTL**.
 | `max_turns` | int | Max turns before fallback (default: 5) |
 | `awaiting_continuation` | bool | True when continuation prompt has been shown |
 | `detected_language` | str | Language from first message (`en`, `et`, `ru`) — persisted so all clarifying questions use the same language |
+| `original_query` | str | The user’s first message that triggered the session — preserved across turns so the response formatter always receives the full original intent, not just the last short follow-up (e.g. `"from 2026-04-01 to 2026-04-30"`) |
 
 ### Turn Flow
 
@@ -505,11 +517,6 @@ Localized continuation questions are defined in
 [src/tool_classifier/constants.py](../src/tool_classifier/constants.py):
 `CONTINUATION_QUESTION`, `CONTINUATION_QUESTION_ET`, `CONTINUATION_QUESTION_RU`.
 
-**History isolation:**
-On turn 0 (first turn of a new session), `conversation_history=[]` is passed to the
-extractor regardless of what the API sends. This prevents parameter values from a
-previous completed session from being re-used for the new request.
-
 **Constants** (in `src/tool_classifier/constants.py`):
 
 | Constant | Value | Description |
@@ -518,7 +525,94 @@ previous completed session from being re-used for the new request.
 
 ---
 
-## Part 4 — Session Management & Intent Switch Detection
+## Part 4 — API Caller & Response Formatter
+
+### Component: `APICaller`
+
+Defined in [src/tool_classifier/api_caller.py](../src/tool_classifier/api_caller.py).
+
+Executes the external HTTP request once all required parameters have been collected
+by the agentic loop.
+
+**Supported methods:** `GET` (params → query string) and `POST` (params → JSON body).
+
+**Timeout:** `API_CALL_TIMEOUT` seconds (from `constants.py`). Overridable per-call.
+
+**Return type:** `APICallResult`
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | bool | `True` for 2xx responses |
+| `status_code` | int | HTTP status code; `0` for network/timeout/circuit-breaker failures |
+| `response_data` | Any | Parsed JSON on success; raw parsed error body on 4xx; empty string on all other failures |
+| `error` | str \| None | Localized user-facing error message on failure; `None` on success |
+
+**Error handling:**
+
+| Failure type | `status_code` | `response_data` | `error` field |
+|---|---|---|---|
+| 4xx (client error, e.g. bad params) | actual code | Raw parsed body (preserved for agentic loop re-prompting) | Localized `CLIENT_ERROR_MESSAGES` |
+| 5xx (server error) | actual code | `""` | Localized `SERVICE_UNAVAILABLE_MESSAGES` |
+| Timeout | `0` | `""` | Localized `SERVICE_TIMEOUT_MESSAGES` |
+| Network error | `0` | `""` | Localized `SERVICE_TIMEOUT_MESSAGES` |
+| Redirect not followed | `3xx` | `""` | Localized `REDIRECT_NOT_FOLLOWED_MESSAGES` |
+| Circuit breaker open | `0` | `""` | Localized `CIRCUIT_BREAKER_OPEN_MESSAGES` |
+
+4xx responses do **not** trip the circuit breaker — they indicate bad input, not a
+server outage. The agentic loop can re-prompt the user for corrected values.
+
+**Language-aware errors:** all error messages are localized using `session.detected_language`
+(`et`, `en`, `ru`). The message constants are defined in
+[src/tool_classifier/constants.py](../src/tool_classifier/constants.py).
+
+---
+
+### Component: `CircuitBreaker`
+
+Part of `api_caller.py`. One breaker instance per URL, shared across requests for the
+lifetime of the `APICaller` instance.
+
+```
+CLOSED  → OPEN:      after CIRCUIT_BREAKER_FAILURE_THRESHOLD consecutive server/network failures
+OPEN    → HALF_OPEN: after CIRCUIT_BREAKER_COOLDOWN_SECONDS
+HALF_OPEN → CLOSED:  on first successful probe call
+HALF_OPEN → OPEN:    on first failed probe call
+```
+
+When OPEN, `call()` returns immediately without making an HTTP request.
+
+**Constants** (in `src/tool_classifier/constants.py`):
+
+| Constant | Description |
+|---|---|
+| `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failures before opening |
+| `CIRCUIT_BREAKER_COOLDOWN_SECONDS` | Seconds to wait before probing |
+
+---
+
+### Component: `APIResponseFormatterModule`
+
+Defined in [src/tool_classifier/api_response_formatter.py](../src/tool_classifier/api_response_formatter.py).
+
+Converts the raw API JSON response into a natural-language answer using DSPy.
+Supports both blocking (`forward`) and streaming (`stream_forward`) execution.
+
+**DSPy Signature:** `APIResponseFormatterSignature`
+
+| Input field | Description |
+|---|---|
+| `user_query` | The user's original question |
+| `api_response` | Raw API JSON as a string (truncated to `_MAX_RESPONSE_BYTES` = 50 KB) |
+| `endpoint_description` | Short description of what the endpoint does |
+| `response_language` | `"English"`, `"Estonian"`, or `"Russian"` — derived from `detected_language` |
+
+| Output field | Description |
+|---|---|
+| `formatted_answer` | Clean natural-language answer, no raw JSON or markdown headers |
+
+
+
+## Part 5 — Session Management & Intent Switch Detection
 
 ### `APIToolSessionStore`
 
@@ -600,7 +694,7 @@ ToolClassifier.classify()
     │
     ▼
 APIToolWorkflowExecutor._run()
-    ├─ No existing session → create new APIToolSession (turn_count=0, language=en)
+    ├─ No existing session → create new APIToolSession (turn_count=0, language=en, original_query="What are the public holidays in Estonia?")
     └─ AgenticLoop.run_turn(turn_count=0, history=[])
            ├─ ParamExtractionModule: no params in "What are the public holidays in Estonia?"
            │   but countryIsoCode=EE can be inferred → extracted
@@ -631,12 +725,22 @@ APIToolWorkflowExecutor._run()
     │
     Session DELETED from Redis
     ▼
-Bot: {"status": "params_collected", "endpoint": {"name": "get_public_holidays"}, "collected_params": {"countryIsoCode": "EE", "validFrom": "2026-01-01", "validTo": "2026-12-31"}}
+APIToolWorkflowExecutor._stream_api_and_format()
+    ├─ user_query = session.original_query → "What are the public holidays in Estonia?"
+    ├─ APICaller.call(GET https://openholidaysapi.org/PublicHolidays, params={countryIsoCode,validFrom,validTo})
+    │   → status=200, response_data=[{"name": "New Year's Day", ...}, ...]
+    └─ APIResponseFormatterModule.stream_forward(user_query, api_response, description, language="en")
+           → DSPy StreamResponse tokens yielded one by one
+           → format_sse(chat_id, "Here are the public holidays ") ...
+           → format_sse(chat_id, "END")
+    │
+    ▼
+Bot: "Here are the public holidays in Estonia for 2026:\n- New Year's Day (1 Jan)\n- ..."  ← streamed token-by-token
 ```
 
 ---
 
-## Part 5 — Integration Testing
+## Part 6 — Integration Testing
 
 ### Test Script
 
@@ -655,12 +759,12 @@ uv run --no-project --with requests python tests/api_tool_eval/integration_test_
 
 | # | Scenario | Turns | What it validates |
 |---|---|---|---|
-| 1 | Single-turn complete | 1 | Vehicle tax with plate number in first message → immediate completion |
-| 2 | Multi-turn EN | 2 | Public holidays, country extracted turn 1, dates provided turn 2 |
-| 3 | Multi-turn ET | 2 | School holidays in Estonian → language-aware classification |
-| 4 | No-params fast path | 1 | Parliament votings endpoint has no required params → instant completion |
+| 1 | Single-turn complete | 1 | Vehicle tax with plate number in first message → immediate API call + formatted response |
+| 2 | Multi-turn EN | 2 | Public holidays, country extracted turn 1, dates provided turn 2 → API call + formatted response |
+| 3 | Multi-turn ET | 2 | School holidays in Estonian → language-aware classification + Estonian response |
+| 4 | No-params fast path | 1 | Parliament votings endpoint has no required params → immediate API call without session |
 | 5 | Address search | 2 | Two-turn address lookup |
-| 6 | Electricity prices | 2 | Datetime params across two turns |
+| 6 | Electricity prices | 2 | `datetime` params across two turns |
 | 7 | Session isolation | 2 | Two different chat IDs — no param leak between sessions |
-| 8 | AWAITING_CONTINUATION → yes | 4+ | User says "yes" at continuation prompt → loop resumes |
+| 8 | AWAITING_CONTINUATION → yes | 4+ | User says “yes” at continuation prompt → loop resumes → API call on completion |
 | 9 | MAX_TURNS_REACHED | 5+ | User never provides params → falls back to RAG |

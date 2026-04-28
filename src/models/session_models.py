@@ -49,3 +49,11 @@ class APIToolSession(BaseModel):
             "even when follow-up messages are too short to reliably re-detect."
         ),
     )
+    original_query: str = Field(
+        default="",
+        description=(
+            "The user's first message that triggered this session. "
+            "Preserved across turns so the response formatter always receives the "
+            "full original intent, not just the last short follow-up message."
+        ),
+    )

@@ -302,6 +302,191 @@ class AgenticLoop:
             turn_count=updated_turn_count,
         )
 
+    async def stream_run_turn(
+        self,
+        chat_id: str,
+        user_message: str,
+        conversation_history: List[Dict[str, Any]],
+        params_schema: List[Dict[str, Any]],
+        collected_params: Dict[str, Any],
+        turn_count: int,
+        max_turns: int = 5,
+        awaiting_continuation: bool = False,
+        continuation_turn: int = CONTINUATION_TURN,
+        session_language: str = "en",
+    ) -> tuple[AgenticLoopResult, List[str]]:
+        """Process one user turn like :meth:`run_turn` but stream clarifying_question tokens.
+
+        Delegates extraction to
+        :meth:`~param_extractor.ParamExtractionModule.stream_forward` so
+        ``clarifying_question`` tokens are captured as they arrive from the LLM.
+        All session management (save/delete) is identical to :meth:`run_turn`.
+
+        Returns:
+            Tuple of ``(AgenticLoopResult, question_tokens)``.
+            ``question_tokens`` is the list of streamed token strings for the
+            clarifying question, or an empty list when no question is needed.
+        """
+        updated_turn_count = turn_count + 1
+
+        # Step 0 — Continuation decision
+        original_awaiting_continuation = awaiting_continuation
+        if awaiting_continuation:
+            wants_to_continue = self._detect_continuation_response(user_message)
+            if wants_to_continue:
+                logger.debug(
+                    "AgenticLoop: user chose to continue on turn {} for chat_id={}",
+                    turn_count,
+                    chat_id,
+                )
+                awaiting_continuation = False
+            else:
+                logger.info(
+                    "AgenticLoop: user chose to exit on turn {} for chat_id={}, "
+                    "falling back to RAG",
+                    turn_count,
+                    chat_id,
+                )
+                return (
+                    AgenticLoopResult(
+                        status=AgenticLoopStatus.MAX_TURNS_REACHED,
+                        collected_params=collected_params,
+                        clarifying_question="",
+                        turn_count=updated_turn_count,
+                    ),
+                    [],
+                )
+
+        # Step 1 — Turn limit guard
+        if turn_count >= max_turns:
+            logger.warning(
+                "AgenticLoop: max_turns={} reached for chat_id={}, abandoning",
+                max_turns,
+                chat_id,
+            )
+            return (
+                AgenticLoopResult(
+                    status=AgenticLoopStatus.MAX_TURNS_REACHED,
+                    collected_params=collected_params,
+                    clarifying_question="",
+                    turn_count=updated_turn_count,
+                ),
+                [],
+            )
+
+        # Step 2 — Stream-extract params from the current user message
+        try:
+            question_tokens, extraction = await self._param_extractor.stream_forward(
+                user_message=user_message,
+                params_schema=params_schema,
+                conversation_history=conversation_history,
+                already_collected=collected_params,
+                session_language=session_language,
+            )
+        except Exception as exc:
+            logger.error(
+                "AgenticLoop: stream param extraction failed on turn {} for chat_id={}: {}",
+                turn_count,
+                chat_id,
+                exc,
+            )
+            if awaiting_continuation != original_awaiting_continuation:
+                await self._save_session(
+                    chat_id,
+                    collected_params,
+                    updated_turn_count,
+                    awaiting_continuation=awaiting_continuation,
+                )
+            return (
+                AgenticLoopResult(
+                    status=AgenticLoopStatus.NEEDS_INPUT,
+                    collected_params=collected_params,
+                    clarifying_question="",
+                    turn_count=updated_turn_count,
+                ),
+                [],
+            )
+
+        # Step 3 — Merge
+        merged_params: Dict[str, Any] = {
+            **collected_params,
+            **extraction["extracted_params"],
+        }
+
+        # Step 4 — Completeness check
+        required_param_names = {
+            p["name"]
+            for p in params_schema
+            if isinstance(p, dict) and p.get("required", False)
+        }
+        all_collected = required_param_names.issubset(merged_params.keys())
+
+        if all_collected:
+            logger.debug(
+                "AgenticLoop: all required params collected on turn {} for chat_id={}",
+                turn_count,
+                chat_id,
+            )
+            await self._save_session(
+                chat_id, merged_params, updated_turn_count, awaiting_continuation=False
+            )
+            return (
+                AgenticLoopResult(
+                    status=AgenticLoopStatus.COMPLETED,
+                    collected_params=merged_params,
+                    clarifying_question="",
+                    turn_count=updated_turn_count,
+                ),
+                [],
+            )
+
+        # Step 5 — Still missing params
+        logger.debug(
+            "AgenticLoop: turn {} for chat_id={} — still missing: {}",
+            turn_count,
+            chat_id,
+            extraction["missing_required"],
+        )
+
+        if updated_turn_count == continuation_turn:
+            logger.info(
+                "AgenticLoop: continuation threshold reached on turn {} for chat_id={}",
+                turn_count,
+                chat_id,
+            )
+            continuation_q = _CONTINUATION_QUESTIONS.get(
+                session_language, CONTINUATION_QUESTION
+            )
+            await self._save_session(
+                chat_id, merged_params, updated_turn_count, awaiting_continuation=True
+            )
+            words = continuation_q.split(" ")
+            continuation_tokens = [
+                w + " " if i < len(words) - 1 else w for i, w in enumerate(words)
+            ]
+            return (
+                AgenticLoopResult(
+                    status=AgenticLoopStatus.AWAITING_CONTINUATION_DECISION,
+                    collected_params=merged_params,
+                    clarifying_question=continuation_q,
+                    turn_count=updated_turn_count,
+                ),
+                continuation_tokens,
+            )
+
+        await self._save_session(
+            chat_id, merged_params, updated_turn_count, awaiting_continuation=False
+        )
+        return (
+            AgenticLoopResult(
+                status=AgenticLoopStatus.NEEDS_INPUT,
+                collected_params=merged_params,
+                clarifying_question=extraction["clarifying_question"],
+                turn_count=updated_turn_count,
+            ),
+            question_tokens,
+        )
+
     async def _save_session(
         self,
         chat_id: str,

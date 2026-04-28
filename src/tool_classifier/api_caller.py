@@ -17,6 +17,7 @@ from tool_classifier.constants import (
     CIRCUIT_BREAKER_COOLDOWN_SECONDS,
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     CIRCUIT_BREAKER_OPEN_MESSAGES,
+    CLIENT_ERROR_MESSAGES,
     REDIRECT_NOT_FOLLOWED_MESSAGES,
     SERVICE_TIMEOUT_MESSAGES,
     SERVICE_UNAVAILABLE_MESSAGES,
@@ -285,20 +286,20 @@ class APICaller:
             )
 
         if 400 <= status_code < 500:
-            # Client error — preserve the full error body for the agentic loop so it
-            # can re-prompt the user with context about what went wrong.
+            # Client error — preserve the full raw body in response_data for
+            # potential future agentic loop re-prompting, but surface a localized
+            # friendly message to the user via the error field.
             # 4xx does NOT trip the circuit breaker.
             error_body = self._parse_response_body(response)
-            error_msg = error_body if isinstance(error_body, str) else str(error_body)
+            raw_msg = error_body if isinstance(error_body, str) else str(error_body)
             logger.warning(
-                f"[APICaller] 4xx response {status_code} from {url!r}: "
-                f"{error_msg[:200]}"
+                f"[APICaller] 4xx response {status_code} from {url!r}: {raw_msg[:200]}"
             )
             return APICallResult(
                 success=False,
                 status_code=status_code,
                 response_data=error_body,
-                error=error_msg,
+                error=get_localized_message(CLIENT_ERROR_MESSAGES, language),
             )
 
         # 5xx — server is misbehaving; trip the circuit breaker.

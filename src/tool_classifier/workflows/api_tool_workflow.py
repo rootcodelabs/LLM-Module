@@ -1,16 +1,40 @@
 """API Tool Calling Workflow Executor — Layer 2 of the classification chain."""
 
-import json
-from typing import Any, AsyncIterator, Dict, List, Optional
+import asyncio
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 
 from loguru import logger
 
 from models.request_models import OrchestrationRequest, OrchestrationResponse
 from models.session_models import APIToolSession
 from tool_classifier.agentic_loop import AgenticLoop
+from tool_classifier.api_caller import APICaller
+from tool_classifier.api_response_formatter import APIResponseFormatterModule
 from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.enums import AgenticLoopStatus
 from tool_classifier.param_extractor import ParamExtractionModule
+
+
+@dataclass
+class _LoopStep:
+    """Shared result type from :meth:`APIToolWorkflowExecutor._compute_loop_step`.
+
+    ``kind`` drives both the sync and streaming execution paths:
+
+    * ``"api_call"``  — all params collected; call the external API and format.
+    * ``"question"``  — agentic loop needs more input; return ``question`` to user.
+    * ``"fallback"``  — nothing to do; caller should fall back to RAG.
+    """
+
+    kind: Literal["api_call", "question", "fallback"]
+    chat_id: str = ""
+    endpoint: Dict[str, Any] = field(default_factory=dict)
+    collected_params: Dict[str, Any] = field(default_factory=dict)
+    detected_language: str = "en"
+    user_query: str = ""
+    question: str = ""
+    question_tokens: List[str] = field(default_factory=list)
 
 
 class APIToolWorkflowExecutor(BaseWorkflow):
@@ -28,16 +52,20 @@ class APIToolWorkflowExecutor(BaseWorkflow):
       - resumes it on turns 2-N
       - deletes it on COMPLETED or MAX_TURNS_REACHED
 
-    When all required params are collected (COMPLETED) the response content is a
-    JSON string with keys ``status``, ``endpoint``, and ``collected_params``.
-    The API call and response formatting are handled by the next task.
+    When all required params are collected (COMPLETED) the executor calls the
+    external API via :class:`APICaller` and formats the raw response into
+    natural-language using :class:`APIResponseFormatterModule`. The formatted
+    answer is returned directly to the user.
     """
 
     def __init__(self, orchestration_service: Optional[Any] = None) -> None:
         self.orchestration_service = orchestration_service
+        self._api_caller = APICaller()
+        self._formatter = APIResponseFormatterModule()
 
     # ------------------------------------------------------------------
     # Internal helpers
+
     # ------------------------------------------------------------------
 
     def _get_session_store(self) -> Optional[Any]:
@@ -57,22 +85,55 @@ class APIToolWorkflowExecutor(BaseWorkflow):
     def _required_params(params: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [p for p in params if isinstance(p, dict) and p.get("required", False)]
 
-    @staticmethod
-    def _build_completed_response(
+    async def _execute_api_and_format(
+        self,
         chat_id: str,
         endpoint: Dict[str, Any],
         collected_params: Dict[str, Any],
+        user_query: str,
+        detected_language: str,
     ) -> OrchestrationResponse:
-        content = json.dumps(
-            {
-                "status": "params_collected",
-                "endpoint": {
-                    "name": endpoint.get("name"),
-                },
-                "collected_params": collected_params,
-            },
-            ensure_ascii=False,
+        """Call the external API with collected params and return a formatted response.
+
+        On success, the raw API response is converted to natural language by
+        :class:`APIResponseFormatterModule`.
+        On any failure the localized error message is returned directly to the user.
+        """
+        url = endpoint.get("url", "")
+        method = endpoint.get("method", "GET")
+        description = endpoint.get("description", "")
+
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow: calling API "
+            f"{method} {url} with params={list(collected_params.keys())}"
         )
+
+        api_result = await self._api_caller.call(
+            url=url,
+            method=method,
+            params=collected_params,
+            language=detected_language,
+        )
+
+        if api_result.success:
+            logger.info(
+                f"[{chat_id}] APIToolWorkflow: API call succeeded "
+                f"(status={api_result.status_code})"
+            )
+            content = await asyncio.to_thread(
+                self._formatter.forward,
+                user_query=user_query,
+                api_response=api_result.response_data,
+                endpoint_description=description,
+                detected_language=detected_language,
+            )
+        else:
+            logger.warning(
+                f"[{chat_id}] APIToolWorkflow: API call failed "
+                f"(status={api_result.status_code}, error={api_result.error!r})"
+            )
+            content = api_result.error or ""
+
         return OrchestrationResponse(
             chatId=chat_id,
             llmServiceActive=True,
@@ -95,17 +156,20 @@ class APIToolWorkflowExecutor(BaseWorkflow):
     # Core loop handler — shared by async and streaming paths
     # ------------------------------------------------------------------
 
-    async def _run(
+    async def _compute_loop_step(
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
-    ) -> Optional[OrchestrationResponse]:
-        """Execute one turn of the agentic loop and return a response.
+    ) -> _LoopStep:
+        """Run one agentic loop turn and return a tagged outcome.
 
-        Handles session creation (turn 1), resumption (turn 2-N), and all
-        AgenticLoopStatus outcomes.  Returns None to signal a fallback only
-        when there is genuinely nothing to work with (no endpoint in context
-        and no active session).
+        This is the single source of truth for session management and loop logic.
+        Both the sync (:meth:`execute_async`) and streaming (:meth:`execute_streaming`)
+        paths call this method and then handle the result in their own way:
+
+        * ``"api_call"``  → call API + format response (blocking or streaming)
+        * ``"question"``  → return clarifying question to user
+        * ``"fallback"``  → no valid state; caller falls back to RAG
         """
         chat_id = request.chatId
         session_store = self._get_session_store()
@@ -119,13 +183,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             # Resume path — endpoint comes from persisted session
             endpoint = session.selected_endpoint
             if endpoint is None:
-                # Corrupt session: delete and fall back
                 logger.warning(
                     f"[{chat_id}] APIToolWorkflow: session has no endpoint — deleting"
                 )
                 if session_store is not None:
                     await session_store.delete(chat_id)
-                return None
+                return _LoopStep(kind="fallback", chat_id=chat_id)
 
             logger.info(
                 f"[{chat_id}] APIToolWorkflow: resuming session "
@@ -139,17 +202,24 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     f"[{chat_id}] APIToolWorkflow: no matched_endpoint in context "
                     f"and no active session — falling back"
                 )
-                return None
+                return _LoopStep(kind="fallback", chat_id=chat_id)
 
             params_schema: List[Dict[str, Any]] = endpoint.get("params", [])
 
-            # Fast path: no required params — nothing to collect, return immediately
+            # Fast path: no required params — call API immediately
             if not self._required_params(params_schema):
                 logger.info(
                     f"[{chat_id}] APIToolWorkflow: endpoint {endpoint.get('name')!r} "
                     f"has no required params — fast path"
                 )
-                return self._build_completed_response(chat_id, endpoint, {})
+                return _LoopStep(
+                    kind="api_call",
+                    chat_id=chat_id,
+                    endpoint=endpoint,
+                    collected_params={},
+                    detected_language=getattr(request, "_detected_language", "en"),
+                    user_query=request.message,
+                )
 
             # Create a new session before running the first loop turn
             if session_store is not None:
@@ -162,12 +232,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     max_turns=5,
                     awaiting_continuation=False,
                     detected_language=getattr(request, "_detected_language", "en"),
+                    original_query=request.message,
                 )
                 await session_store.save(new_session)
                 session = new_session
             else:
-                # Redis unavailable — create an in-memory placeholder so the
-                # loop still runs (single-turn degradation: no persistence).
                 logger.warning(
                     f"[{chat_id}] APIToolWorkflow: Redis unavailable — "
                     f"running loop without session persistence"
@@ -181,12 +250,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     max_turns=5,
                     awaiting_continuation=False,
                     detected_language=getattr(request, "_detected_language", "en"),
+                    original_query=request.message,
                 )
 
         # ── Run one loop turn ─────────────────────────────────────────────
         if session_store is None:
-            # Without a store the loop cannot persist.
-            # so AgenticLoop doesn't crash. The loop will run but state is lost.
             logger.warning(
                 f"[{chat_id}] APIToolWorkflow: session store unavailable — "
                 f"agentic loop running without persistence"
@@ -194,15 +262,9 @@ class APIToolWorkflowExecutor(BaseWorkflow):
 
         loop = self._build_agentic_loop(session_store)  # type: ignore[arg-type]
 
-        result = await loop.run_turn(
+        result, question_tokens = await loop.stream_run_turn(
             chat_id=chat_id,
             user_message=request.message,
-            # On the first turn of a new session (turn_count == 0) we pass an
-            # empty history so the extractor only looks at the current message.
-            # Full chat history may contain parameter values from a *previous*
-            # session that would be falsely re-used for this fresh request.
-            # On subsequent turns (turn_count > 0) the history is relevant —
-            # the user may refer back to something they said in this session.
             conversation_history=(
                 []
                 if session.turn_count == 0
@@ -219,7 +281,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             session_language=session.detected_language,
         )
 
-        # ── Handle result ─────────────────────────────────────────────────
+        # ── Translate result into a _LoopStep ─────────────────────────────
         if result.status == AgenticLoopStatus.COMPLETED:
             logger.info(
                 f"[{chat_id}] APIToolWorkflow: all params collected "
@@ -227,8 +289,13 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             )
             if session_store is not None:
                 await session_store.delete(chat_id)
-            return self._build_completed_response(
-                chat_id, endpoint, result.collected_params
+            return _LoopStep(
+                kind="api_call",
+                chat_id=chat_id,
+                endpoint=endpoint,
+                collected_params=result.collected_params,
+                detected_language=session.detected_language,
+                user_query=session.original_query or request.message,
             )
 
         if result.status == AgenticLoopStatus.MAX_TURNS_REACHED:
@@ -237,16 +304,42 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             )
             if session_store is not None:
                 await session_store.delete(chat_id)
-            # Return None to trigger fallback to the RAG workflow
-            return None
+            return _LoopStep(kind="fallback", chat_id=chat_id)
 
-        # NEEDS_INPUT or AWAITING_CONTINUATION_DECISION — session already saved
-        # by the loop; return the question to the user
+        # NEEDS_INPUT or AWAITING_CONTINUATION_DECISION
         logger.info(
             f"[{chat_id}] APIToolWorkflow: asking for more info "
             f"(status={result.status.value}, turn={result.turn_count})"
         )
-        return self._build_question_response(chat_id, result.clarifying_question)
+        return _LoopStep(
+            kind="question",
+            chat_id=chat_id,
+            question=result.clarifying_question,
+            question_tokens=question_tokens,
+        )
+
+    async def _run(
+        self,
+        request: OrchestrationRequest,
+        context: Dict[str, Any],
+    ) -> Optional[OrchestrationResponse]:
+        """Blocking execution path — delegates to :meth:`_compute_loop_step`."""
+        step = await self._compute_loop_step(request, context)
+
+        if step.kind == "fallback":
+            return None
+
+        if step.kind == "question":
+            return self._build_question_response(step.chat_id, step.question)
+
+        # api_call — blocking
+        return await self._execute_api_and_format(
+            chat_id=step.chat_id,
+            endpoint=step.endpoint,
+            collected_params=step.collected_params,
+            user_query=step.user_query,
+            detected_language=step.detected_language,
+        )
 
     # ------------------------------------------------------------------
     # BaseWorkflow interface
@@ -260,18 +353,70 @@ class APIToolWorkflowExecutor(BaseWorkflow):
     ) -> Optional[OrchestrationResponse]:
         return await self._run(request, context)
 
+    async def _stream_api_and_format(
+        self,
+        chat_id: str,
+        endpoint: Dict[str, Any],
+        collected_params: Dict[str, Any],
+        user_query: str,
+        detected_language: str,
+        orchestration_service: Any,
+    ) -> AsyncIterator[str]:
+        """Call the external API and stream the formatted response token by token.
+
+        Clarifying questions are short and do not need token streaming; they are
+        yielded as a single SSE frame.
+        """
+        url = endpoint.get("url", "")
+        method = endpoint.get("method", "GET")
+        description = endpoint.get("description", "")
+
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow (streaming): calling API "
+            f"{method} {url} with params={list(collected_params.keys())}"
+        )
+
+        api_result = await self._api_caller.call(
+            url=url,
+            method=method,
+            params=collected_params,
+            language=detected_language,
+        )
+
+        if api_result.success:
+            logger.info(
+                f"[{chat_id}] APIToolWorkflow (streaming): API call succeeded "
+                f"(status={api_result.status_code}), streaming formatted response"
+            )
+            async for token in self._formatter.stream_forward(
+                user_query=user_query,
+                api_response=api_result.response_data,
+                endpoint_description=description,
+                detected_language=detected_language,
+            ):
+                yield orchestration_service.format_sse(chat_id, token)
+        else:
+            logger.warning(
+                f"[{chat_id}] APIToolWorkflow (streaming): API call failed "
+                f"(status={api_result.status_code}, error={api_result.error!r})"
+            )
+            yield orchestration_service.format_sse(chat_id, api_result.error or "")
+
+        yield orchestration_service.format_sse(chat_id, "END")
+
     async def execute_streaming(
         self,
         request: OrchestrationRequest,
         context: Dict[str, Any],
         time_metric: Optional[Dict[str, float]] = None,
     ) -> Optional[AsyncIterator[str]]:
-        """Streaming mode — run the loop and wrap the response in SSE frames.
+        """Streaming mode — run the agentic loop and stream the response token by token.
 
-        Clarifying questions and the final params-collected response are both
-        short strings, so they are emitted as a single SSE frame + END marker.
-        Full token-by-token streaming of the final API response will be added
-        when the API caller is implemented.
+        Clarifying questions (NEEDS_INPUT / AWAITING_CONTINUATION) are short; they
+        are emitted as a single SSE frame followed by END — same as before.
+
+        Final API responses (COMPLETED / fast-path) are streamed word-by-word via
+        DSPy native streaming on the ``formatted_answer`` field.
         """
         if self.orchestration_service is None:
             logger.error(
@@ -279,15 +424,28 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             )
             return None
 
-        response = await self._run(request, context)
-        if response is None:
+        step = await self._compute_loop_step(request, context)
+
+        if step.kind == "fallback":
             return None
 
         orchestration_service = self.orchestration_service
-        content = response.content
 
-        async def _stream() -> AsyncIterator[str]:
-            yield orchestration_service.format_sse(request.chatId, content)
-            yield orchestration_service.format_sse(request.chatId, "END")
+        if step.kind == "question":
 
-        return _stream()
+            async def _stream_question() -> AsyncIterator[str]:
+                for token in step.question_tokens or [step.question]:
+                    yield orchestration_service.format_sse(step.chat_id, token)
+                yield orchestration_service.format_sse(step.chat_id, "END")
+
+            return _stream_question()
+
+        # api_call — stream the LLM-formatted answer token by token
+        return self._stream_api_and_format(
+            chat_id=step.chat_id,
+            endpoint=step.endpoint,
+            collected_params=step.collected_params,
+            user_query=step.user_query,
+            detected_language=step.detected_language,
+            orchestration_service=orchestration_service,
+        )
