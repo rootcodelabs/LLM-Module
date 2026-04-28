@@ -20,7 +20,8 @@ class FeatureFlags:
     Environment Variables:
     - TOOL_CLASSIFIER_ENABLED: Master switch for classifier (default: false)
     - SERVICE_WORKFLOW_ENABLED: Enable Layer 1 service workflow (default: true)
-    - CONTEXT_WORKFLOW_ENABLED: Enable Layer 2 context workflow (default: true)
+    - API_TOOL_CALLING_WORKFLOW_ENABLED: Enable Layer 2 API tool calling workflow (default: true)
+    - CONTEXT_WORKFLOW_ENABLED: Enable Layer 3 context workflow (default: true)
     """
 
     # Master switch for tool classifier
@@ -34,6 +35,9 @@ class FeatureFlags:
     # These only take effect when TOOL_CLASSIFIER_ENABLED=true
     SERVICE_WORKFLOW_ENABLED = (
         os.getenv("SERVICE_WORKFLOW_ENABLED", "true").lower() == "true"
+    )
+    API_TOOL_CALLING_WORKFLOW_ENABLED = (
+        os.getenv("API_TOOL_CALLING_WORKFLOW_ENABLED", "true").lower() == "true"
     )
     CONTEXT_WORKFLOW_ENABLED = (
         os.getenv("CONTEXT_WORKFLOW_ENABLED", "true").lower() == "true"
@@ -53,6 +57,9 @@ class FeatureFlags:
         logger.info(f"  TOOL_CLASSIFIER_ENABLED: {cls.TOOL_CLASSIFIER_ENABLED}")
         if cls.TOOL_CLASSIFIER_ENABLED:
             logger.info(f"  SERVICE_WORKFLOW_ENABLED: {cls.SERVICE_WORKFLOW_ENABLED}")
+            logger.info(
+                f"  API_TOOL_CALLING_WORKFLOW_ENABLED: {cls.API_TOOL_CALLING_WORKFLOW_ENABLED}"
+            )
             logger.info(f"  CONTEXT_WORKFLOW_ENABLED: {cls.CONTEXT_WORKFLOW_ENABLED}")
             logger.info(f"  FALLBACK_TO_RAG_ON_ERROR: {cls.FALLBACK_TO_RAG_ON_ERROR}")
         else:
@@ -64,7 +71,7 @@ class FeatureFlags:
         Check if a specific workflow is enabled.
 
         Args:
-            workflow_name: Name of workflow ("service", "context", "rag", "ood")
+            workflow_name: Name of workflow ("service", "api_tool_calling", "context", "rag", "ood")
 
         Returns:
             True if workflow is enabled and classifier is enabled
@@ -74,6 +81,7 @@ class FeatureFlags:
 
         workflow_flags = {
             "service": cls.SERVICE_WORKFLOW_ENABLED,
+            "api_tool_calling": cls.API_TOOL_CALLING_WORKFLOW_ENABLED,
             "context": cls.CONTEXT_WORKFLOW_ENABLED,
             "rag": True,  # Always enabled
             "ood": True,  # Always enabled

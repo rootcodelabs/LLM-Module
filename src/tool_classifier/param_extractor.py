@@ -26,12 +26,17 @@ class ParamExtractionSignature(dspy.Signature):
 
     CRITICAL LANGUAGE RULE:
     - Understand Estonian, English, and Russian input
-    - Generate clarifying_question in the SAME language as the user_message
+    - Generate clarifying_question in the language specified by session_language
+    - IGNORE the language of the current user_message for output language decisions —
+      short follow-up messages ("I'm not sure", "2026-01-01") are unreliable indicators.
+      Always use session_language.
 
     Extraction rules:
-    - Extract values for parameters listed in params_schema that are not yet in already_collected
-    - Search BOTH user_message AND conversation_history for values
-    - Do NOT re-extract parameters already present in already_collected
+    - Extract values for ALL parameters listed in params_schema that appear in user_message
+      or conversation_history, regardless of whether they are already in already_collected
+    - If the user explicitly provides a new or corrected value for a parameter that is
+      already in already_collected, still extract the new value — it will override the old one
+    - Only skip extraction for a param if the user has NOT mentioned it at all in this turn
     - Validate types: dates must be ISO 8601 (YYYY-MM-DD), integers must be whole numbers,
       numbers must be numeric, booleans must be true or false
 
@@ -59,11 +64,23 @@ class ParamExtractionSignature(dspy.Signature):
     conversation_history: str = dspy.InputField(
         desc="Recent conversation turns formatted as 'role: message', one per line"
     )
+    session_language: str = dspy.InputField(
+        desc=(
+            "ISO language code for the response language detected from the user's "
+            "first message: 'en' (English), 'et' (Estonian), 'ru' (Russian). "
+            "Always generate clarifying_question in this language."
+        )
+    )
     params_schema: str = dspy.InputField(
         desc='JSON array of parameter schemas: [{"name": str, "type": str, "required": bool, "description": str}]'
     )
     already_collected: str = dspy.InputField(
-        desc="JSON object of already-collected parameter values: {param_name: value}"
+        desc=(
+            "JSON object of parameter values collected in prior turns: {param_name: value}. "
+            "Use this as context to understand what has already been provided. "
+            "If the user explicitly mentions a new value for a param already here, "
+            "still extract the new value — corrections are allowed."
+        )
     )
 
     extracted_params: str = dspy.OutputField(
@@ -91,6 +108,7 @@ class ParamExtractionModule(dspy.Module):
         params_schema: List[Dict[str, Any]],
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         already_collected: Optional[Dict[str, Any]] = None,
+        session_language: str = "en",
     ) -> ParamExtractionResult:
         """
         Extract parameter values from user message and conversation history.
@@ -100,6 +118,8 @@ class ParamExtractionModule(dspy.Module):
             params_schema: List of parameter schema dicts with name, type, required, description
             conversation_history: Recent conversation messages (optional)
             already_collected: Parameter values collected in prior turns (optional)
+            session_language: Language code detected on turn 0 ('en', 'et', 'ru').
+                All clarifying questions will be generated in this language.
 
         Returns:
             ParamExtractionResult with extracted_params, missing_required, clarifying_question
@@ -115,6 +135,7 @@ class ParamExtractionModule(dspy.Module):
             result = self.extractor(
                 user_message=user_message,
                 conversation_history=history_text,
+                session_language=session_language,
                 params_schema=params_schema_json,
                 already_collected=already_collected_json,
             )
@@ -139,9 +160,6 @@ class ParamExtractionModule(dspy.Module):
             type_invalid_params: List[str] = []
 
             for param_name, raw_value in extracted_raw.items():
-                if param_name in already_collected:
-                    # Prior turns are authoritative — discard any LLM re-output
-                    continue
                 schema_entry = schema_map.get(param_name)
                 if schema_entry is None:
                     # Param not in schema — skip silently
@@ -157,9 +175,10 @@ class ParamExtractionModule(dspy.Module):
                     )
                     type_invalid_params.append(param_name)
 
-            # Re-derive missing required params after type validation
-            # already_collected is authoritative: its values must not be overwritten
-            all_collected = {**validated_params, **already_collected}
+            # Re-derive missing required params after type validation.
+            # validated_params (current turn) takes precedence over already_collected
+            # so that explicit user corrections override prior values.
+            all_collected = {**already_collected, **validated_params}
             missing_required: List[str] = [
                 p["name"]
                 for p in params_schema
