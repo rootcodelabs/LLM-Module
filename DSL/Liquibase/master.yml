@@ -9,3 +9,7 @@ databaseChangeLog:
       file: changelog/rag-search-script-v4-authority-data.xml
   - include:
       file: changelog/rag-search-script-v5-prompt-config.sql
+  - include:
+      file: changelog/rag-search-script-v6-endpoints.sql
+  - include:
+      file: changelog/rag-search-script-v7-schema-migration.sql

@@ -3,7 +3,7 @@ databases:
   - name: rag-search-db
     username: postgres
     password: "{{ ragSearchDB.password }}" 
-    db: rag-search
+    db: llm_production
     storage: 8Gi
     initdbScripts:
       init-langfuse.sql: |
@@ -28,5 +28,3 @@ service:
 persistence:
   storageClass: ""  # specify your own
   accessModes: ["ReadWriteOnce"]
-
-

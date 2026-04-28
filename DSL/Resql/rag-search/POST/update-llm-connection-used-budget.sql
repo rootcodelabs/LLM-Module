@@ -1,4 +1,4 @@
-UPDATE llm_connections 
+UPDATE rag_search.llm_connections 
 SET 
     used_budget = used_budget + :usage
 WHERE id = :connection_id
