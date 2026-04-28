@@ -1,9 +1,11 @@
 """Data models for tool classifier system."""
 
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
 
-from tool_classifier.enums import WorkflowType
+from tool_classifier.enums import AgenticLoopStatus, WorkflowType
 
 
 class ClassificationResult(BaseModel):
@@ -79,3 +81,56 @@ class ContextWorkflowMetadata(BaseModel):
     can_answer_from_history: bool = Field(
         default=False, description="Whether conversation history can answer this"
     )
+
+
+@dataclass
+class AgenticLoopResult:
+    """
+    Result returned by AgenticLoop.run_turn() after processing one conversation turn.
+
+    Attributes:
+        status: Outcome of this turn — completed, needs_input, max_turns_reached,
+            or awaiting_continuation_decision.
+        collected_params: All parameters collected so far (prior turns + this turn merged).
+        clarifying_question: Natural-language question to show the user when status is
+            NEEDS_INPUT or AWAITING_CONTINUATION_DECISION. Empty string for other statuses.
+        turn_count: Updated turn counter (input turn_count + 1).
+    """
+
+    status: AgenticLoopStatus
+    collected_params: Dict[str, Any]
+    clarifying_question: str
+    turn_count: int
+
+
+@dataclass
+class APICallResult:
+    """
+    Result returned by APICaller.call() after executing an external HTTP request.
+
+    Attributes:
+        success: True if the request succeeded (2xx status code).
+        status_code: HTTP status code returned by the server. 0 when no HTTP response
+            was received (network error, timeout, or circuit breaker rejection).
+        response_data: Parsed JSON value on success (dict, list, or scalar); extracted
+            error body on 4xx; empty string on 5xx, timeout, or network error.
+        error: Human-readable error message for the user or agentic loop. None when
+            success is True. Contains the raw API error body for 4xx to support
+            agentic loop re-prompting; contains a localized friendly message for all
+            other failure types.
+    """
+
+    success: bool
+    status_code: int
+    response_data: Any
+    error: Optional[str]
+
+    @property
+    def is_client_error(self) -> bool:
+        """True if the response was a 4xx client error."""
+        return 400 <= self.status_code < 500
+
+    @property
+    def is_server_error(self) -> bool:
+        """True if the response was a 5xx server error."""
+        return 500 <= self.status_code < 600

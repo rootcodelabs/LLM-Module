@@ -1,0 +1,354 @@
+"""Unit tests for APIResponseFormatterModule — DSPy JSON-to-natural-language formatter."""
+
+import json
+from collections.abc import Generator
+from unittest.mock import MagicMock, patch
+
+import dspy
+import pytest
+
+from src.tool_classifier.api_response_formatter import APIResponseFormatterModule
+
+
+@pytest.fixture(autouse=True)
+def mock_dspy_lm() -> Generator[MagicMock, None, None]:
+    """Mock DSPy LM to prevent 'No LM is loaded' errors during tests."""
+    mock_lm = MagicMock()
+    mock_lm.history = []
+    with patch("dspy.settings") as mock_settings:
+        mock_settings.lm = mock_lm
+        dspy.configure(lm=mock_lm)
+        yield mock_lm
+
+
+def _make_mock_result(formatted_answer: str) -> MagicMock:
+    """Build a mock DSPy Predict result with the formatted_answer attribute."""
+    mock_result = MagicMock()
+    mock_result.formatted_answer = formatted_answer
+    return mock_result
+
+
+# ---------------------------------------------------------------------------
+# Initialisation
+# ---------------------------------------------------------------------------
+
+
+class TestAPIResponseFormatterModuleInit:
+    """APIResponseFormatterModule should initialise with the correct attributes."""
+
+    def test_module_has_formatter_attribute(self) -> None:
+        module = APIResponseFormatterModule()
+        assert hasattr(module, "formatter")
+
+    def test_formatter_is_dspy_predict(self) -> None:
+        module = APIResponseFormatterModule()
+        assert isinstance(module.formatter, dspy.Predict)
+
+
+# ---------------------------------------------------------------------------
+# Basic formatting
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleFormatting:
+    """forward() should return the LLM's formatted answer for valid JSON responses."""
+
+    def test_format_simple_json_response(self) -> None:
+        """A valid JSON response should be passed to LLM and its answer returned."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result(
+            "The public holidays are: New Year, Independence Day."
+        )
+        api_response = (
+            '{"holidays": [{"name": "New Year"}, {"name": "Independence Day"}]}'
+        )
+
+        with patch.object(module, "formatter", return_value=mock_result):
+            result = module.forward(
+                user_query="What are the public holidays?",
+                api_response=api_response,
+                endpoint_description="Get public holidays for a country",
+            )
+
+        assert result == "The public holidays are: New Year, Independence Day."
+
+    def test_predictor_called_with_correct_fields(self) -> None:
+        """forward() must call formatter with all three expected keyword arguments."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Answer")
+        api_response = '{"status": "ok"}'
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="Is the service running?",
+                api_response=api_response,
+                endpoint_description="Get service status",
+            )
+
+        mock_formatter.assert_called_once()
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "user_query" in call_kwargs
+        assert "api_response" in call_kwargs
+        assert "endpoint_description" in call_kwargs
+        assert "response_language" in call_kwargs
+
+    def test_dict_input_converted_to_string(self) -> None:
+        """A dict api_response should be JSON-serialised before passing to the LLM."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("The count is 42.")
+        api_response_dict = {"count": 42, "items": ["a", "b"]}
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="How many items?",
+                api_response=api_response_dict,
+                endpoint_description="Get item count",
+            )
+
+        assert result == "The count is 42."
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert isinstance(call_kwargs["api_response"], str)
+        parsed = json.loads(call_kwargs["api_response"])
+        assert parsed == api_response_dict
+
+
+# ---------------------------------------------------------------------------
+# Empty response handling
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyResponseHandling:
+    """forward() should annotate empty responses so the LLM handles them gracefully."""
+
+    def test_format_empty_list_response(self) -> None:
+        """An empty list '[]' should be annotated and passed to the LLM."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("No results were found for your query.")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="What holidays exist?",
+                api_response="[]",
+                endpoint_description="Get public holidays",
+            )
+
+        assert result == "No results were found for your query."
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "EMPTY RESPONSE" in call_kwargs["api_response"]
+
+    def test_format_empty_dict_response(self) -> None:
+        """An empty dict '{}' should be annotated before passing to the LLM."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("There is no data available.")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="Show me the data",
+                api_response="{}",
+                endpoint_description="Fetch data",
+            )
+
+        assert result == "There is no data available."
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "EMPTY RESPONSE" in call_kwargs["api_response"]
+
+    def test_format_null_response(self) -> None:
+        """A 'null' JSON response should be annotated before passing to the LLM."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("No information was returned.")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="What is the result?",
+                api_response="null",
+                endpoint_description="Get result",
+            )
+
+        assert result == "No information was returned."
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "EMPTY RESPONSE" in call_kwargs["api_response"]
+
+
+# ---------------------------------------------------------------------------
+# Error response handling
+# ---------------------------------------------------------------------------
+
+
+class TestErrorResponseHandling:
+    """forward() should pass API error responses to the LLM without modification."""
+
+    def test_format_error_response(self) -> None:
+        """An error JSON response should be forwarded to the LLM as-is."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Sorry, the requested resource was not found.")
+        api_response = '{"error": "not found", "code": 404}'
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="Get my record",
+                api_response=api_response,
+                endpoint_description="Get record by ID",
+            )
+
+        assert result == "Sorry, the requested resource was not found."
+        # Error response is not empty — must NOT have the EMPTY RESPONSE annotation
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "EMPTY RESPONSE" not in call_kwargs["api_response"]
+
+
+# ---------------------------------------------------------------------------
+# Large response truncation
+# ---------------------------------------------------------------------------
+
+
+class TestLargeResponseTruncation:
+    """forward() should truncate responses that exceed the item limit before calling the LLM."""
+
+    def test_format_large_response_truncation(self) -> None:
+        """A list with more than 500 items should be truncated and annotated with a NOTE."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Here is a summary of the large dataset.")
+        large_response = [{"id": i, "name": f"item_{i}"} for i in range(600)]
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            result = module.forward(
+                user_query="List all items",
+                api_response=large_response,
+                endpoint_description="Get all items",
+            )
+
+        assert result == "Here is a summary of the large dataset."
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "NOTE" in call_kwargs["api_response"]
+        assert "500" in call_kwargs["api_response"]
+        assert "600" in call_kwargs["api_response"]
+
+    def test_list_within_limit_not_truncated(self) -> None:
+        """A list with exactly 500 items should NOT be truncated."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Here are the items.")
+        exact_response = [{"id": i} for i in range(500)]
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="List items",
+                api_response=exact_response,
+                endpoint_description="Get items",
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert "NOTE" not in call_kwargs["api_response"]
+
+
+# ---------------------------------------------------------------------------
+# Language handling
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageHandling:
+    """forward() must map detected_language codes to display names for the LLM."""
+
+    @pytest.mark.parametrize(
+        "language_code, expected_display",
+        [
+            ("en", "English"),
+            ("et", "Estonian"),
+            ("ru", "Russian"),
+        ],
+    )
+    def test_detected_language_mapped_to_display_name(
+        self, language_code: str, expected_display: str
+    ) -> None:
+        """Each ISO code must be forwarded to the LLM as its full display name."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Answer")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="Test query",
+                api_response='{"key": "value"}',
+                endpoint_description="Test endpoint",
+                detected_language=language_code,
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert call_kwargs["response_language"] == expected_display
+
+    def test_unknown_language_code_defaults_to_english(self) -> None:
+        """An unrecognised language code must fall back to 'English'."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Answer")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="Test",
+                api_response='{"key": "value"}',
+                endpoint_description="Test",
+                detected_language="fr",  # unsupported code
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert call_kwargs["response_language"] == "English"
+
+    def test_default_language_is_english(self) -> None:
+        """When detected_language is omitted, response_language must be 'English'."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("Answer")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="Test",
+                api_response='{"key": "value"}',
+                endpoint_description="Test",
+                # detected_language not passed — should default to 'en'
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert call_kwargs["response_language"] == "English"
+
+
+# ---------------------------------------------------------------------------
+# Resilience / error handling
+# ---------------------------------------------------------------------------
+
+
+class TestResilienceHandling:
+    """forward() should return a safe fallback message if the LLM call fails."""
+
+    def test_forward_handles_prediction_error(self) -> None:
+        """If the DSPy predictor raises an exception, a safe fallback string is returned."""
+        module = APIResponseFormatterModule()
+
+        with patch.object(
+            module, "formatter", side_effect=RuntimeError("LLM unavailable")
+        ):
+            result = module.forward(
+                user_query="What are the holidays?",
+                api_response='{"holidays": []}',
+                endpoint_description="Get public holidays",
+            )
+
+        assert isinstance(result, str)
+        assert len(result) > 0
