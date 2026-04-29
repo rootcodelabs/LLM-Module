@@ -107,3 +107,29 @@ Above this AND score gap is large → SERVICE without LLM confirmation."""
 DENSE_SCORE_GAP_THRESHOLD = 0.05
 """Cosine score gap (top - second) for high-confidence classification.
 Ensures the top result is significantly better than the runner-up."""
+
+
+# ============================================================================
+# Agentic Loop — Continuation Threshold
+# ============================================================================
+
+CONTINUATION_TURN = 3
+"""1-based turn count (after increment) at which the loop asks the user whether
+to continue collecting parameters or fall back to the RAG workflow.
+Only triggers when required params are still missing at exactly this turn.
+
+The turn counter is incremented on every run_turn() call, including the
+initial call that generates the bot's opening question (before the user
+speaks). With CONTINUATION_TURN=3 the conversation looks like:
+
+  run_turn #1 (turn 0→1): initial question — "Which country and date?"
+  run_turn #2 (turn 1→2): user gives partial answer — bot asks follow-up
+  run_turn #3 (turn 2→3): user doesn't answer properly → CONTINUATION CHECK
+"""
+
+CONTINUATION_QUESTION = (
+    "I still need a bit more information, but we've been at this for a while. "
+    "Would you like to keep going and answer a few more questions, "
+    "or would you prefer to stop and get a general answer instead? (yes / no)"
+)
+"""Yes/no question shown to the user when the continuation threshold is reached."""
