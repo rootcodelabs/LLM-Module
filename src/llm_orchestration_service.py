@@ -417,6 +417,7 @@ class LLMOrchestrationService:
                         query=request.message,
                         conversation_history=request.conversationHistory,
                         language=detected_language,
+                        request=request,
                     )
                     time_metric["classifier.classify"] = time.time() - start_time
 
@@ -698,6 +699,7 @@ class LLMOrchestrationService:
                             query=request.message,
                             conversation_history=request.conversationHistory,
                             language=detected_language,
+                            request=request,
                         )
                         time_metric["classifier.classify"] = time.time() - start_time
 

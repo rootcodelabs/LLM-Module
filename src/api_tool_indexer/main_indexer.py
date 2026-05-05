@@ -126,13 +126,22 @@ async def _generate_context_for_endpoint(
         params_summary=params_summary,
     )
 
-    # Re-use the internal HTTP call of LLMAPIClient - /generate-context endpoint
+    logger.debug(
+        "Generated context prompt for endpoint '{}': {} chars",
+        endpoint_data.endpoint_id,
+        len(context_prompt),
+    )
+
+    # context_type="api_tool" makes context_manager use API_TOOL_CONTEXT_PROMPT,
+    # which passes chunk_prompt through unmodified so CHUNK_CONTEXT_PROMPT cannot
+    # override the instructions in CONTEXT_TEMPLATE (e.g. example query generation).
     request_data = {
         "document_prompt": "",
         "chunk_prompt": context_prompt,
         "environment": api_client.environment,
-        "use_cache": True,
+        "use_cache": False,
         "connection_id": api_client.connection_id,
+        "context_type": "api_tool",
     }
 
     last_error = None
@@ -153,6 +162,13 @@ async def _generate_context_for_endpoint(
             result = response.json()
 
             context = result.get("context", "").strip()
+
+            logger.debug(
+                "context preview: {}{}",
+                context[:200].replace("\n", "\\n"),
+                "..." if len(context) > 200 else "",
+            )
+
             if not context:
                 raise ValueError("Empty context returned from API")
 
