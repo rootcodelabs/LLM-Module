@@ -221,6 +221,12 @@ class ContextGenerationRequest(BaseModel):
     temperature: float = Field(
         default=0.1, description="Temperature for response generation", ge=0.0, le=2.0
     )
+    context_type: Literal["chunk", "api_tool"] = Field(
+        default="chunk",
+        description="Controls which prompt template is used. 'chunk' uses the Anthropic "
+        "RAG template (short succinct context). 'api_tool' passes the prompt through "
+        "unmodified so the caller's own instructions are respected.",
+    )
 
 
 class ContextGenerationResponse(BaseModel):

@@ -31,7 +31,9 @@ class ApiToolIndexerConstants:
     REQUEST_TIMEOUT = 60  # seconds
 
     # Context Enrichment Template
-    # Used to generate a rich semantic context for each endpoint before embedding
+    # Mirrors the service workflow (intent_data_enrichment/constants.py).
+    # Full template goes in chunk_prompt; document_prompt is left empty.
+    # The LLM summarises the chunk content into a rich semantic context.
     CONTEXT_TEMPLATE = """<document>
 {full_endpoint_info}
 </document>
@@ -44,12 +46,24 @@ Parameters: {params_summary}
 </endpoint>
 
 Please generate a rich, detailed context that describes this API endpoint comprehensively for semantic search.
-Include information about:
+Keep the prose context general and country-agnostic. Include information about:
 - What the user wants to accomplish by calling this endpoint
 - Key terms and synonyms for this action
 - Related concepts and use cases
 - Common ways users might ask for this functionality in natural language
 
-IMPORTANT: Generate the context in the SAME LANGUAGE as the endpoint description above. If the description is in Estonian, respond in Estonian. If in English, respond in English. If in Russian, respond in Russian.
+Then, on a new line, add a section exactly as shown below with 6 to 8 realistic and diverse example questions a real user might ask when they need this endpoint. Cover different phrasings, synonyms, and indirect ways of asking — do not just repeat the description verbatim.
 
-Answer only with the enriched context and nothing else."""
+IMPORTANT for example queries: This is a system built for Estonian government digital services (Bürokratt). Ground the examples in an Estonian context — use Estonian cities (Tallinn, Tartu, Pärnu, Narva), Estonian institutions, and Estonia-relevant scenarios. Only use non-Estonian locations if the endpoint is explicitly about comparing or fetching data for multiple countries.
+
+Example queries:
+- <example question 1>
+- <example question 2>
+- <example question 3>
+- <example question 4>
+- <example question 5>
+- <example question 6>
+
+IMPORTANT: Generate everything in the SAME LANGUAGE as the endpoint description above. If the description is in Estonian, respond in Estonian. If in English, respond in English. If in Russian, respond in Russian.
+
+Answer only with the enriched context and example queries — nothing else."""
