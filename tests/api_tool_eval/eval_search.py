@@ -25,168 +25,211 @@ DEFAULT_RUUTER_URL = "http://localhost:8086"
 SEARCH_ENDPOINT = "/rag-search/api-tools/search"
 
 # ============================================================================
-# Evaluation Dataset
+# Evaluation Dataset — aligned with test-endpoints.json (15 endpoints)
 # Format: (query, expected_endpoint_name or None for "no match expected")
 # ============================================================================
 EVAL_QUERIES = [
-    # --- get_national_holidays ---
-    ("What are the national holidays in Estonia?", "get_national_holidays"),
+    # --- get_public_holidays ---
+    ("What are the public holidays in Estonia this year?", "get_public_holidays"),
+    ("List official public holidays in Estonia for 2025", "get_public_holidays"),
+    ("When are the national public holidays in Estonia?", "get_public_holidays"),
     (
-        "What are the upcoming national holidays in Estonia this year?",
-        "get_national_holidays",
+        "Show me all public days off in Estonia between January and June",
+        "get_public_holidays",
     ),
-    ("List all public days off in Estonia this year", "get_national_holidays"),
-    ("Show me national holidays for Estonia", "get_national_holidays"),
-    ("What are the official Estonian public holidays?", "get_national_holidays"),
+    ("What are the official non-working days in Estonia?", "get_public_holidays"),
+    # Estonian
+    ("Millised on Eesti riigipühad sel aastal?", "get_public_holidays"),
+    ("Millal on Eestis ametlikud riigipühad 2025. aastal?", "get_public_holidays"),
+    ("Näita mulle Eesti riigipühi jaanuarist juunini", "get_public_holidays"),
     # --- get_school_holidays ---
     ("When are the school holidays in Estonia?", "get_school_holidays"),
-    ("What are the school term breaks in Estonia?", "get_school_holidays"),
-    ("When does school summer break start in Estonia?", "get_school_holidays"),
-    # --- get_current_electricity_price ---
+    ("What are the school term breaks in Estonia this year?", "get_school_holidays"),
+    ("When does school summer break start in Estonia in 2025?", "get_school_holidays"),
     (
-        "What is the current electricity price in Estonia?",
-        "get_current_electricity_price",
+        "Show me school holiday periods in Estonia for spring 2025",
+        "get_school_holidays",
+    ),
+    # Estonian
+    ("Millal on Eesti koolide koolivaheajad?", "get_school_holidays"),
+    ("Millal algab koolide suvepuhkus Eestis 2025. aastal?", "get_school_holidays"),
+    ("Näita mulle kevadise koolivaheaja aegu Eestis", "get_school_holidays"),
+    # --- get_electricity_prices ---
+    ("What are the electricity market prices in Estonia?", "get_electricity_prices"),
+    (
+        "Show me electricity prices for the past week in Estonia",
+        "get_electricity_prices",
     ),
     (
-        "How much does electricity cost right now in Estonia?",
-        "get_current_electricity_price",
+        "Fetch energy market prices between January and March 2025",
+        "get_electricity_prices",
     ),
     (
-        "Show me the real-time energy market price in Estonia",
-        "get_current_electricity_price",
+        "What was the electricity spot price in Estonia last month?",
+        "get_electricity_prices",
+    ),
+    # Estonian
+    ("Millised on elektrituruhinnad Eestis?", "get_electricity_prices"),
+    ("Näita elektrihindu eelmise nädala kohta Eestis", "get_electricity_prices"),
+    ("Mis oli elektrihind Eestis eelmisel kuul?", "get_electricity_prices"),
+    # --- get_vehicle_tax_info ---
+    ("Calculate vehicle tax for registration number 123ABC", "get_vehicle_tax_info"),
+    (
+        "How much is the vehicle tax for my car with plate 456XYZ?",
+        "get_vehicle_tax_info",
+    ),
+    ("What is the car tax based on my registration number?", "get_vehicle_tax_info"),
+    # Estonian
+    ("Arvuta sõidukimaks registreerimisnumbri 123ABC alusel", "get_vehicle_tax_info"),
+    ("Kui suur on minu auto maks numbrimärgi 456XYZ järgi?", "get_vehicle_tax_info"),
+    (
+        "Mis on mootorsõidukimaks minu auto registreerimisnumbri alusel?",
+        "get_vehicle_tax_info",
+    ),
+    # --- get_parliament_votings ---
+    (
+        "Show me the latest parliament voting records in Estonia",
+        "get_parliament_votings",
+    ),
+    ("What did the Riigikogu vote on recently?", "get_parliament_votings"),
+    (
+        "Retrieve parliamentary voting decisions from the Estonian parliament",
+        "get_parliament_votings",
+    ),
+    ("What laws were voted on in the Estonian parliament?", "get_parliament_votings"),
+    # Estonian
+    ("Näita Riigikogu viimaseid hääletusprotokolle", "get_parliament_votings"),
+    ("Mille üle hääletas Riigikogu hiljuti?", "get_parliament_votings"),
+    ("Milliseid seadusi hääletati Eesti parlamendis?", "get_parliament_votings"),
+    # --- get_parliament_participation_stats ---
+    (
+        "How often do Estonian parliament members attend sessions?",
+        "get_parliament_participation_stats",
     ),
     (
-        "What is the spot price for electricity in Estonia today?",
-        "get_current_electricity_price",
-    ),
-    # --- get_electricity_price_history ---
-    (
-        "Show me the electricity price history for Estonia over the last month",
-        "get_electricity_price_history",
+        "Show me parliament member attendance statistics",
+        "get_parliament_participation_stats",
     ),
     (
-        "Show me historical electricity prices for Estonia in January 2024",
-        "get_electricity_price_history",
+        "Which MPs have the best attendance record in the Riigikogu?",
+        "get_parliament_participation_stats",
+    ),
+    # Estonian
+    (
+        "Kui tihti osalevad Riigikogu liikmed istungitel?",
+        "get_parliament_participation_stats",
     ),
     (
-        "Fetch the electricity price history for Estonia for the past 30 days",
-        "get_electricity_price_history",
+        "Näita Riigikogu liikmete kohaloleku statistikat",
+        "get_parliament_participation_stats",
     ),
-    # --- get_unemployment_rate ---
-    ("What is the unemployment rate in Estonia?", "get_unemployment_rate"),
-    ("How many people are unemployed in Estonia this year?", "get_unemployment_rate"),
-    ("Show me the latest jobless statistics for Estonia", "get_unemployment_rate"),
-    ("What percentage of Estonians are unemployed?", "get_unemployment_rate"),
+    (
+        "Millistel saadikutel on Riigikogu parim kohalolekurekord?",
+        "get_parliament_participation_stats",
+    ),
+    # --- get_initiatives ---
+    ("Show me a list of active citizen initiatives in Estonia", "get_initiatives"),
+    ("What public initiatives are currently available?", "get_initiatives"),
+    ("List all citizen initiatives on rahvaalgatus.ee", "get_initiatives"),
+    # Estonian
+    ("Näita mulle aktiivsete kodanike algatuste nimekirja Eestis", "get_initiatives"),
+    ("Millised rahvaalgatused on praegu saadaval?", "get_initiatives"),
+    ("Loetle kõik algatused rahvaalgatus.ee lehel", "get_initiatives"),
+    # --- get_initiative_details ---
+    ("Get details about citizen initiative with ID abc123", "get_initiative_details"),
+    (
+        "Show me more information about a specific public initiative",
+        "get_initiative_details",
+    ),
+    ("Fetch the details of initiative ID xyz789", "get_initiative_details"),
+    # Estonian
+    ("Too andmed kodanike algatuse ID abc123 kohta", "get_initiative_details"),
+    ("Näita mulle üksikasju konkreetse rahvaalgatuse kohta", "get_initiative_details"),
+    ("Too algatuse ID xyz789 üksikasjad", "get_initiative_details"),
+    # --- get_initiative_events ---
+    (
+        "What are the latest events related to citizen initiatives?",
+        "get_initiative_events",
+    ),
+    ("Show me updates and events for public initiatives", "get_initiative_events"),
+    (
+        "Are there any new events for citizen initiatives in Estonia?",
+        "get_initiative_events",
+    ),
+    # Estonian
+    (
+        "Millised on viimased kodanike algatustega seotud sündmused?",
+        "get_initiative_events",
+    ),
+    ("Näita rahvaalgatuste uuendusi ja sündmusi", "get_initiative_events"),
+    ("Kas Eestis on uusi sündmusi kodanike algatuste kohta?", "get_initiative_events"),
+    # --- search_address ---
+    ("Search for the address Viru 4 in Tallinn", "search_address"),
+    ("Find the location of Kadriorg Park in Tallinn", "search_address"),
+    ("Look up an address or place name in Estonia", "search_address"),
+    ("Search for a street address in Tartu", "search_address"),
+    # Estonian
+    ("Otsi aadressi Viru 4 Tallinnas", "search_address"),
+    ("Leia Kadrioru pargi asukoht Tallinnas", "search_address"),
+    ("Otsi tänavaaadress Tartus", "search_address"),
+    # --- get_population_statistics ---
+    ("What is the population of Estonia?", "get_population_statistics"),
+    ("Show me population statistics data for Estonia", "get_population_statistics"),
+    ("Fetch demographic statistics for Estonia", "get_population_statistics"),
+    (
+        "What is the population breakdown by age group in Estonia?",
+        "get_population_statistics",
+    ),
+    # Estonian
+    ("Milline on Eesti rahvaarv?", "get_population_statistics"),
+    ("Näita mulle Eesti rahvastikustatistika andmeid", "get_population_statistics"),
+    (
+        "Milline on Eesti rahvastiku jaotus vanuserühmade kaupa?",
+        "get_population_statistics",
+    ),
+    # --- get_economic_statistics ---
+    ("Show me economic statistics for Estonia", "get_economic_statistics"),
+    ("What is the GDP and economic output of Estonia?", "get_economic_statistics"),
+    (
+        "Fetch economic data for Estonia from the statistics office",
+        "get_economic_statistics",
+    ),
+    # Estonian
+    ("Näita mulle Eesti majandusstatistikat", "get_economic_statistics"),
+    ("Mis on Eesti SKP ja majanduslik toodang?", "get_economic_statistics"),
+    ("Too majandusandmed Eesti statistikaametist", "get_economic_statistics"),
+    # --- get_labor_statistics ---
+    ("What is the unemployment rate in Estonia?", "get_labor_statistics"),
+    ("Show me labor and employment statistics for Estonia", "get_labor_statistics"),
+    ("How many people are employed in Estonia?", "get_labor_statistics"),
+    ("Fetch workforce and jobless statistics for Estonia", "get_labor_statistics"),
+    # Estonian
+    ("Milline on töötuse määr Eestis?", "get_labor_statistics"),
+    ("Näita mulle Eesti tööjõu ja tööhõive statistikat", "get_labor_statistics"),
+    ("Kui palju inimesi töötab Eestis?", "get_labor_statistics"),
+    # --- get_current_weather ---
+    ("What is the current weather in Tallinn?", "get_current_weather"),
+    ("Show me the current weather conditions in Estonia", "get_current_weather"),
+    (
+        "What is the temperature right now at the Tallinn weather station?",
+        "get_current_weather",
+    ),
+    # Estonian
+    ("Milline on praegune ilm Tallinnas?", "get_current_weather"),
+    ("Näita mulle praeguseid ilmastikuolusid Eestis", "get_current_weather"),
+    ("Mis on praegune temperatuur Tallinna ilmajaamas?", "get_current_weather"),
     # --- get_weather_forecast ---
     ("What is the weather forecast for Tallinn tomorrow?", "get_weather_forecast"),
-    ("What is the weather forecast for Tartu next week?", "get_weather_forecast"),
+    ("Show me the upcoming weather forecast for Tartu", "get_weather_forecast"),
+    ("What will the weather be like in Estonia next week?", "get_weather_forecast"),
     (
-        "What is the weather forecast and temperature for Pärnu this weekend?",
+        "Give me a weather forecast for the next few days in Estonia",
         "get_weather_forecast",
     ),
-    ("Show me the 7-day weather forecast for Tallinn", "get_weather_forecast"),
-    (
-        "What are the weather conditions including wind speed in Narva today?",
-        "get_weather_forecast",
-    ),
-    # --- get_exchange_rates ---
-    ("What is the EUR to USD exchange rate today?", "get_exchange_rates"),
-    ("Show me the current currency exchange rates", "get_exchange_rates"),
-    ("What is the exchange rate from EUR to Swedish krona?", "get_exchange_rates"),
-    ("What are the latest forex rates for EUR?", "get_exchange_rates"),
-    # --- get_country_information ---
-    (
-        "Get country information for Estonia including its capital city",
-        "get_country_information",
-    ),
-    (
-        "What country information is available for Estonia, including official languages?",
-        "get_country_information",
-    ),
-    ("Fetch country details and facts about Estonia", "get_country_information"),
-    ("What is the country profile for Estonia?", "get_country_information"),
-    # --- get_ip_geolocation ---
-    ("What is the geolocation of IP address 88.196.123.45?", "get_ip_geolocation"),
-    (
-        "Geolocate this IP address and find which country it belongs to",
-        "get_ip_geolocation",
-    ),
-    ("Find the geolocation of an IP address", "get_ip_geolocation"),
-    # --- get_current_time_by_timezone ---
-    ("What time is it in Tallinn right now?", "get_current_time_by_timezone"),
-    (
-        "What is the current time in the Europe/Tallinn timezone?",
-        "get_current_time_by_timezone",
-    ),
-    (
-        "What is the current time in Estonia and is it in daylight saving timezone?",
-        "get_current_time_by_timezone",
-    ),
-    # --- get_air_quality ---
-    ("What is the air quality in Tallinn today?", "get_air_quality"),
-    ("Show me PM2.5 pollution levels in Tallinn", "get_air_quality"),
-    ("Is the air quality good in Tartu right now?", "get_air_quality"),
-    # --- get_address_geocoding ---
-    ("Find the coordinates for Viru 4, Tallinn", "get_address_geocoding"),
-    (
-        "Get the geocoding coordinates for Kadriorg Park in Tallinn",
-        "get_address_geocoding",
-    ),
-    (
-        "What are the GPS coordinates of this address in Estonia?",
-        "get_address_geocoding",
-    ),
-    # --- get_gdp_statistics ---
-    ("What is Estonia's GDP this year?", "get_gdp_statistics"),
-    ("What is the economic output of Estonia?", "get_gdp_statistics"),
-    (
-        "Show me the GDP growth rate of Estonia over the past 5 years",
-        "get_gdp_statistics",
-    ),
-    # --- get_population_data ---
-    ("What is the total population of Estonia?", "get_population_data"),
-    ("What is the total population data for Estonia?", "get_population_data"),
-    ("What is the population growth rate of Estonia?", "get_population_data"),
-    # --- get_word_definition ---
-    ("Get the word definition for ephemeral", "get_word_definition"),
-    ("Look up the word definition for resilient", "get_word_definition"),
-    ("Fetch the dictionary definition of the word sustainable", "get_word_definition"),
-    # --- get_public_transport_stops ---
-    ("Where are the bus stops in Tallinn?", "get_public_transport_stops"),
-    (
-        "Show me public transport stops near Tartu city centre",
-        "get_public_transport_stops",
-    ),
-    # --- get_average_salary_statistics ---
-    ("What is the average salary in Estonia?", "get_average_salary_statistics"),
-    ("How much do people earn in Estonia on average?", "get_average_salary_statistics"),
-    (
-        "What is the average monthly wage in the IT sector in Estonia?",
-        "get_average_salary_statistics",
-    ),
-    # --- get_estonian_company_info ---
-    (
-        "Look up company registration number 10000000 in Estonia",
-        "get_estonian_company_info",
-    ),
-    (
-        "Find details about an Estonian company called Tallinn IT OÜ",
-        "get_estonian_company_info",
-    ),
-    (
-        "Is this Estonian company still active in the business registry?",
-        "get_estonian_company_info",
-    ),
-    # --- get_reverse_geocoding ---
-    (
-        "Reverse geocode the coordinates 59.4370, 24.7536 to get the street address",
-        "get_reverse_geocoding",
-    ),
-    ("Convert GPS coordinates to a street address in Tallinn", "get_reverse_geocoding"),
-    (
-        "Reverse geocoding for latitude 58.3780 longitude 26.7290 in Tartu",
-        "get_reverse_geocoding",
-    ),
+    # Estonian
+    ("Milline on ilmaprognoos Tallinnas homme?", "get_weather_forecast"),
+    ("Näita mulle Tartu eelseisvat ilmaprognoosi", "get_weather_forecast"),
+    ("Milline on ilm Eestis järgmisel nädalal?", "get_weather_forecast"),
     # --- NEGATIVE queries — should return NO matching results ---
     ("Who is the Prime Minister of Estonia?", None),
     ("What is the best restaurant in Tallinn?", None),
@@ -198,6 +241,10 @@ EVAL_QUERIES = [
     ("How do I apply for an Estonian e-Residency?", None),
     ("What is the history of Tallinn Old Town?", None),
     ("Give me a poem about Estonia", None),
+    # Estonian negatives
+    ("Kes on Eesti peaminister?", None),
+    ("Mis on parim restoran Tallinnas?", None),
+    ("Mis on elu mõte?", None),
 ]
 
 
@@ -232,6 +279,7 @@ def evaluate(ruuter_url: str, delay: float = 0.5) -> list:
                     "expected": expected,
                     "got": "ERROR",
                     "cosine_score": None,
+                    "rrf_score": None,
                     "confidence": None,
                     "pass": False,
                     "error": "Request failed",

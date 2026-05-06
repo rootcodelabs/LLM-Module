@@ -1,171 +1,450 @@
 [
   {
-    "query": "What are the national holidays in Estonia?",
-    "expected": "get_national_holidays",
-    "got": "get_national_holidays",
-    "cosine_score": 0.4781,
-    "rrf_score": 1.0,
+    "query": "What are the public holidays in Estonia this year?",
+    "expected": "get_public_holidays",
+    "got": "get_public_holidays",
+    "cosine_score": 0.6562,
+    "rrf_score": 0.666667,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "List official public holidays in Estonia for 2025",
+    "expected": "get_public_holidays",
+    "got": "get_public_holidays",
+    "cosine_score": 0.7149,
+    "rrf_score": 0.7,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "When are the national public holidays in Estonia?",
+    "expected": "get_public_holidays",
+    "got": "get_public_holidays",
+    "cosine_score": 0.631,
+    "rrf_score": 0.7,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Show me all public days off in Estonia between January and June",
+    "expected": "get_public_holidays",
+    "got": "get_public_holidays",
+    "cosine_score": 0.5639,
+    "rrf_score": 0.75,
     "confidence": "medium",
     "pass": true
   },
   {
-    "query": "What are the upcoming national holidays in Estonia this year?",
-    "expected": "get_national_holidays",
-    "got": "get_national_holidays",
-    "cosine_score": 0.4738,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "List all public days off in Estonia this year",
-    "expected": "get_national_holidays",
-    "got": "get_national_holidays",
-    "cosine_score": 0.4398,
-    "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me national holidays for Estonia",
-    "expected": "get_national_holidays",
-    "got": "get_national_holidays",
-    "cosine_score": 0.5081,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What are the official Estonian public holidays?",
-    "expected": "get_national_holidays",
-    "got": "get_national_holidays",
-    "cosine_score": 0.4171,
-    "rrf_score": 1.0,
-    "confidence": "medium",
+    "query": "What are the official non-working days in Estonia?",
+    "expected": "get_public_holidays",
+    "got": "get_public_holidays",
+    "cosine_score": 0.6714,
+    "rrf_score": 0.666667,
+    "confidence": "high",
     "pass": true
   },
   {
     "query": "When are the school holidays in Estonia?",
     "expected": "get_school_holidays",
     "got": "get_school_holidays",
-    "cosine_score": 0.4986,
-    "rrf_score": 1.0,
-    "confidence": "medium",
+    "cosine_score": 0.7116,
+    "rrf_score": 0.75,
+    "confidence": "high",
     "pass": true
   },
   {
-    "query": "What are the school term breaks in Estonia?",
+    "query": "What are the school term breaks in Estonia this year?",
     "expected": "get_school_holidays",
     "got": "get_school_holidays",
-    "cosine_score": 0.5082,
-    "rrf_score": 1.0,
-    "confidence": "medium",
+    "cosine_score": 0.706,
+    "rrf_score": 0.7,
+    "confidence": "high",
     "pass": true
   },
   {
-    "query": "When does school summer break start in Estonia?",
+    "query": "When does school summer break start in Estonia in 2025?",
     "expected": "get_school_holidays",
     "got": "get_school_holidays",
-    "cosine_score": 0.4147,
-    "rrf_score": 1.0,
+    "cosine_score": 0.5987,
+    "rrf_score": 0.642857,
     "confidence": "medium",
     "pass": true
   },
   {
-    "query": "What is the current electricity price in Estonia?",
-    "expected": "get_current_electricity_price",
-    "got": "get_current_electricity_price",
-    "cosine_score": 0.7182,
-    "rrf_score": 1.0,
-    "confidence": "high",
+    "query": "Show me school holiday periods in Estonia for spring 2025",
+    "expected": "get_school_holidays",
+    "got": "get_school_holidays",
+    "cosine_score": 0.591,
+    "rrf_score": 0.7,
+    "confidence": "medium",
     "pass": true
   },
   {
-    "query": "How much does electricity cost right now in Estonia?",
-    "expected": "get_current_electricity_price",
-    "got": "get_current_electricity_price",
-    "cosine_score": 0.6776,
-    "rrf_score": 1.0,
-    "confidence": "high",
-    "pass": true
-  },
-  {
-    "query": "Show me the real-time energy market price in Estonia",
-    "expected": "get_current_electricity_price",
-    "got": "get_current_electricity_price",
-    "cosine_score": 0.7339,
-    "rrf_score": 1.0,
-    "confidence": "high",
-    "pass": true
-  },
-  {
-    "query": "What is the spot price for electricity in Estonia today?",
-    "expected": "get_current_electricity_price",
-    "got": "get_current_electricity_price",
-    "cosine_score": 0.6782,
-    "rrf_score": 1.0,
-    "confidence": "high",
-    "pass": true
-  },
-  {
-    "query": "Show me the electricity price history for Estonia over the last month",
-    "expected": "get_electricity_price_history",
-    "got": "get_electricity_price_history",
-    "cosine_score": 0.6211,
+    "query": "What are the electricity market prices in Estonia?",
+    "expected": "get_electricity_prices",
+    "got": "get_electricity_prices",
+    "cosine_score": 0.6814,
     "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me historical electricity prices for Estonia in January 2024",
-    "expected": "get_electricity_price_history",
-    "got": "get_electricity_price_history",
-    "cosine_score": 0.606,
-    "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Fetch the electricity price history for Estonia for the past 30 days",
-    "expected": "get_electricity_price_history",
-    "got": "get_electricity_price_history",
-    "cosine_score": 0.7049,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the unemployment rate in Estonia?",
-    "expected": "get_unemployment_rate",
-    "got": "get_unemployment_rate",
-    "cosine_score": 0.6034,
-    "rrf_score": 1.0,
     "confidence": "high",
     "pass": true
   },
   {
-    "query": "How many people are unemployed in Estonia this year?",
-    "expected": "get_unemployment_rate",
-    "got": "get_unemployment_rate",
-    "cosine_score": 0.5537,
+    "query": "Show me electricity prices for the past week in Estonia",
+    "expected": "get_electricity_prices",
+    "got": "get_electricity_prices",
+    "cosine_score": 0.6186,
+    "rrf_score": 0.666667,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Fetch energy market prices between January and March 2025",
+    "expected": "get_electricity_prices",
+    "got": "get_electricity_prices",
+    "cosine_score": 0.5003,
+    "rrf_score": 1.0,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What was the electricity spot price in Estonia last month?",
+    "expected": "get_electricity_prices",
+    "got": "get_electricity_prices",
+    "cosine_score": 0.641,
+    "rrf_score": 0.642857,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Calculate vehicle tax for registration number 123ABC",
+    "expected": "get_vehicle_tax_info",
+    "got": "get_vehicle_tax_info",
+    "cosine_score": 0.6402,
+    "rrf_score": 0.833333,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "How much is the vehicle tax for my car with plate 456XYZ?",
+    "expected": "get_vehicle_tax_info",
+    "got": "get_vehicle_tax_info",
+    "cosine_score": 0.4854,
     "rrf_score": 0.5,
     "confidence": "medium",
     "pass": true
   },
   {
-    "query": "Show me the latest jobless statistics for Estonia",
-    "expected": "get_unemployment_rate",
-    "got": "get_unemployment_rate",
-    "cosine_score": 0.5786,
+    "query": "What is the car tax based on my registration number?",
+    "expected": "get_vehicle_tax_info",
+    "got": "get_vehicle_tax_info",
+    "cosine_score": 0.5449,
+    "rrf_score": 0.7,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me the latest parliament voting records in Estonia",
+    "expected": "get_parliament_votings",
+    "got": "get_parliament_votings",
+    "cosine_score": 0.5909,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What did the Riigikogu vote on recently?",
+    "expected": "get_parliament_votings",
+    "got": "get_parliament_votings",
+    "cosine_score": 0.5407,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Retrieve parliamentary voting decisions from the Estonian parliament",
+    "expected": "get_parliament_votings",
+    "got": "get_parliament_votings",
+    "cosine_score": 0.7032,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What laws were voted on in the Estonian parliament?",
+    "expected": "get_parliament_votings",
+    "got": "get_parliament_votings",
+    "cosine_score": 0.4812,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "How often do Estonian parliament members attend sessions?",
+    "expected": "get_parliament_participation_stats",
+    "got": "get_parliament_participation_stats",
+    "cosine_score": 0.559,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me parliament member attendance statistics",
+    "expected": "get_parliament_participation_stats",
+    "got": "get_parliament_participation_stats",
+    "cosine_score": 0.5782,
     "rrf_score": 0.833333,
     "confidence": "medium",
     "pass": true
   },
   {
-    "query": "What percentage of Estonians are unemployed?",
-    "expected": "get_unemployment_rate",
-    "got": "get_unemployment_rate",
+    "query": "Which MPs have the best attendance record in the Riigikogu?",
+    "expected": "get_parliament_participation_stats",
+    "got": "get_parliament_participation_stats",
+    "cosine_score": 0.7401,
+    "rrf_score": 0.5,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Show me a list of active citizen initiatives in Estonia",
+    "expected": "get_initiatives",
+    "got": "get_initiatives",
+    "cosine_score": 0.6301,
+    "rrf_score": 0.5,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "What public initiatives are currently available?",
+    "expected": "get_initiatives",
+    "got": null,
+    "cosine_score": null,
+    "rrf_score": null,
+    "confidence": null,
+    "pass": false
+  },
+  {
+    "query": "List all citizen initiatives on rahvaalgatus.ee",
+    "expected": "get_initiatives",
+    "got": "get_initiatives",
+    "cosine_score": 0.6211,
+    "rrf_score": 0.833333,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Get details about citizen initiative with ID abc123",
+    "expected": "get_initiative_details",
+    "got": "get_initiative_details",
+    "cosine_score": 0.6135,
+    "rrf_score": 1.0,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Show me more information about a specific public initiative",
+    "expected": "get_initiative_details",
+    "got": "get_initiative_details",
+    "cosine_score": 0.5031,
+    "rrf_score": 0.75,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Fetch the details of initiative ID xyz789",
+    "expected": "get_initiative_details",
+    "got": "get_initiative_details",
+    "cosine_score": 0.6288,
+    "rrf_score": 1.0,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "What are the latest events related to citizen initiatives?",
+    "expected": "get_initiative_events",
+    "got": "get_initiative_events",
+    "cosine_score": 0.5195,
+    "rrf_score": 0.333333,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me updates and events for public initiatives",
+    "expected": "get_initiative_events",
+    "got": "get_initiative_events",
+    "cosine_score": 0.5383,
+    "rrf_score": 0.642857,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Are there any new events for citizen initiatives in Estonia?",
+    "expected": "get_initiative_events",
+    "got": null,
+    "cosine_score": null,
+    "rrf_score": null,
+    "confidence": null,
+    "pass": false
+  },
+  {
+    "query": "Search for the address Viru 4 in Tallinn",
+    "expected": "search_address",
+    "got": "search_address",
+    "cosine_score": 0.5366,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Find the location of Kadriorg Park in Tallinn",
+    "expected": "search_address",
+    "got": "search_address",
+    "cosine_score": 0.4156,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Look up an address or place name in Estonia",
+    "expected": "search_address",
+    "got": "search_address",
+    "cosine_score": 0.5359,
+    "rrf_score": 0.642857,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Search for a street address in Tartu",
+    "expected": "search_address",
+    "got": "search_address",
+    "cosine_score": 0.609,
+    "rrf_score": 0.642857,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "What is the population of Estonia?",
+    "expected": "get_population_statistics",
+    "got": "get_population_statistics",
+    "cosine_score": 0.4635,
+    "rrf_score": 1.0,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me population statistics data for Estonia",
+    "expected": "get_population_statistics",
+    "got": "get_population_statistics",
+    "cosine_score": 0.5567,
+    "rrf_score": 1.0,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Fetch demographic statistics for Estonia",
+    "expected": "get_population_statistics",
+    "got": "get_population_statistics",
+    "cosine_score": 0.6124,
+    "rrf_score": 0.833333,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What is the population breakdown by age group in Estonia?",
+    "expected": "get_population_statistics",
+    "got": "get_population_statistics",
+    "cosine_score": 0.4676,
+    "rrf_score": 1.0,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me economic statistics for Estonia",
+    "expected": "get_economic_statistics",
+    "got": "get_economic_statistics",
+    "cosine_score": 0.5485,
+    "rrf_score": 0.833333,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What is the GDP and economic output of Estonia?",
+    "expected": "get_economic_statistics",
+    "got": null,
+    "cosine_score": null,
+    "rrf_score": null,
+    "confidence": null,
+    "pass": false
+  },
+  {
+    "query": "Fetch economic data for Estonia from the statistics office",
+    "expected": "get_economic_statistics",
+    "got": "get_economic_statistics",
+    "cosine_score": 0.6043,
+    "rrf_score": 1.0,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "What is the unemployment rate in Estonia?",
+    "expected": "get_labor_statistics",
+    "got": "get_labor_statistics",
+    "cosine_score": 0.5585,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Show me labor and employment statistics for Estonia",
+    "expected": "get_labor_statistics",
+    "got": "get_labor_statistics",
+    "cosine_score": 0.5584,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "How many people are employed in Estonia?",
+    "expected": "get_labor_statistics",
+    "got": "get_labor_statistics",
+    "cosine_score": 0.5152,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "Fetch workforce and jobless statistics for Estonia",
+    "expected": "get_labor_statistics",
+    "got": "get_labor_statistics",
     "cosine_score": 0.5649,
+    "rrf_score": 0.5,
+    "confidence": "medium",
+    "pass": true
+  },
+  {
+    "query": "What is the current weather in Tallinn?",
+    "expected": "get_current_weather",
+    "got": "get_current_weather",
+    "cosine_score": 0.7829,
+    "rrf_score": 0.5,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "Show me the current weather conditions in Estonia",
+    "expected": "get_current_weather",
+    "got": "get_current_weather",
+    "cosine_score": 0.6238,
+    "rrf_score": 0.5,
+    "confidence": "high",
+    "pass": true
+  },
+  {
+    "query": "What is the temperature right now at the Tallinn weather station?",
+    "expected": "get_current_weather",
+    "got": "get_current_weather",
+    "cosine_score": 0.7113,
     "rrf_score": 0.5,
     "confidence": "medium",
     "pass": true
@@ -174,404 +453,35 @@
     "query": "What is the weather forecast for Tallinn tomorrow?",
     "expected": "get_weather_forecast",
     "got": "get_weather_forecast",
-    "cosine_score": 0.4984,
-    "rrf_score": 1.0,
-    "confidence": "medium",
+    "cosine_score": 0.7875,
+    "rrf_score": 0.5,
+    "confidence": "high",
     "pass": true
   },
   {
-    "query": "What is the weather forecast for Tartu next week?",
+    "query": "Show me the upcoming weather forecast for Tartu",
+    "expected": "get_weather_forecast",
+    "got": "get_current_weather",
+    "cosine_score": 0.7177,
+    "rrf_score": 0.5,
+    "confidence": "high",
+    "pass": false
+  },
+  {
+    "query": "What will the weather be like in Estonia next week?",
     "expected": "get_weather_forecast",
     "got": "get_weather_forecast",
-    "cosine_score": 0.4608,
-    "rrf_score": 1.0,
+    "cosine_score": 0.5939,
+    "rrf_score": 0.5,
     "confidence": "medium",
     "pass": true
   },
   {
-    "query": "What is the weather forecast and temperature for P\u00e4rnu this weekend?",
+    "query": "Give me a weather forecast for the next few days in Estonia",
     "expected": "get_weather_forecast",
     "got": "get_weather_forecast",
-    "cosine_score": 0.4532,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me the 7-day weather forecast for Tallinn",
-    "expected": "get_weather_forecast",
-    "got": "get_weather_forecast",
-    "cosine_score": 0.4621,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What are the weather conditions including wind speed in Narva today?",
-    "expected": "get_weather_forecast",
-    "got": null,
-    "cosine_score": null,
-    "rrf_score": null,
-    "confidence": null,
-    "pass": false
-  },
-  {
-    "query": "What is the EUR to USD exchange rate today?",
-    "expected": "get_exchange_rates",
-    "got": "get_exchange_rates",
-    "cosine_score": 0.4068,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me the current currency exchange rates",
-    "expected": "get_exchange_rates",
-    "got": "get_exchange_rates",
-    "cosine_score": 0.5261,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the exchange rate from EUR to Swedish krona?",
-    "expected": "get_exchange_rates",
-    "got": null,
-    "cosine_score": null,
-    "rrf_score": null,
-    "confidence": null,
-    "pass": false
-  },
-  {
-    "query": "What are the latest forex rates for EUR?",
-    "expected": "get_exchange_rates",
-    "got": "get_exchange_rates",
-    "cosine_score": 0.4201,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Get country information for Estonia including its capital city",
-    "expected": "get_country_information",
-    "got": "get_country_information",
-    "cosine_score": 0.4763,
-    "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What country information is available for Estonia, including official languages?",
-    "expected": "get_country_information",
-    "got": "get_country_information",
-    "cosine_score": 0.4137,
-    "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Fetch country details and facts about Estonia",
-    "expected": "get_country_information",
-    "got": "get_country_information",
-    "cosine_score": 0.5485,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the country profile for Estonia?",
-    "expected": "get_country_information",
-    "got": null,
-    "cosine_score": null,
-    "rrf_score": null,
-    "confidence": null,
-    "pass": false
-  },
-  {
-    "query": "What is the geolocation of IP address 88.196.123.45?",
-    "expected": "get_ip_geolocation",
-    "got": null,
-    "cosine_score": null,
-    "rrf_score": null,
-    "confidence": null,
-    "pass": false
-  },
-  {
-    "query": "Geolocate this IP address and find which country it belongs to",
-    "expected": "get_ip_geolocation",
-    "got": "get_ip_geolocation",
-    "cosine_score": 0.4792,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Find the geolocation of an IP address",
-    "expected": "get_ip_geolocation",
-    "got": "get_ip_geolocation",
-    "cosine_score": 0.5684,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What time is it in Tallinn right now?",
-    "expected": "get_current_time_by_timezone",
-    "got": "get_current_time_by_timezone",
-    "cosine_score": 0.5041,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the current time in the Europe/Tallinn timezone?",
-    "expected": "get_current_time_by_timezone",
-    "got": "get_current_time_by_timezone",
-    "cosine_score": 0.5834,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the current time in Estonia and is it in daylight saving timezone?",
-    "expected": "get_current_time_by_timezone",
-    "got": "get_current_time_by_timezone",
-    "cosine_score": 0.5227,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the air quality in Tallinn today?",
-    "expected": "get_air_quality",
-    "got": "get_air_quality",
-    "cosine_score": 0.5509,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me PM2.5 pollution levels in Tallinn",
-    "expected": "get_air_quality",
-    "got": "get_air_quality",
-    "cosine_score": 0.5537,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Is the air quality good in Tartu right now?",
-    "expected": "get_air_quality",
-    "got": "get_air_quality",
-    "cosine_score": 0.5289,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Find the coordinates for Viru 4, Tallinn",
-    "expected": "get_address_geocoding",
-    "got": "get_address_geocoding",
-    "cosine_score": 0.4092,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Get the geocoding coordinates for Kadriorg Park in Tallinn",
-    "expected": "get_address_geocoding",
-    "got": "get_address_geocoding",
-    "cosine_score": 0.4368,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What are the GPS coordinates of this address in Estonia?",
-    "expected": "get_address_geocoding",
-    "got": "get_address_geocoding",
-    "cosine_score": 0.4294,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is Estonia's GDP this year?",
-    "expected": "get_gdp_statistics",
-    "got": "get_gdp_statistics",
-    "cosine_score": 0.4881,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the economic output of Estonia?",
-    "expected": "get_gdp_statistics",
-    "got": "get_gdp_statistics",
-    "cosine_score": 0.45,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me the GDP growth rate of Estonia over the past 5 years",
-    "expected": "get_gdp_statistics",
-    "got": "get_gdp_statistics",
-    "cosine_score": 0.5406,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the total population of Estonia?",
-    "expected": "get_population_data",
-    "got": "get_population_data",
-    "cosine_score": 0.4216,
-    "rrf_score": 0.833333,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the total population data for Estonia?",
-    "expected": "get_population_data",
-    "got": "get_population_data",
-    "cosine_score": 0.4915,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the population growth rate of Estonia?",
-    "expected": "get_population_data",
-    "got": "get_population_data",
-    "cosine_score": 0.462,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Get the word definition for ephemeral",
-    "expected": "get_word_definition",
-    "got": "get_word_definition",
-    "cosine_score": 0.5166,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Look up the word definition for resilient",
-    "expected": "get_word_definition",
-    "got": null,
-    "cosine_score": null,
-    "rrf_score": null,
-    "confidence": null,
-    "pass": false
-  },
-  {
-    "query": "Fetch the dictionary definition of the word sustainable",
-    "expected": "get_word_definition",
-    "got": "get_word_definition",
-    "cosine_score": 0.471,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Where are the bus stops in Tallinn?",
-    "expected": "get_public_transport_stops",
-    "got": "get_public_transport_stops",
-    "cosine_score": 0.5874,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Show me public transport stops near Tartu city centre",
-    "expected": "get_public_transport_stops",
-    "got": "get_public_transport_stops",
-    "cosine_score": 0.5495,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the average salary in Estonia?",
-    "expected": "get_average_salary_statistics",
-    "got": "get_average_salary_statistics",
-    "cosine_score": 0.5513,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "How much do people earn in Estonia on average?",
-    "expected": "get_average_salary_statistics",
-    "got": "get_average_salary_statistics",
-    "cosine_score": 0.5378,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "What is the average monthly wage in the IT sector in Estonia?",
-    "expected": "get_average_salary_statistics",
-    "got": "get_average_salary_statistics",
-    "cosine_score": 0.5338,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Look up company registration number 10000000 in Estonia",
-    "expected": "get_estonian_company_info",
-    "got": "get_estonian_company_info",
-    "cosine_score": 0.5831,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Find details about an Estonian company called Tallinn IT O\u00dc",
-    "expected": "get_estonian_company_info",
-    "got": "get_estonian_company_info",
-    "cosine_score": 0.4899,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Is this Estonian company still active in the business registry?",
-    "expected": "get_estonian_company_info",
-    "got": "get_estonian_company_info",
-    "cosine_score": 0.5555,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Reverse geocode the coordinates 59.4370, 24.7536 to get the street address",
-    "expected": "get_reverse_geocoding",
-    "got": "get_reverse_geocoding",
-    "cosine_score": 0.4714,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Convert GPS coordinates to a street address in Tallinn",
-    "expected": "get_reverse_geocoding",
-    "got": "get_reverse_geocoding",
-    "cosine_score": 0.5075,
-    "rrf_score": 1.0,
-    "confidence": "medium",
-    "pass": true
-  },
-  {
-    "query": "Reverse geocoding for latitude 58.3780 longitude 26.7290 in Tartu",
-    "expected": "get_reverse_geocoding",
-    "got": "get_reverse_geocoding",
-    "cosine_score": 0.471,
-    "rrf_score": 1.0,
+    "cosine_score": 0.5743,
+    "rrf_score": 0.5,
     "confidence": "medium",
     "pass": true
   },
