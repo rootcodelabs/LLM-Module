@@ -544,23 +544,30 @@ class APISemanticSearcher:
         Returns deduplicated results by endpoint_id, sorted by RRF score.
         """
         try:
-            # Verify collection is non-empty before searching
-            collection_info = await self._qdrant_client.get(
-                f"/collections/{API_TOOL_COLLECTION}"
-            )
-            if collection_info.status_code == 200:
-                points_count = (
-                    collection_info.json().get("result", {}).get("points_count", 0)
+            # Verify collection is non-empty before searching.
+            # This check is only an optimization: if it fails, continue with the
+            # actual search request instead of failing closed.
+            try:
+                collection_info = await self._qdrant_client.get(
+                    f"/collections/{API_TOOL_COLLECTION}"
                 )
-                if points_count == 0:
-                    logger.info("APISemanticSearcher: api_tool_collection is empty")
-                    return []
-            else:
+                if collection_info.status_code == 200:
+                    points_count = (
+                        collection_info.json().get("result", {}).get("points_count", 0)
+                    )
+                    if points_count == 0:
+                        logger.info("APISemanticSearcher: api_tool_collection is empty")
+                        return []
+                else:
+                    logger.warning(
+                        f"APISemanticSearcher: Could not verify collection: "
+                        f"HTTP {collection_info.status_code}; continuing with search"
+                    )
+            except Exception as e:
                 logger.warning(
-                    f"APISemanticSearcher: Could not verify collection: "
-                    f"HTTP {collection_info.status_code}"
+                    f"APISemanticSearcher: Collection verification failed: {e}; "
+                    f"continuing with search"
                 )
-                return []
 
             # Build prefetch + RRF payload
             search_payload: Dict[str, Any] = {

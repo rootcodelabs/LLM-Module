@@ -151,7 +151,19 @@ speaks). With CONTINUATION_TURN=3 the conversation looks like:
 
 CONTINUATION_QUESTION = (
     "I still need a bit more information, but we've been at this for a while. "
-    "Would you like to keep going and answer a few more questions, "
-    "or would you prefer to stop and get a general answer instead? (yes / no)"
+    "Would you like to keep going and answer a few more questions "
+    "(yes / no)"
 )
 """Yes/no question shown to the user when the continuation threshold is reached."""
+
+CONTINUATION_QUESTION_ET = (
+    "Mul on vaja veel natuke lisateavet, kuid oleme selle kallal juba mõnda aega töötanud. "
+    "Kas soovite jätkata ja vastata veel mõnele küsimusele? (jah / ei)"
+)
+"""Estonian version of the continuation question."""
+
+CONTINUATION_QUESTION_RU = (
+    "Мне нужно ещё немного информации, но мы уже некоторое время занимаемся этим. "
+    "Хотите ли вы продолжить и ответить ещё на несколько вопросов? (да / нет)"
+)
+"""Russian version of the continuation question."""
