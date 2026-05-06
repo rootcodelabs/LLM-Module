@@ -167,3 +167,55 @@ CONTINUATION_QUESTION_RU = (
     "Хотите ли вы продолжить и ответить ещё на несколько вопросов? (да / нет)"
 )
 """Russian version of the continuation question."""
+
+# ============================================================================
+# API Caller Configuration
+# ============================================================================
+
+API_CALL_TIMEOUT = 10
+"""Default timeout in seconds for external API calls made via APICaller."""
+
+# Circuit breaker state literals
+CB_STATE_CLOSED = "CLOSED"
+"""Circuit breaker is CLOSED: routes all requests normally."""
+
+CB_STATE_OPEN = "OPEN"
+"""Circuit breaker is OPEN: rejects all requests immediately (cooldown active)."""
+
+CB_STATE_HALF_OPEN = "HALF_OPEN"
+"""Circuit breaker is HALF_OPEN: allows one probe request to test recovery."""
+
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3
+"""Number of consecutive server/network failures before the circuit breaker opens."""
+
+CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60.0
+"""Seconds the circuit breaker stays OPEN before transitioning to HALF_OPEN."""
+
+# User-facing error messages for API call failures (multilingual: et / ru / en)
+SERVICE_UNAVAILABLE_MESSAGES = {
+    "et": "Teenus on ajutiselt kättesaamatu. Palun proovige hiljem uuesti.",
+    "ru": "Сервис временно недоступен. Пожалуйста, попробуйте позже.",
+    "en": "The service is temporarily unavailable. Please try again later.",
+}
+"""Friendly message returned on 5xx server errors."""
+
+SERVICE_TIMEOUT_MESSAGES = {
+    "et": "Teenuse päring aegus. Palun proovige mõne hetke pärast uuesti.",
+    "ru": "Запрос к сервису истёк по таймауту. Пожалуйста, попробуйте снова через несколько секунд.",
+    "en": "The service request timed out. Please try again in a moment.",
+}
+"""Friendly message returned on timeout or network errors."""
+
+CIRCUIT_BREAKER_OPEN_MESSAGES = {
+    "et": "Teenus on praegu kättesaamatu korduvate vigade tõttu. Palun proovige hiljem uuesti.",
+    "ru": "Сервис в данный момент недоступен из-за повторяющихся ошибок. Пожалуйста, попробуйте позже.",
+    "en": "The service is currently unavailable due to repeated failures. Please try again later.",
+}
+"""Friendly message returned when the circuit breaker is open."""
+
+REDIRECT_NOT_FOLLOWED_MESSAGES = {
+    "et": "Teenus tagastas ümbersuunamise, mida ei järgitud (HTTP {status_code}): {location}",
+    "ru": "Сервис вернул перенаправление, которое не было выполнено (HTTP {status_code}): {location}",
+    "en": "The service returned an unresolved redirect (HTTP {status_code}): {location}",
+}
+"""Friendly message returned when an HTTP 3xx redirect could not be followed."""

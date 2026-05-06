@@ -101,3 +101,36 @@ class AgenticLoopResult:
     collected_params: Dict[str, Any]
     clarifying_question: str
     turn_count: int
+
+
+@dataclass
+class APICallResult:
+    """
+    Result returned by APICaller.call() after executing an external HTTP request.
+
+    Attributes:
+        success: True if the request succeeded (2xx status code).
+        status_code: HTTP status code returned by the server. 0 when no HTTP response
+            was received (network error, timeout, or circuit breaker rejection).
+        response_data: Parsed JSON value on success (dict, list, or scalar); extracted
+            error body on 4xx; empty string on 5xx, timeout, or network error.
+        error: Human-readable error message for the user or agentic loop. None when
+            success is True. Contains the raw API error body for 4xx to support
+            agentic loop re-prompting; contains a localized friendly message for all
+            other failure types.
+    """
+
+    success: bool
+    status_code: int
+    response_data: Any
+    error: Optional[str]
+
+    @property
+    def is_client_error(self) -> bool:
+        """True if the response was a 4xx client error."""
+        return 400 <= self.status_code < 500
+
+    @property
+    def is_server_error(self) -> bool:
+        """True if the response was a 5xx server error."""
+        return 500 <= self.status_code < 600
