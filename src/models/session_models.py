@@ -41,3 +41,19 @@ class APIToolSession(BaseModel):
             "to the RAG workflow."
         ),
     )
+    detected_language: str = Field(
+        default="en",
+        description=(
+            "Language detected from the user's first message ('en', 'et', 'ru'). "
+            "Persisted so all subsequent clarifying questions use the same language, "
+            "even when follow-up messages are too short to reliably re-detect."
+        ),
+    )
+    original_query: str = Field(
+        default="",
+        description=(
+            "The user's first message that triggered this session. "
+            "Preserved across turns so the response formatter always receives the "
+            "full original intent, not just the last short follow-up message."
+        ),
+    )

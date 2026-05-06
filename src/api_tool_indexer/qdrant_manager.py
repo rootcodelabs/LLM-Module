@@ -2,17 +2,21 @@
 for the api_tool_collection used by the API Tool Calling workflow.
 """
 
-from typing import Any, Dict, Optional
+import uuid
+from typing import Any, Dict, List, Optional
 from loguru import logger
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
     PointStruct,
-    SparseVectorParams,
     SparseIndexParams,
     SparseVector,
-    PointIdsList,
+    SparseVectorParams,
+    VectorParams,
 )
 
 from api_tool_indexer.constants import ApiToolIndexerConstants
@@ -25,7 +29,10 @@ _CLIENT_NOT_INITIALIZED = "Qdrant client not initialized"
 class ApiToolQdrantManager:
     """Manages Qdrant operations for api_tool_collection with hybrid search.
 
-    One point per endpoint is stored.
+    Multiple points are stored per endpoint:
+    - One 'example' point per example query
+    - One 'summary' point for the full combined context
+    All points share the same endpoint_id payload field for deduplication.
     """
 
     def __init__(
@@ -162,89 +169,125 @@ class ApiToolQdrantManager:
         )
         logger.success(f"Collection '{self.collection_name}' created successfully")
 
-    def delete_endpoint_point(self, endpoint_id: str) -> bool:
-        """Delete the Qdrant point for a given endpoint.
+    def delete_endpoint_points(self, endpoint_id: str) -> bool:
+        """Delete all Qdrant points for a given endpoint.
 
-        Used before re-indexing to ensure idempotent updates, and when
-        an endpoint is deleted from the mock_endpoints table.
+        Uses a payload filter on 'endpoint_id' to remove all example and summary
+        points belonging to this endpoint. Called before re-indexing to ensure
+        idempotent updates, and when an endpoint is removed from the DB.
 
         Args:
-            endpoint_id: UUID of the endpoint to delete
+            endpoint_id: UUID of the endpoint whose points should be deleted.
 
         Returns:
-            True if successful, False otherwise
+            True if successful, False otherwise.
         """
         try:
             if not self.client:
                 raise RuntimeError(_CLIENT_NOT_INITIALIZED)
 
-            logger.info(
-                f"Deleting existing point for endpoint '{endpoint_id}' from Qdrant"
-            )
+            logger.info(f"Deleting all points for endpoint '{endpoint_id}' from Qdrant")
             self.client.delete(
                 collection_name=self.collection_name,
-                points_selector=PointIdsList(points=[endpoint_id]),
+                points_selector=FilterSelector(
+                    filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="endpoint_id",
+                                match=MatchValue(value=endpoint_id),
+                            )
+                        ]
+                    )
+                ),
             )
-            logger.success(f"Successfully deleted point for endpoint '{endpoint_id}'")
+            logger.success(
+                f"Successfully deleted all points for endpoint '{endpoint_id}'"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to delete point for endpoint '{endpoint_id}': {e}")
+            logger.error(f"Failed to delete points for endpoint '{endpoint_id}': {e}")
             return False
 
-    def upsert_endpoint(self, enriched: EnrichedEndpoint) -> bool:
-        """Upsert one enriched endpoint point to Qdrant.
+    def upsert_endpoint_points(self, enriched_points: List[EnrichedEndpoint]) -> bool:
+        """Upsert multiple enriched endpoint points to Qdrant.
+
+        Each point gets a deterministic UUID derived from endpoint_id + index so
+        upserts are idempotent. All points carry the full endpoint payload so no
+        additional DB roundtrip is needed after a semantic match.
+
+        Payload fields stored on every point:
+            endpoint_id, name, description, url, method, params,
+            enriched_context, service_id, point_type, example_text (example only)
 
         Args:
-            enriched: EnrichedEndpoint with dense/sparse vectors populated
+            enriched_points: List of EnrichedEndpoint instances (examples + summary).
 
         Returns:
-            True if successful, False otherwise
+            True if all points upserted successfully, False otherwise.
         """
         try:
             if not self.client:
                 raise RuntimeError(_CLIENT_NOT_INITIALIZED)
 
-            logger.info(f"Upserting point for endpoint '{enriched.endpoint_id}'")
+            if not enriched_points:
+                logger.warning("No points to upsert")
+                return True
 
-            payload = {
-                "endpoint_id": enriched.endpoint_id,
-                "name": enriched.name,
-                "description": enriched.description,
-                "url": enriched.url,
-                "method": enriched.method,
-                "params": enriched.params,
-                "enriched_context": enriched.enriched_context,
-                "service_id": enriched.service_id,
-            }
+            endpoint_id = enriched_points[0].endpoint_id
+            logger.info(
+                f"Upserting {len(enriched_points)} points for endpoint '{endpoint_id}'"
+            )
 
-            vectors: Dict[str, Any] = {
-                ApiToolIndexerConstants.DENSE_VECTOR_NAME: enriched.embedding,
-            }
-            if enriched.sparse_indices:
-                vectors[ApiToolIndexerConstants.SPARSE_VECTOR_NAME] = SparseVector(
-                    indices=enriched.sparse_indices,
-                    values=enriched.sparse_values,
+            points: List[PointStruct] = []
+            for idx, enriched in enumerate(enriched_points):
+                # Deterministic UUID: same input always produces the same point ID
+                point_id = str(
+                    uuid.uuid5(uuid.NAMESPACE_DNS, f"{enriched.endpoint_id}_{idx}")
                 )
 
-            point = PointStruct(
-                id=enriched.endpoint_id,  # use endpoint UUID directly as point ID
-                vector=vectors,
-                payload=payload,
-            )
+                payload: Dict[str, Any] = {
+                    "endpoint_id": enriched.endpoint_id,
+                    "name": enriched.name,
+                    "description": enriched.description,
+                    "url": enriched.url,
+                    "method": enriched.method,
+                    "params": enriched.params,
+                    "enriched_context": enriched.enriched_context,
+                    "service_id": enriched.service_id,
+                    "point_type": enriched.point_type,
+                }
+                if enriched.example_text is not None:
+                    payload["example_text"] = enriched.example_text
+
+                vectors: Dict[str, Any] = {
+                    ApiToolIndexerConstants.DENSE_VECTOR_NAME: enriched.embedding,
+                }
+                if enriched.sparse_indices:
+                    vectors[ApiToolIndexerConstants.SPARSE_VECTOR_NAME] = SparseVector(
+                        indices=enriched.sparse_indices,
+                        values=enriched.sparse_values,
+                    )
+
+                points.append(PointStruct(id=point_id, vector=vectors, payload=payload))
 
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=[point],
+                points=points,
             )
+
+            n_examples = sum(1 for p in enriched_points if p.point_type == "example")
+            n_summary = sum(1 for p in enriched_points if p.point_type == "summary")
             logger.success(
-                f"Successfully upserted point for endpoint '{enriched.endpoint_id}'"
+                f"Successfully upserted {len(points)} points for endpoint '{endpoint_id}' "
+                f"({n_examples} example + {n_summary} summary)"
             )
             return True
 
         except Exception as e:
             logger.error(
-                f"Failed to upsert point for endpoint '{enriched.endpoint_id}': {e}"
+                f"Failed to upsert points for endpoint "
+                f"'{enriched_points[0].endpoint_id if enriched_points else '?'}': {e}"
             )
             return False
 
