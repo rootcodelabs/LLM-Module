@@ -30,10 +30,19 @@ class ApiToolIndexerConstants:
     RETRY_DELAY_BASE = 2  # Exponential backoff base (2^attempt seconds)
     REQUEST_TIMEOUT = 60  # seconds
 
+    # Number of example queries generated per endpoint.
+    # Each example becomes its own Qdrant point so its vector sits in the exact
+    # language region of the embedding space, enabling short-query matching.
+    EXAMPLE_QUERY_COUNT = 5
+
     # Context Enrichment Template
-    # Mirrors the service workflow (intent_data_enrichment/constants.py).
     # Full template goes in chunk_prompt; document_prompt is left empty.
-    # The LLM summarises the chunk content into a rich semantic context.
+    #
+    # Multi-point indexing strategy:
+    #   - Each example query line is extracted and stored as its own Qdrant point,
+    #     embedded from that individual sentence alone.
+    #   - The prose + all examples combined become one summary point.
+    # All in the same language as the endpoint description — no bilingual duplication.
     CONTEXT_TEMPLATE = """<document>
 {full_endpoint_info}
 </document>
@@ -52,9 +61,11 @@ Keep the prose context general and country-agnostic. Include information about:
 - Related concepts and use cases
 - Common ways users might ask for this functionality in natural language
 
-Then, on a new line, add a section exactly as shown below with 6 to 8 realistic and diverse example questions a real user might ask when they need this endpoint. Cover different phrasings, synonyms, and indirect ways of asking — do not just repeat the description verbatim.
+IMPORTANT: Generate the prose context and the example questions in the SAME LANGUAGE as the endpoint description above. However, always use the exact section header "Example queries:" in English regardless of language — this is a required machine-readable marker.
 
 IMPORTANT for example queries: This is a system built for Estonian government digital services (Bürokratt). Ground the examples in an Estonian context — use Estonian cities (Tallinn, Tartu, Pärnu, Narva), Estonian institutions, and Estonia-relevant scenarios. Only use non-Estonian locations if the endpoint is explicitly about comparing or fetching data for multiple countries.
+
+Then add a section with exactly {example_count} realistic and diverse example questions a real user might ask when they need this endpoint. Cover different phrasings, synonyms, and indirect ways of asking — do not just repeat the description verbatim.
 
 Example queries:
 - <example question 1>
@@ -62,8 +73,5 @@ Example queries:
 - <example question 3>
 - <example question 4>
 - <example question 5>
-- <example question 6>
-
-IMPORTANT: Generate everything in the SAME LANGUAGE as the endpoint description above. If the description is in Estonian, respond in Estonian. If in English, respond in English. If in Russian, respond in Russian.
 
 Answer only with the enriched context and example queries — nothing else."""
