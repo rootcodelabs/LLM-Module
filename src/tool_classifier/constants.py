@@ -219,3 +219,10 @@ REDIRECT_NOT_FOLLOWED_MESSAGES = {
     "en": "The service returned an unresolved redirect (HTTP {status_code}): {location}",
 }
 """Friendly message returned when an HTTP 3xx redirect could not be followed."""
+
+CLIENT_ERROR_MESSAGES = {
+    "et": "Teie päringut ei saanud töödelda. Palun kontrollige sisestatud andmeid ja proovige uuesti.",
+    "ru": "Ваш запрос не удалось обработать. Пожалуйста, проверьте введённые данные и повторите попытку.",
+    "en": "Your request could not be processed. Please check the provided information and try again.",
+}
+"""Friendly message returned on 4xx client errors from external API calls."""
