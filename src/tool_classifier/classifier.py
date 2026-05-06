@@ -152,6 +152,60 @@ class ToolClassifier:
         logger.info(f"Classifying query: {query[:100]}...")
 
         try:
+            # Pre-classification: if an API tool session already exists for this
+            # chat_id, the user is responding to a param-collection question.
+            # Short-circuit directly to API_TOOL_CALLING — no need to re-classify.
+            if FeatureFlags.API_TOOL_CALLING_WORKFLOW_ENABLED and request is not None:
+                session_store = getattr(
+                    self.orchestration_service, "session_store", None
+                )
+                if session_store is not None:
+                    existing_session = await session_store.get(request.chatId)
+                    if existing_session is not None:
+                        endpoint_name = (
+                            existing_session.selected_endpoint.get("name")
+                            if existing_session.selected_endpoint
+                            else "unknown"
+                        )
+
+                        # Before resuming, check if the user's new message is a
+                        # strong match for a DIFFERENT endpoint (intent switch).
+                        # If so, abandon the old session and start fresh rather
+                        # than treating the new query as a param-collection reply.
+                        new_api_match = await self._try_api_tool_classification(
+                            query, request
+                        )
+                        if (
+                            new_api_match is not None
+                            and new_api_match.metadata.get("matched_endpoint", {}).get(
+                                "name"
+                            )
+                            != endpoint_name
+                        ):
+                            logger.info(
+                                f"[{request.chatId}] Intent switch detected: "
+                                f"active session={endpoint_name!r}, "
+                                f"new match={new_api_match.metadata.get('matched_endpoint', {}).get('name')!r} "
+                                f"— abandoning old session"
+                            )
+                            await session_store.delete(request.chatId)
+                            return new_api_match
+
+                        logger.info(
+                            f"[{request.chatId}] Active API tool session found "
+                            f"(endpoint={endpoint_name!r}) "
+                            f"— short-circuiting to API_TOOL_CALLING"
+                        )
+                        return ClassificationResult(
+                            workflow=WorkflowType.API_TOOL_CALLING,
+                            confidence=1.0,
+                            metadata={
+                                "reason": "active_session_resume",
+                                "matched_endpoint": existing_session.selected_endpoint,
+                            },
+                            reasoning="Resuming active API tool parameter-collection session",
+                        )
+
             if not FeatureFlags.SERVICE_WORKFLOW_ENABLED:
                 logger.info(
                     "SERVICE_WORKFLOW_ENABLED=false - skipping standard service search"
