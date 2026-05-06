@@ -15,12 +15,12 @@ get_agency_id:
   next: log_result
 
 log_result:
-  log: ${get_agency_id_result.response.body[0].agencyId}
+  log: ${get_agency_id_result.response.body[0].id}
   next: extract_params
 
 extract_params:
   assign:
-    single_agency_id: ${get_agency_id_result.response.body[0].agencyId}
+    single_agency_id: ${get_agency_id_result.response.body[0].id}
     agency_ids: 
       - ${single_agency_id}
     current_data_hash: ${get_agency_id_result.response.body[0].agencyDataHash}
@@ -34,34 +34,65 @@ import_agency_data:
   call: http.post
   args:
     url: "[#RAG_SEARCH_RUUTER_PUBLIC]/ckb/agency-data-import"
-    body:
-      agencyIds: ${agency_ids}
   result: importResult
   next: log_import_agency_data_response
+  on_error: handle_import_error
+
+handle_import_error:
+  log: "ERROR: Failed to import agency data - ${importResult.error.message}"
+  assign:
+    format_res: {
+      message: "Failed to fetch data from CKB - data synchronization failed",
+      operationSuccessful: false,
+      error: "CKB_IMPORT_FAILED"
+    }
+  next: return_bad_request
 
 log_import_agency_data_response:
   log: ${JSON.stringify(importResult.response)}
+  next: check_ckb_response
+
+check_ckb_response:
+  switch:
+    - condition: ${importResult.response.body == null || importResult.response.body.response == null || importResult.response.body.response == "Internal Server Error" || importResult.response.body.response.response == null}
+      next: return_ckb_error_response
+    - condition: ${importResult.response.body.response.response.length === 0}
+      next: return_no_ckb_data
   next: assign_import_agency_data
+
+return_ckb_error_response:
+  assign:
+    format_res:
+      message: "CKB service returned an error - data synchronization aborted"
+      operationSuccessful: false
+      error: "CKB_ERROR"
+  next: return_bad_request
+
+return_no_ckb_data:
+  assign:
+    error_response:
+      success: false
+      message: "Data synchronization failed - CKB agency data not found"
+  next: return_ckb_data_error
 
 assign_import_agency_data:
   assign:
-    ckb_data_hash: ${importResult.response.body.response[0].clientDataHash}
-    signed_s3_url: ${importResult.response.body.response[0].signedS3Url}
+    ckb_data_hash: ${importResult.response.body.response.response[0].agencyDataHash}
+    signed_s3_url: ${importResult.response.body.response.response[0].signedS3Url}
   next: check_has_match
   
 check_has_match:
   switch:
-    - condition: ${current_data_hash === importResult.response.body.response[0].clientDataHash}
+    - condition: ${current_data_hash !== null && current_data_hash === importResult.response.body.response.response[0].agencyDataHash}
       next: noAgencyData
-    - condition: true
-      next: sync_current_hash_with_ckb_latest_hash
+  next: sync_current_hash_with_ckb_latest_hash
 
 sync_current_hash_with_ckb_latest_hash:
   call: http.post
   args:
     url: "[#RAG_SEARCH_RESQL]/update-agency-hash"
     body:
-      agencyId: ${single_agency_id}
+      id: ${single_agency_id}
       newAgencyDataHash: ${ckb_data_hash}
       dataUrl: ${signed_s3_url}
   result: sync_agency_hash_result
@@ -105,10 +136,9 @@ assign_success_response:
 
 assign_fail_response:
   assign:
-    format_res: {
-      message: "Data synchronization failed",
-      operationSuccessful: false,
-    }
+    format_res: 
+      message: "Data synchronization failed"
+      operationSuccessful: false
   next: return_bad_request
 
 return_ok:
@@ -132,4 +162,8 @@ return_no_sync_needed:
   status: 200
   return: ${response_data}
   next: end
-  
+
+return_ckb_data_error:
+  status: 404
+  return: ${error_response}
+  next: end
