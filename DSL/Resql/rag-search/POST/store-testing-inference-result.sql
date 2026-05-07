@@ -1,4 +1,4 @@
-INSERT INTO inference_results (
+INSERT INTO rag_search.inference_results (
     llm_connection_id,
     user_question,
     final_answer,

@@ -32,7 +32,7 @@ spec:
             - |
               git clone --single-branch --depth 1 --branch wip https://github.com/rootcodelabs/RAG-Module /tmp/rag &&
 
-              cp -r /tmp/rag/DSL/Liquibase/* /liquibase-files
+              cp -r /tmp/rag/DSL/Liquibase_production/* /liquibase-files
       containers:
         - name: "{{ .Values.release_name }}"
           image: "{{ .Values.images.scope.repository }}:{{ .Values.images.scope.tag }}"
@@ -65,10 +65,11 @@ spec:
               cd /liquibase-files
               echo "--- Now running Liquibase ---"
               liquibase \
-              --changeLogFile=/master.yml \
-              --url=jdbc:postgresql://rag-search-db:5432/rag-search \
-              --username=postgres \
-              --password=dbadmin \
+              --defaultsFile=/liquibase-files/liquibase.properties \
+              --changeLogFile=changelog.yaml \
+              --url=jdbc:postgresql://rag-search-db:5432/llm_production \
+              --username=$(POSTGRES_USER) \
+              --password=$(POSTGRES_PASSWORD) \
               update
           
 {{- end }}

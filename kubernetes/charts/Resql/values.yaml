@@ -15,7 +15,7 @@ service:
 env:
   LOGGING_LEVEL_ROOT: "INFO"
   SQLMS_DATASOURCES_0_NAME: "byk"
-  SQLMS_DATASOURCES_0_JDBCURL: "jdbc:postgresql://rag-search-db:5432/rag-search"
+  SQLMS_DATASOURCES_0_JDBCURL: "jdbc:postgresql://rag-search-db:5432/llm_production"
   SQLMS_DATASOURCES_0_USERNAME: "postgres"
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT: "INFO"
   JAVA_OPTS: "-Xms1g -Xmx3g"

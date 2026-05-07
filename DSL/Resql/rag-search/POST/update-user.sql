@@ -1,4 +1,4 @@
-INSERT INTO "user" (id_code, login, password_hash, first_name, last_name, display_name, status, created, csa_title, csa_email)
+INSERT INTO rag_search."user" (id_code, login, password_hash, first_name, last_name, display_name, status, created, csa_title, csa_email)
 SELECT
   :userIdCode,
   login,
@@ -10,7 +10,7 @@ SELECT
   :created::timestamp with time zone,
   :csaTitle,
   :csaEmail
-FROM "user"
+FROM rag_search."user"
 WHERE id = (
-  SELECT MAX(id) FROM "user" WHERE id_code = :userIdCode
+  SELECT MAX(id) FROM rag_search."user" WHERE id_code = :userIdCode
 );

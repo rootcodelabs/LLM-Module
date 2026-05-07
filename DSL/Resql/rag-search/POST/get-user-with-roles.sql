@@ -6,10 +6,10 @@ SELECT DISTINCT u.login,
        u.csa_title,
        u.csa_email,
        ua.authority_name AS authorities
-FROM "user" u
+FROM rag_search."user" u
          LEFT JOIN (SELECT authority_name, user_id
-                     FROM user_authority AS ua
+                     FROM rag_search.user_authority AS ua
                      WHERE ua.id IN (SELECT max(id)
-                                     FROM user_authority
+                                     FROM rag_search.user_authority
                                      GROUP BY user_id)) ua ON u.id_code = ua.user_id
 WHERE login = :login;

@@ -2,5 +2,5 @@ SELECT
     id,
     platform_key as value,
     platform_name as label
-FROM embedding_platforms 
+FROM rag_search.embedding_platforms 
 ORDER BY platform_name;

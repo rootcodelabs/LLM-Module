@@ -1,5 +1,5 @@
 SELECT id, key, value
-FROM configuration
+FROM rag_search.configuration
 WHERE key=:key
-AND id IN (SELECT max(id) from configuration GROUP BY key)
+AND id IN (SELECT max(id) from rag_search.configuration GROUP BY key)
 AND NOT deleted;
