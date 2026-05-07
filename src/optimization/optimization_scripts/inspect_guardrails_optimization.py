@@ -7,7 +7,7 @@ from pathlib import Path
 from loguru import logger
 
 
-def main():
+def main() -> None:
     """Inspect the optimized guardrails module."""
     logger.info("INSPECTING OPTIMIZED GUARDRAILS")
 

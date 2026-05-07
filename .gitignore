@@ -15,6 +15,10 @@ vault/agent-out
 vault/keys/rsa_private_key.pem
 vault/keys/*.pem.old
 
+# RSA Private Keys - DO NOT COMMIT
+vault/keys/rsa_private_key.pem
+vault/keys/*.pem.old
+
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
 # Dynamically created Ruuter health endpoint for tests

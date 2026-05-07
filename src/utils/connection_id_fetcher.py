@@ -23,7 +23,7 @@ class ConnectionIdFetcher:
     and production store services.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the connection ID fetcher with endpoints."""
         # Use Resql directly for consistent performance
         self.resql_base = RAG_SEARCH_RESQL
@@ -34,12 +34,14 @@ class ConnectionIdFetcher:
         # Thread-safe lock for cache access
         self._cache_lock = threading.Lock()
 
-    def _extract_connection_id_from_response(self, data: Any) -> Optional[int]:
+    def _extract_connection_id_from_response(
+        self, data: dict[str, Any] | list[Any]
+    ) -> Optional[int]:
         """
         Extract connection ID from API response data.
 
         Args:
-            data: The JSON response data
+            data: The JSON response data (dict or list)
 
         Returns:
             The connection ID as integer, or None if not found
@@ -200,7 +202,7 @@ class ConnectionIdFetcher:
             logger.error(f"Error fetching {environment} connection ID: {str(e)}")
             return None
 
-    def clear_cache(self, environment: Optional[str] = None):
+    def clear_cache(self, environment: Optional[str] = None) -> None:
         """
         Clear the connection ID cache.
 

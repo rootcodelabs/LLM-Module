@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from src.models.session_models import APIToolSession
 from src.utils.api_tool_session_store import (
@@ -60,11 +61,11 @@ class TestAPIToolSession:
         assert restored == session
 
     def test_turn_count_must_be_non_negative(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             APIToolSession(chat_id="x", state="s", turn_count=-1)
 
     def test_max_turns_must_be_at_least_one(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             APIToolSession(chat_id="x", state="s", max_turns=0)
 
 

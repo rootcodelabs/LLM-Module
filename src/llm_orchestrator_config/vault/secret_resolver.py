@@ -34,7 +34,7 @@ class SecretResolver:
         vault_client: Optional[VaultAgentClient] = None,
         cache_ttl_minutes: int = 5,
         background_refresh: bool = True,
-    ):
+    ) -> None:
         """Initialize Secret Resolver.
 
         Args:
@@ -289,7 +289,7 @@ class SecretResolver:
     def _schedule_background_refresh(self, vault_path: str) -> None:
         """Schedule background refresh of an expired secret."""
 
-        def refresh_task():
+        def refresh_task() -> None:
             logger.debug(f"Background refresh for {vault_path}")
             self.refresh_secret(vault_path)
 

@@ -7,7 +7,7 @@ from typing import Dict
 from loguru import logger
 
 
-def get_directory_structure():
+def get_directory_structure() -> tuple[Path, Path]:
     """Get the directory structure based on script location."""
     script_path = Path(__file__).resolve()
     logger.info(f"This script: {script_path}")
@@ -24,7 +24,7 @@ def get_directory_structure():
     return optimization_dir, src_dir
 
 
-def check_key_paths(optimization_dir: Path, src_dir: Path):
+def check_key_paths(optimization_dir: Path, src_dir: Path) -> bool:
     """Check if key paths exist and return overall status."""
     paths_to_check: Dict[str, Path] = {
         "optimized_modules": optimization_dir / "optimized_modules",
@@ -46,7 +46,7 @@ def check_key_paths(optimization_dir: Path, src_dir: Path):
     return all_good
 
 
-def check_component_files(component_dir: Path, component: str):
+def check_component_files(component_dir: Path, component: str) -> None:
     """Check files for a specific component."""
     json_files = list(component_dir.glob("*.json"))
     module_files = [f for f in json_files if not f.stem.endswith("_results")]
@@ -66,7 +66,7 @@ def check_component_files(component_dir: Path, component: str):
             logger.info(f"    Config:           {cfg.name}")
 
 
-def check_optimized_modules(optimization_dir: Path):
+def check_optimized_modules(optimization_dir: Path) -> None:
     """Check optimized module files for all components."""
     logger.info("Optimized module files:")
     for component in ["guardrails", "refiner", "generator"]:
@@ -77,7 +77,7 @@ def check_optimized_modules(optimization_dir: Path):
             logger.warning(f"  {component}: Directory not found!")
 
 
-def main():
+def main() -> None:
     """Check all paths."""
     logger.info("PATH DIAGNOSTIC")
 

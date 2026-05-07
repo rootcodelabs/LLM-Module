@@ -23,7 +23,7 @@ class GuardrailsMetric:
     - Aligns with guardrails' primary purpose: safety
     """
 
-    def __init__(self, weight_fn: float = 0.0, weight_fp: float = 0.3):
+    def __init__(self, weight_fn: float = 0.0, weight_fp: float = 0.3) -> None:
         """
         Initialize metric with custom weights.
 
@@ -35,7 +35,10 @@ class GuardrailsMetric:
         self.weight_fp = weight_fp
 
     def __call__(
-        self, example: dspy.Example, prediction: dspy.Prediction, trace=None
+        self,
+        example: dspy.Example,
+        prediction: dspy.Prediction,
+        trace: Any | None = None,
     ) -> float:
         """
         Evaluate guardrail prediction with safety weighting.
@@ -78,7 +81,7 @@ class GuardrailsMetric:
 
 
 def safety_weighted_accuracy(
-    example: dspy.Example, prediction: dspy.Prediction, trace=None
+    example: dspy.Example, prediction: dspy.Prediction, trace: Any | None = None
 ) -> float:
     """
     Convenience function for default safety-weighted accuracy.
@@ -105,7 +108,7 @@ def calculate_guardrails_stats(
 
     stats = _initialize_stats()
 
-    for example, prediction in zip(examples, predictions):
+    for example, prediction in zip(examples, predictions, strict=True):
         _update_stats_for_prediction(stats, example, prediction)
 
     return _calculate_final_metrics(stats)

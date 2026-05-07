@@ -230,7 +230,7 @@ class EmbeddingManager:
 
         except Exception as e:
             logger.error(f"Failed to create DSPy embedder: {e}")
-            raise ConfigurationError(f"Could not create embedder: {e}")
+            raise ConfigurationError(f"Could not create embedder: {e}") from e
 
     def _log_embedding_failure(
         self,

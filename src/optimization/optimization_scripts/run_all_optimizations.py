@@ -74,7 +74,7 @@ def initialize_llm_manager(
 
 
 def optimize_guardrails_component(
-    lm: Any, base_save_dir: Path, timestamp: str
+    lm: dspy.LM, base_save_dir: Path, timestamp: str
 ) -> Dict[str, Any]:
     """Run guardrails optimization."""
     logger.info("GUARDRAILS OPTIMIZATION")
@@ -120,7 +120,7 @@ def optimize_guardrails_component(
 
 
 def optimize_refiner_component(
-    lm: Any, base_save_dir: Path, timestamp: str
+    lm: dspy.LM, base_save_dir: Path, timestamp: str
 ) -> Dict[str, Any]:
     """Run refiner optimization."""
     logger.info("REFINER OPTIMIZATION")
@@ -161,7 +161,7 @@ def optimize_refiner_component(
 
 
 def optimize_generator_component(
-    lm: Any, base_save_dir: Path, timestamp: str
+    lm: dspy.LM, base_save_dir: Path, timestamp: str
 ) -> Dict[str, Any]:
     """Run generator optimization."""
     logger.info("GENERATOR OPTIMIZATION")

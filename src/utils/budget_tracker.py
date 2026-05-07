@@ -11,7 +11,7 @@ from .connection_id_fetcher import get_connection_id_fetcher
 class BudgetTracker:
     """Handles budget updates for LLM connections."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the budget tracker with Resql and Ruuter endpoints."""
         # Use Resql directly for budget updates
         self.resql_base = RAG_SEARCH_RESQL

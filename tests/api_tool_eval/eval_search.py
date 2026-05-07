@@ -322,9 +322,8 @@ def evaluate(ruuter_url: str, delay: float = 0.5) -> list:
 
 def print_report(results: list) -> None:
     """Print evaluation results table and summary."""
-    PASS = "✅"
-    FAIL = "❌"
-    SKIP = "⚠️ "
+    pass_icon = "✅"
+    fail_icon = "❌"
 
     print(f"\n{'=' * 100}")
     print(f"{'RETRIEVAL EVALUATION REPORT':^100}")
@@ -342,11 +341,11 @@ def print_report(results: list) -> None:
             f"{r['cosine_score']:.4f}" if r["cosine_score"] is not None else "  -   "
         )
         rrf = f"{r['rrf_score']:.6f}" if r["rrf_score"] is not None else "    -    "
-        verdict = PASS if r["pass"] else FAIL
+        verdict = pass_icon if r["pass"] else fail_icon
 
         # Highlight negative query failures
         if r["expected"] is None and r["got"] is not None and r["confidence"] == "high":
-            verdict = FAIL + " FALSE POSITIVE"
+            verdict = fail_icon + " FALSE POSITIVE"
 
         print(
             f"{i:<4} {query:<48} {expected:<28} {got:<28} {cosine:>7} {rrf:>9}  {verdict}"

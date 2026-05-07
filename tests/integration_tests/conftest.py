@@ -23,7 +23,7 @@ class VaultAgentClient:
         token_path: Path = Path("test-vault/agent-out/token"),
         mount_point: str = "secret",
         timeout: int = 10,
-    ):
+    ) -> None:
         self.vault_url = vault_url
         self.token_path = token_path
         self.mount_point = mount_point
@@ -76,7 +76,7 @@ class VaultAgentClient:
 class RAGStackTestContainers:
     """Manages test containers for RAG stack including Vault, Qdrant, Langfuse, and LLM orchestration service"""
 
-    def __init__(self, compose_file_name: str = "docker-compose-test.yml"):
+    def __init__(self, compose_file_name: str = "docker-compose-test.yml") -> None:
         self.project_root = Path(__file__).parent.parent.parent
         self.compose_file_path = self.project_root / compose_file_name
         self.compose: Optional[DockerCompose] = None
@@ -1012,12 +1012,12 @@ def orchestration_client(rag_stack: RAGStackTestContainers) -> Any:
     session.headers.update(
         {"Content-Type": "application/json", "Accept": "application/json"}
     )
-    setattr(session, "base_url", rag_stack.get_orchestration_service_url())
+    session.base_url = rag_stack.get_orchestration_service_url()
     return session
 
 
 @pytest.fixture(scope="session")
-def minio_client(rag_stack):
+def minio_client(rag_stack: RAGStackTestContainers) -> Minio:
     """Create MinIO client connected to test instance."""
     client = Minio(
         "localhost:9000",
@@ -1029,7 +1029,7 @@ def minio_client(rag_stack):
 
 
 @pytest.fixture(scope="session")
-def qdrant_client(rag_stack):
+def qdrant_client(rag_stack: RAGStackTestContainers) -> QdrantClient:
     """Create Qdrant client connected to test instance."""
     client = QdrantClient(host="localhost", port=6333)
     return client
@@ -1150,7 +1150,7 @@ def qdrant_collections():
 
 
 @pytest.fixture(scope="session")
-def llm_orchestration_url(rag_stack):
+def llm_orchestration_url(rag_stack: RAGStackTestContainers) -> str:
     """
     URL for the LLM orchestration service.
 
@@ -1161,7 +1161,7 @@ def llm_orchestration_url(rag_stack):
 
 
 @pytest.fixture(scope="session")
-def vault_client(rag_stack):
+def vault_client(rag_stack: RAGStackTestContainers):
     """Create Vault client connected to test instance using root token (dev mode)."""
     vault_url = rag_stack.get_vault_url()
 
@@ -1191,7 +1191,7 @@ def vault_client(rag_stack):
 
 
 @pytest.fixture(scope="session")
-def postgres_client(rag_stack):
+def postgres_client(rag_stack: RAGStackTestContainers):
     """Create PostgreSQL client connected to test database."""
     import psycopg2
 
@@ -1272,7 +1272,7 @@ def ruuter_private_client(rag_stack: RAGStackTestContainers):
         {"Content-Type": "application/json", "Accept": "application/json"}
     )
     # Ruuter Private runs on port 8088 in test environment
-    setattr(session, "base_url", "http://localhost:8088")
+    session.base_url = "http://localhost:8088"
     return session
 
 
@@ -1296,7 +1296,7 @@ def ruuter_public_client(rag_stack: RAGStackTestContainers):
         {"Content-Type": "application/json", "Accept": "application/json"}
     )
     # Ruuter Public runs on port 8088 in test environment
-    setattr(session, "base_url", "http://localhost:8086")
+    session.base_url = "http://localhost:8086"
     return session
 
 

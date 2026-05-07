@@ -1,6 +1,6 @@
 """LLM Orchestration Service - Business logic for LLM orchestration."""
 
-from typing import Optional, List, Dict, Union, Any, AsyncIterator
+from typing import Optional, List, Dict, Union, Any, AsyncIterator, TYPE_CHECKING
 import os
 import time
 import asyncio
@@ -45,8 +45,15 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.vector_indexer.constants import ResponseGenerationConstants
 from src.utils.error_utils import generate_error_id, log_error_with_context
-from src.utils.stream_manager import stream_manager
+from src.utils.stream_manager import stream_manager, StreamContext
 from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
+
+if TYPE_CHECKING:
+    from src.llm_orchestrator_config.embedding_manager import EmbeddingManager
+    from src.llm_orchestrator_config.context_manager import (
+        ContextGenerationManager,
+    )
+    from src.llm_orchestrator_config.config.loader import ConfigurationLoader
 from src.utils.time_tracker import log_step_timings
 from src.utils.budget_tracker import get_budget_tracker
 from src.utils.production_store import get_production_store
@@ -325,7 +332,7 @@ class LLMOrchestrationService:
 
             # Store detected language in request for use throughout pipeline
             # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
-            setattr(request, "_detected_language", detected_language)
+            setattr(request, "_detected_language", detected_language)  # noqa: B010
 
             # STEP 0.1: Multi-step service prefix check (bypass NLU pipeline)
             if request.message.startswith(SERVICE_STEP_PREFIXES):
@@ -587,7 +594,7 @@ class LLMOrchestrationService:
 
         # Store detected language in request for use throughout pipeline
         # Using setattr for type safety - adds dynamic attribute to Pydantic model instance
-        setattr(request, "_detected_language", detected_language)
+        setattr(request, "_detected_language", detected_language)  # noqa: B010
 
         # STEP 0.1: Multi-step service prefix check (bypass NLU pipeline)
         if request.message.startswith(SERVICE_STEP_PREFIXES):
@@ -716,6 +723,9 @@ class LLMOrchestrationService:
 
                         # Route to appropriate workflow (streaming)
                         # route_to_workflow returns AsyncIterator[str] when is_streaming=True
+                        # Inject costs_metric into the classification context so the
+                        # API Tool workflow can append its output guardrail costs.
+                        classification.metadata["costs_metric"] = costs_metric
                         start_time = time.time()
                         stream_result = await self.tool_classifier.route_to_workflow(
                             classification=classification,
@@ -808,7 +818,7 @@ class LLMOrchestrationService:
         self,
         request: OrchestrationRequest,
         components: Dict[str, Any],
-        stream_ctx: Any,
+        stream_ctx: StreamContext,
         costs_metric: Dict[str, Dict[str, Any]],
         time_metric: Dict[str, float],
     ) -> AsyncIterator[str]:
@@ -1787,7 +1797,7 @@ class LLMOrchestrationService:
 
             # Store the inference result asynchronously without blocking
 
-            def store_async():
+            def store_async() -> None:
                 """Run async storage in a new event loop in a separate thread."""
                 try:
                     loop = asyncio.new_event_loop()
@@ -2925,7 +2935,7 @@ class LLMOrchestrationService:
     # Lazy Initialization Helpers for Vector Indexer (Private Methods)
     # ========================================================================
 
-    def _get_embedding_manager(self):
+    def _get_embedding_manager(self) -> "EmbeddingManager":
         """Lazy initialization of EmbeddingManager for vector indexer."""
         if not hasattr(self, "_embedding_manager"):
             from src.llm_orchestrator_config.embedding_manager import EmbeddingManager
@@ -2939,7 +2949,7 @@ class LLMOrchestrationService:
 
         return self._embedding_manager
 
-    def _get_context_manager(self):
+    def _get_context_manager(self) -> "ContextGenerationManager":
         """Lazy initialization of ContextGenerationManager for vector indexer."""
         if not hasattr(self, "_context_manager"):
             from src.llm_orchestrator_config.context_manager import (
@@ -2953,7 +2963,7 @@ class LLMOrchestrationService:
 
         return self._context_manager
 
-    def _get_config_loader(self):
+    def _get_config_loader(self) -> "ConfigurationLoader":
         """Lazy initialization of ConfigurationLoader for vector indexer."""
         if not hasattr(self, "_config_loader"):
             from src.llm_orchestrator_config.config.loader import ConfigurationLoader

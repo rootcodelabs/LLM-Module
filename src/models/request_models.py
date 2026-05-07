@@ -96,14 +96,14 @@ class OrchestrationRequest(BaseModel):
         from loguru import logger
 
         # Limit number of conversation history items
-        MAX_HISTORY_ITEMS = 100
+        max_history_items = 100
 
-        if len(v) > MAX_HISTORY_ITEMS:
+        if len(v) > max_history_items:
             logger.warning(
-                f"Conversation history truncated: {len(v)} -> {MAX_HISTORY_ITEMS} items"
+                f"Conversation history truncated: {len(v)} -> {max_history_items} items"
             )
             # Truncate to most recent items
-            v = v[-MAX_HISTORY_ITEMS:]
+            v = v[-max_history_items:]
 
         return v
 

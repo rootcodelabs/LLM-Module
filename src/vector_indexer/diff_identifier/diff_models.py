@@ -96,7 +96,7 @@ class DiffConfig(BaseModel):
 class DiffError(Exception):
     """Custom exception for diff identification errors."""
 
-    def __init__(self, message: str, cause: Optional[Exception] = None):
+    def __init__(self, message: str, cause: Optional[Exception] = None) -> None:
         self.message = message
         self.cause = cause
         super().__init__(self.message)

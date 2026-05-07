@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
 from loguru import logger
+from typing_extensions import Self
 
 from diff_identifier.diff_models import (
     DiffConfig,
@@ -19,11 +20,11 @@ from diff_identifier.s3_ferry_client import S3FerryClient
 class VersionManager:
     """Manages DVC operations and version tracking."""
 
-    def __init__(self, config: DiffConfig):
+    def __init__(self, config: DiffConfig) -> None:
         self.config = config
         self.datasets_path = Path(config.datasets_path)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -99,7 +100,7 @@ class VersionManager:
             logger.info("DVC initialized successfully")
 
         except Exception as e:
-            raise DiffError(f"Failed to initialize DVC: {str(e)}", e)
+            raise DiffError(f"Failed to initialize DVC: {str(e)}", e) from e
 
     async def get_processed_files_metadata(self) -> Optional[VersionState]:
         """
@@ -133,7 +134,9 @@ class VersionManager:
                 )
 
         except Exception as e:
-            raise DiffError(f"Failed to get processed files metadata: {str(e)}", e)
+            raise DiffError(
+                f"Failed to get processed files metadata: {str(e)}", e
+            ) from e
 
     async def update_processed_files_metadata(
         self,
@@ -255,7 +258,9 @@ class VersionManager:
         except DiffError:
             raise
         except Exception as e:
-            raise DiffError(f"Failed to update processed files metadata: {str(e)}", e)
+            raise DiffError(
+                f"Failed to update processed files metadata: {str(e)}", e
+            ) from e
 
     def scan_current_files(self) -> Dict[str, str]:
         """
@@ -304,7 +309,7 @@ class VersionManager:
             return files_map
 
         except Exception as e:
-            raise DiffError(f"Failed to scan current files: {str(e)}", e)
+            raise DiffError(f"Failed to scan current files: {str(e)}", e) from e
 
     def identify_comprehensive_changes(
         self, current_files: Dict[str, str], processed_state: Optional[VersionState]
@@ -462,7 +467,7 @@ class VersionManager:
             logger.info("DVC commit completed successfully")
 
         except Exception as e:
-            raise DiffError(f"Failed to commit DVC changes: {str(e)}", e)
+            raise DiffError(f"Failed to commit DVC changes: {str(e)}", e) from e
 
     async def _run_dvc_command(self, command: List[str]) -> str:
         """
@@ -519,4 +524,4 @@ class VersionManager:
                 raise
             raise DiffError(
                 f"Failed to run DVC command {' '.join(command)}: {str(e)}", e
-            )
+            ) from e

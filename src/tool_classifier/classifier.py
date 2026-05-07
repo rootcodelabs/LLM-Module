@@ -1,14 +1,27 @@
 """Main tool classifier for workflow routing with hybrid search classification."""
 
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Union, overload
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Union,
+    overload,
+    TYPE_CHECKING,
+)
 import httpx
 from loguru import logger
 
+from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
     ConversationItem,
     OrchestrationRequest,
     OrchestrationResponse,
+    TestOrchestrationResponse,
 )
+from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.enums import (
     WorkflowType,
     WORKFLOW_DISPLAY_NAMES,
@@ -26,8 +39,10 @@ from tool_classifier.constants import (
     DENSE_HIGH_CONFIDENCE_THRESHOLD,
     DENSE_SCORE_GAP_THRESHOLD,
 )
-from tool_classifier.sparse_encoder import compute_sparse_vector
+
+from tool_classifier.sparse_encoder import SparseVector, compute_sparse_vector
 from tool_classifier.api_semantic_searcher import APISemanticSearcher
+
 from tool_classifier.workflows import (
     APIToolWorkflowExecutor,
     ServiceWorkflowExecutor,
@@ -36,6 +51,9 @@ from tool_classifier.workflows import (
     OODWorkflowExecutor,
 )
 from llm_orchestrator_config.feature_flags import FeatureFlags
+
+if TYPE_CHECKING:
+    from llm_orchestration_service import LLMOrchestrationService
 
 
 class ToolClassifier:
@@ -60,8 +78,8 @@ class ToolClassifier:
 
     def __init__(
         self,
-        llm_manager: Any,
-        orchestration_service: Any,
+        llm_manager: LLMManager,
+        orchestration_service: "LLMOrchestrationService",
     ) -> None:
         """
         Initialize tool classifier with required dependencies.
@@ -503,7 +521,7 @@ class ToolClassifier:
     async def _hybrid_search(
         self,
         dense_vector: List[float],
-        sparse_vector: Any,
+        sparse_vector: SparseVector,
         top_k: int = HYBRID_SEARCH_TOP_K,
     ) -> List[Dict[str, Any]]:
         """Execute hybrid search on Qdrant using prefetch + RRF fusion.
@@ -641,7 +659,7 @@ class ToolClassifier:
         request: OrchestrationRequest,
         is_streaming: Literal[False] = False,
         time_metric: Optional[Dict[str, float]] = None,
-    ) -> OrchestrationResponse: ...
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]: ...
 
     @overload
     async def route_to_workflow(
@@ -658,7 +676,7 @@ class ToolClassifier:
         request: OrchestrationRequest,
         is_streaming: bool = False,
         time_metric: Optional[Dict[str, float]] = None,
-    ) -> Union[OrchestrationResponse, AsyncIterator[str]]:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse, AsyncIterator[str]]:
         """
         Route request to appropriate workflow based on classification.
 
@@ -712,7 +730,7 @@ class ToolClassifier:
                 time_metric=time_metric,
             )
 
-    def _get_workflow_executor(self, workflow_type: WorkflowType) -> Any:
+    def _get_workflow_executor(self, workflow_type: WorkflowType) -> BaseWorkflow:
         """Get workflow executor instance for given workflow type."""
         workflow_map = {
             WorkflowType.SERVICE: self.service_workflow,
@@ -794,12 +812,12 @@ class ToolClassifier:
 
     async def _execute_with_fallback_async(
         self,
-        workflow: Any,
+        workflow: BaseWorkflow,
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,
         time_metric: Optional[Dict[str, float]] = None,
-    ) -> OrchestrationResponse:
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
         """
         Execute workflow with fallback to subsequent layers (non-streaming).
 
@@ -883,7 +901,7 @@ class ToolClassifier:
 
     async def _execute_with_fallback_streaming(
         self,
-        workflow: Any,
+        workflow: BaseWorkflow,
         request: OrchestrationRequest,
         context: Dict[str, Any],
         start_layer: WorkflowType,

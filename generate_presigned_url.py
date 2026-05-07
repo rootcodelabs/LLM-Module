@@ -1,6 +1,7 @@
 import boto3
 from botocore.client import Config
 from typing import List, Dict
+from loguru import logger
 
 # Create S3 client for MinIO
 s3_client = boto3.client(
@@ -20,7 +21,7 @@ files_to_process: List[Dict[str, str]] = [
 # Generate presigned URLs
 presigned_urls: List[str] = []
 
-print("Generating presigned URLs...")
+logger.info("Generating presigned URLs...")
 for file_info in files_to_process:
     try:
         url = s3_client.generate_presigned_url(
@@ -29,11 +30,11 @@ for file_info in files_to_process:
             ExpiresIn=24 * 3600,  # 4 hours in seconds
         )
         presigned_urls.append(url)
-        print(f":white_check_mark: Generated URL for: {file_info['key']}")
-        print(f"   URL: {url}")
+        logger.success(f"Generated URL for: {file_info['key']}")
+        logger.info(f"   URL: {url}")
     except Exception as e:
-        print(f":x: Failed to generate URL for: {file_info['key']}")
-        print(f"   Error: {str(e)}")
+        logger.error(f"Failed to generate URL for: {file_info['key']}")
+        logger.error(f"   Error: {str(e)}")
 
 output_file: str = "minio_presigned_urls.txt"
 
@@ -50,14 +51,14 @@ try:
         for i, url in enumerate(presigned_urls, 1):
             f.write(f"URL {i}:\n{url}\n\n")
 
-    print(f"\n:white_check_mark: Presigned URLs saved to: {output_file}")
-    print(f"Total URLs generated: {len(presigned_urls)}")
+    logger.success(f"Presigned URLs saved to: {output_file}")
+    logger.info(f"Total URLs generated: {len(presigned_urls)}")
 
     # Display the combined URL string for easy copying
     if presigned_urls:
-        print("\nCombined URL string (for signedUrls environment variable):")
-        print("=" * 60)
-        print("|||".join(presigned_urls))
+        logger.info("Combined URL string (for signedUrls environment variable):")
+        logger.info("=" * 60)
+        logger.info("|||".join(presigned_urls))
 
 except Exception as e:
-    print(f":x: Failed to save URLs to file: {str(e)}")
+    logger.error(f"Failed to save URLs to file: {str(e)}")

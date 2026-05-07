@@ -2,11 +2,26 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Union,
+    cast,
+)
 
 from loguru import logger
 
-from models.request_models import OrchestrationRequest, OrchestrationResponse
+from models.request_models import (
+    OrchestrationRequest,
+    OrchestrationResponse,
+    TestOrchestrationResponse,
+)
 from models.session_models import APIToolSession
 from tool_classifier.agentic_loop import AgenticLoop
 from tool_classifier.api_caller import APICaller
@@ -14,6 +29,33 @@ from tool_classifier.api_response_formatter import APIResponseFormatterModule
 from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.enums import AgenticLoopStatus
 from tool_classifier.param_extractor import ParamExtractionModule
+from utils.api_tool_session_store import APIToolSessionStore
+
+if TYPE_CHECKING:
+    from guardrails.nemo_rails_adapter import NeMoRailsAdapter
+
+
+class OrchestrationServiceProtocol(Protocol):
+    """Protocol for orchestration service methods used by this workflow."""
+
+    def format_sse(
+        self,
+        chat_id: str,
+        content: str,
+        buttons: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Format a payload as an SSE message."""
+        ...
+
+    async def handle_output_guardrails(
+        self,
+        guardrails_adapter: Any,  # noqa: ANN401 — NeMoRailsAdapter, avoids circular import
+        generated_response: Union[OrchestrationResponse, TestOrchestrationResponse],
+        request: OrchestrationRequest,
+        costs_metric: Dict[str, Dict[str, Any]],
+    ) -> Union[OrchestrationResponse, TestOrchestrationResponse]:
+        """Check output guardrails and return (possibly replaced) response."""
+        ...
 
 
 @dataclass
@@ -58,7 +100,9 @@ class APIToolWorkflowExecutor(BaseWorkflow):
     answer is returned directly to the user.
     """
 
-    def __init__(self, orchestration_service: Optional[Any] = None) -> None:
+    def __init__(
+        self, orchestration_service: Optional[OrchestrationServiceProtocol] = None
+    ) -> None:
         self.orchestration_service = orchestration_service
         self._api_caller = APICaller()
         self._formatter = APIResponseFormatterModule()
@@ -68,13 +112,30 @@ class APIToolWorkflowExecutor(BaseWorkflow):
 
     # ------------------------------------------------------------------
 
-    def _get_session_store(self) -> Optional[Any]:
+    def _get_session_store(self) -> Optional[APIToolSessionStore]:
         """Return the session store from the orchestration service, or None."""
         if self.orchestration_service is None:
             return None
         return getattr(self.orchestration_service, "session_store", None)
 
-    def _build_agentic_loop(self, session_store: Any) -> AgenticLoop:
+    def _get_guardrails_adapter(
+        self, environment: str, connection_id: Optional[str] = None
+    ) -> Optional["NeMoRailsAdapter"]:
+        """Return the NeMoRailsAdapter for *environment*, or None if unavailable."""
+        if self.orchestration_service is None:
+            return None
+        shared = getattr(self.orchestration_service, "shared_guardrails_adapters", {})
+        if environment in shared:
+            return shared[environment]
+        # Fallback: per-request initialisation (slower but safe)
+        safe_init = getattr(
+            self.orchestration_service, "_safe_initialize_guardrails", None
+        )
+        if safe_init is not None:
+            return safe_init(environment, connection_id)
+        return None
+
+    def _build_agentic_loop(self, session_store: APIToolSessionStore) -> AgenticLoop:
         """Construct a fresh AgenticLoop for one request."""
         return AgenticLoop(
             session_store=session_store,
@@ -333,13 +394,30 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             return self._build_question_response(step.chat_id, step.question)
 
         # api_call — blocking
-        return await self._execute_api_and_format(
+        response = await self._execute_api_and_format(
             chat_id=step.chat_id,
             endpoint=step.endpoint,
             collected_params=step.collected_params,
             user_query=step.user_query,
             detected_language=step.detected_language,
         )
+
+        # Output guardrails — only on successful LLM-formatted answers
+        if response.llmServiceActive and self.orchestration_service is not None:
+            guardrails_adapter = self._get_guardrails_adapter(
+                request.environment, request.connection_id
+            )
+            response = cast(
+                OrchestrationResponse,
+                await self.orchestration_service.handle_output_guardrails(
+                    guardrails_adapter,
+                    response,
+                    request,
+                    {},
+                ),
+            )
+
+        return response
 
     # ------------------------------------------------------------------
     # BaseWorkflow interface
@@ -360,7 +438,9 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         collected_params: Dict[str, Any],
         user_query: str,
         detected_language: str,
-        orchestration_service: Any,
+        orchestration_service: OrchestrationServiceProtocol,
+        request: OrchestrationRequest,
+        costs_metric: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[str]:
         """Call the external API and stream the formatted response token by token.
 
@@ -388,13 +468,53 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"[{chat_id}] APIToolWorkflow (streaming): API call succeeded "
                 f"(status={api_result.status_code}), streaming formatted response"
             )
-            async for token in self._formatter.stream_forward(
-                user_query=user_query,
-                api_response=api_result.response_data,
-                endpoint_description=description,
-                detected_language=detected_language,
-            ):
-                yield orchestration_service.format_sse(chat_id, token)
+            # Buffer all tokens first, then validate with output guardrails before
+            # streaming to the client (validate-first approach).
+            buffered_tokens = [
+                token
+                async for token in self._formatter.stream_forward(
+                    user_query=user_query,
+                    api_response=api_result.response_data,
+                    endpoint_description=description,
+                    detected_language=detected_language,
+                )
+            ]
+
+            full_response = "".join(buffered_tokens)
+
+            # Run output guardrails on the complete response
+            guardrails_passed = True
+            if orchestration_service is not None:
+                guardrails_adapter = self._get_guardrails_adapter(
+                    request.environment, request.connection_id
+                )
+                if guardrails_adapter is not None:
+                    dummy_response = OrchestrationResponse(
+                        chatId=chat_id,
+                        llmServiceActive=True,
+                        questionOutOfLLMScope=False,
+                        inputGuardFailed=False,
+                        content=full_response,
+                    )
+
+                    checked = await orchestration_service.handle_output_guardrails(
+                        guardrails_adapter,
+                        dummy_response,
+                        request,
+                        costs_metric if costs_metric is not None else {},
+                    )
+                    if checked.content != full_response:
+                        # Guardrails replaced the content — yield violation message
+                        logger.warning(
+                            f"[{chat_id}] APIToolWorkflow (streaming): "
+                            f"output blocked by guardrails"
+                        )
+                        yield orchestration_service.format_sse(chat_id, checked.content)
+                        guardrails_passed = False
+
+            if guardrails_passed:
+                for token in buffered_tokens:
+                    yield orchestration_service.format_sse(chat_id, token)
         else:
             logger.warning(
                 f"[{chat_id}] APIToolWorkflow (streaming): API call failed "
@@ -448,4 +568,6 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             user_query=step.user_query,
             detected_language=step.detected_language,
             orchestration_service=orchestration_service,
+            request=request,
+            costs_metric=context.get("costs_metric"),
         )
