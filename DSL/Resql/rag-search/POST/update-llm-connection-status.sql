@@ -1,4 +1,4 @@
-UPDATE llm_connections 
+UPDATE rag_search.llm_connections 
 SET connection_status = :connection_status
 WHERE id = :connection_id
 RETURNING 

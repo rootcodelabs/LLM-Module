@@ -26,6 +26,6 @@ SELECT
     embedding_deployment_name,
     embedding_target_uri,
     embedding_azure_api_key
-FROM llm_connections
+FROM rag_search.llm_connections
 WHERE id = :connection_id
   AND connection_status <> 'deleted';

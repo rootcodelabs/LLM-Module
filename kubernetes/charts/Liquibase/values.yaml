@@ -9,9 +9,9 @@ images:
 
 env:
   - name: LIQUIBASE_URL
-    value: "jdbc:postgresql://rag-search-db:5432/rag-search"
+    value: "jdbc:postgresql://rag-search-db:5432/llm_production"
   - name: LIQUIBASE_CHANGELOG_FILE
-    value: /master.yml
+    value: changelog.yaml
 
 
 
