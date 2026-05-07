@@ -140,7 +140,8 @@ def main() -> NoReturn:
         logger.debug("Decryption successful, outputting plaintext to stdout")
 
         # Output to stdout only (for shell script capture)
-        print(plaintext)
+        # Logger writes to stderr, print to stdout - intentional separation for piping
+        print(plaintext)  # noqa: T201
 
         sys.exit(0)
 

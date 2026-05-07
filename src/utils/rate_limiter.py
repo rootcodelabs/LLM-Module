@@ -62,7 +62,7 @@ class RateLimiter:
         tokens_per_minute: int = StreamConfig.RATE_LIMIT_TOKENS_PER_MINUTE,
         cleanup_interval: int = StreamConfig.RATE_LIMIT_CLEANUP_INTERVAL,
         token_window_seconds: int = StreamConfig.RATE_LIMIT_TOKEN_WINDOW_SECONDS,
-    ):
+    ) -> None:
         """
         Initialize rate limiter.
 

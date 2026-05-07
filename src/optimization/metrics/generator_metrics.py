@@ -22,7 +22,7 @@ class GeneratorMetric:
     IMPORTANT: DSPy's SemanticF1 expects 'response' fields, not 'answer' fields.
     """
 
-    def __init__(self, scope_weight: float = 0.5, quality_weight: float = 0.5):
+    def __init__(self, scope_weight: float = 0.5, quality_weight: float = 0.5) -> None:
         """
         Initialize metric with custom weights.
 
@@ -40,7 +40,10 @@ class GeneratorMetric:
         logger.info("Initialized GeneratorMetric with DSPy's native SemanticF1")
 
     def __call__(
-        self, example: dspy.Example, prediction: dspy.Prediction, trace=None
+        self,
+        example: dspy.Example,
+        prediction: dspy.Prediction,
+        trace: Any | None = None,
     ) -> float:
         """
         Evaluate generator prediction with combined metric.
@@ -213,7 +216,7 @@ def calculate_generator_stats(
         metric = GeneratorMetric()
 
         # Evaluate each example
-        for example, prediction in zip(examples, predictions):
+        for example, prediction in zip(examples, predictions, strict=True):
             expected_in_scope = example.should_be_in_scope
             predicted_out_of_scope = getattr(prediction, "questionOutOfLLMScope", None)
 

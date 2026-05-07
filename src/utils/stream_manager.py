@@ -8,7 +8,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, ConfigDict
 
 from src.llm_orchestrator_config.stream_config import StreamConfig
-from src.llm_orchestrator_config.exceptions import StreamException
+from src.llm_orchestrator_config.exceptions import StreamError
 from src.utils.error_utils import generate_error_id
 
 
@@ -118,7 +118,7 @@ class StreamManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the stream manager."""
         if not hasattr(self, "_initialized"):
             self._streams: Dict[str, StreamContext] = {}
@@ -276,9 +276,7 @@ class StreamManager:
                 f"Stream creation rejected for chatId={chat_id}, authorId={author_id}: {error_msg}",
                 extra={"error_id": error_id},
             )
-            raise StreamException(
-                f"Cannot create stream: {error_msg}", error_id=error_id
-            )
+            raise StreamError(f"Cannot create stream: {error_msg}", error_id=error_id)
 
         # Register the stream
         ctx = await self.register_stream(chat_id, author_id)

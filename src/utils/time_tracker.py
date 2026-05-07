@@ -19,7 +19,7 @@ def log_step_timings(
 
     # Parent/composite timings that should be hidden from logs
     # These are aggregate timings that already include their sub-steps
-    PARENT_TIMINGS = {"classifier.route"}
+    parent_timings = {"classifier.route"}
 
     prefix = f"[{chat_id}] " if chat_id else ""
     logger.info(f"{prefix}STEP EXECUTION TIMES:")
@@ -27,7 +27,7 @@ def log_step_timings(
     total_time = 0.0
     for step_name, elapsed_time in time_metric.items():
         # Skip parent/composite timings entirely
-        if step_name in PARENT_TIMINGS:
+        if step_name in parent_timings:
             continue
 
         # Special handling for inline streaming guardrails

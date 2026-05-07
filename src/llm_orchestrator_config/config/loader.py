@@ -163,7 +163,7 @@ class ConfigurationLoader:
                 raise
             raise ConfigurationError(f"Failed to resolve vault secrets: {e}") from e
 
-    def _initialize_vault_resolver(self, config: Dict[str, Any]):
+    def _initialize_vault_resolver(self, config: Dict[str, Any]) -> SecretResolver:
         """Initialize vault secret resolver from configuration.
 
         Args:
@@ -320,7 +320,10 @@ class ConfigurationLoader:
             raise ConfigurationError(f"Failed to resolve provider secrets: {e}") from e
 
     def _merge_config_with_secrets(
-        self, provider_config: Dict[str, Any], secret: Any, model_name: str
+        self,
+        provider_config: Dict[str, Any],
+        secret: Any,  # noqa: ANN401  # Runtime type discrimination via hasattr (Union causes type errors)
+        model_name: str,
     ) -> Dict[str, Any]:
         """Merge provider configuration with secrets from Vault.
 
@@ -488,11 +491,7 @@ class ConfigurationLoader:
                     result[str(key)] = substitute_env_vars(value)
                 return result
             elif isinstance(obj, list):
-                result_list: List[ConfigValue] = []
-
-                for item in obj:
-                    result_list.append(substitute_env_vars(item))
-                return result_list
+                return [substitute_env_vars(item) for item in obj]
             else:
                 return obj
 

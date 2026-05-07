@@ -461,7 +461,7 @@ def generate_optimized_nemo_config(
         return False
 
 
-def main():
+def main() -> None:
     """Main execution."""
     logger.info("NEMO GUARDRAILS PROMPT EXTRACTION")
     logger.info("Extracting optimized prompts from DSPy module to NeMo YAML config")

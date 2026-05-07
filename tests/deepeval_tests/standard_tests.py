@@ -20,7 +20,7 @@ from mocks.dummy_llm_orchestrator import process_query
 class StandardResultCollector:
     """Collects test results during execution for report generation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.results = {
             "total_tests": 0,
             "passed_tests": 0,
@@ -111,7 +111,7 @@ class TestRAGSystem:
     """Test suite for RAG system evaluation using DeepEval metrics."""
 
     @classmethod
-    def setup_class(cls):
+    def setup_class(cls) -> None:
         """Setup test class with metrics and test data."""
         print("Setting up TestRAGSystem...")
 

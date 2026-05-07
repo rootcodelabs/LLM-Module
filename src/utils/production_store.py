@@ -22,7 +22,7 @@ class ProductionInferenceStore:
     Service for storing production inference results via Ruuter endpoint.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the production inference store with Ruuter configuration."""
         self.store_endpoint = f"{RAG_SEARCH_RUUTER_PUBLIC}/inference/results/store"
         self.timeout = 10  # seconds
@@ -55,7 +55,7 @@ class ProductionInferenceStore:
         }
 
     def _handle_response_data(
-        self, response_data: Any, chat_id: str, environment: str
+        self, response_data: dict[str, Any] | list[Any], chat_id: str, environment: str
     ) -> Dict[str, Any]:
         """Handle and validate response data from the API."""
         # Handle nested response structure from Ruuter: {"response": {"data": {...}}}

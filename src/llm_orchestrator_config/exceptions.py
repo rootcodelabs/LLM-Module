@@ -51,12 +51,14 @@ class ContextualRetrievalFailureError(ContextualRetrievalError):
     pass
 
 
-class StreamTimeoutException(LLMConfigError):
+class StreamTimeoutError(LLMConfigError):
     """Raised when stream duration exceeds maximum allowed time."""
 
-    def __init__(self, message: str = "Stream timeout", error_id: Optional[str] = None):
+    def __init__(
+        self, message: str = "Stream timeout", error_id: Optional[str] = None
+    ) -> None:
         """
-        Initialize StreamTimeoutException with error tracking.
+        Initialize StreamTimeoutError with error tracking.
 
         Args:
             message: Human-readable error message
@@ -68,19 +70,19 @@ class StreamTimeoutException(LLMConfigError):
         super().__init__(f"[{self.error_id}] {message}")
 
 
-class StreamSizeLimitException(LLMConfigError):
+class StreamSizeLimitError(LLMConfigError):
     """Raised when stream size limits are exceeded."""
 
     pass
 
 
 # Comprehensive error hierarchy for error boundaries
-class StreamException(LLMConfigError):
+class StreamError(LLMConfigError):
     """Base exception for streaming operations with error tracking."""
 
-    def __init__(self, message: str, error_id: Optional[str] = None):
+    def __init__(self, message: str, error_id: Optional[str] = None) -> None:
         """
-        Initialize StreamException with error tracking.
+        Initialize StreamError with error tracking.
 
         Args:
             message: Human-readable error message
@@ -93,19 +95,19 @@ class StreamException(LLMConfigError):
         super().__init__(f"[{self.error_id}] {message}")
 
 
-class ValidationException(StreamException):
+class ValidationError(StreamError):
     """Raised when input or request validation fails."""
 
     pass
 
 
-class ServiceException(StreamException):
+class ServiceError(StreamError):
     """Raised when external service calls fail (LLM, Qdrant, Vault, etc.)."""
 
     pass
 
 
-class GuardrailException(StreamException):
+class GuardrailError(StreamError):
     """Raised when guardrails processing encounters errors."""
 
     pass

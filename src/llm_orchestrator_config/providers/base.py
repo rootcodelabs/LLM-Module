@@ -66,13 +66,11 @@ class BaseLLMProvider(ABC):
             InvalidConfigurationError: If configuration is invalid.
         """
         required_fields = self.get_required_config_fields()
-        missing_fields: List[str] = []
-
-        for field in required_fields:
-            if (
-                field not in self.config or not self.config[field]
-            ):  # Check for missing or empty strings/None
-                missing_fields.append(field)
+        missing_fields = [
+            field
+            for field in required_fields
+            if field not in self.config or not self.config[field]
+        ]
 
         if missing_fields:
             raise InvalidConfigurationError(

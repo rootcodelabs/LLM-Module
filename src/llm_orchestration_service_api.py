@@ -33,7 +33,7 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     VALIDATION_GENERIC_ERROR,
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
-from src.llm_orchestrator_config.exceptions import StreamTimeoutException
+from src.llm_orchestrator_config.exceptions import StreamTimeoutError
 from src.utils.stream_timeout import stream_timeout
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.rate_limiter import RateLimiter
@@ -132,7 +132,9 @@ app = FastAPI(
 
 # Custom exception handlers for user-friendly error messages
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> StreamingResponse | JSONResponse:
     """
     Handle Pydantic validation errors with user-friendly messages.
 
@@ -197,7 +199,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             pass
 
         # Return SSE format for streaming endpoint
-        async def validation_error_stream():
+        async def validation_error_stream() -> AsyncGenerator[str, None]:
             error_payload: Dict[str, Any] = {
                 "chatId": chat_id,
                 "payload": {"content": user_message},
@@ -440,7 +442,7 @@ async def test_orchestrate_llm_request(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred",
-        )
+        ) from e
 
 
 @app.post(
@@ -452,7 +454,7 @@ async def test_orchestrate_llm_request(
 async def stream_orchestrated_response(
     http_request: Request,
     request: OrchestrationRequest,
-):
+) -> StreamingResponse:
     """
     Stream LLM orchestration response with validation-first guardrails.
 
@@ -492,7 +494,7 @@ async def stream_orchestrated_response(
     import json as json_module
     from datetime import datetime
 
-    def create_sse_error_stream(chat_id: str, error_message: str):
+    def create_sse_error_stream(chat_id: str, error_message: str) -> str:
         """Create SSE format error response."""
         from typing import Dict, Any
 
@@ -517,7 +519,7 @@ async def stream_orchestrated_response(
             error_msg = f"Streaming is only available for production environment. Current environment: {request.environment}. Please use /orchestrate endpoint for non-streaming environments."
             logger.warning(error_msg)
 
-            async def env_error_stream():
+            async def env_error_stream() -> AsyncGenerator[str, None]:
                 yield create_sse_error_stream(request.chatId, error_msg)
 
             return StreamingResponse(
@@ -535,7 +537,7 @@ async def stream_orchestrated_response(
             error_msg = "I apologize, but the service is not available at the moment. Please try again later."
             logger.error("Orchestration service not found in app state")
 
-            async def service_error_stream():
+            async def service_error_stream() -> AsyncGenerator[str, None]:
                 yield create_sse_error_stream(request.chatId, error_msg)
 
             return StreamingResponse(
@@ -553,7 +555,7 @@ async def stream_orchestrated_response(
             error_msg = "I apologize, but the service is not available at the moment. Please try again later."
             logger.error("Orchestration service is None")
 
-            async def service_none_stream():
+            async def service_none_stream() -> AsyncGenerator[str, None]:
                 yield create_sse_error_stream(request.chatId, error_msg)
 
             return StreamingResponse(
@@ -598,7 +600,7 @@ async def stream_orchestrated_response(
                 )
 
                 # Return SSE format with rate limit error
-                async def rate_limit_error_stream():
+                async def rate_limit_error_stream() -> AsyncGenerator[str, None]:
                     yield create_sse_error_stream(request.chatId, error_msg)
 
                 return StreamingResponse(
@@ -614,7 +616,7 @@ async def stream_orchestrated_response(
                 )
 
         # Wrap streaming response with timeout
-        async def timeout_wrapped_stream():
+        async def timeout_wrapped_stream() -> AsyncGenerator[str, None]:
             """Generator wrapper with timeout enforcement."""
             try:
                 async with stream_timeout(StreamConfig.MAX_STREAM_DURATION_SECONDS):
@@ -622,8 +624,8 @@ async def stream_orchestrated_response(
                         chunk
                     ) in orchestration_service.stream_orchestration_response(request):
                         yield chunk
-            except StreamTimeoutException as timeout_exc:
-                # StreamTimeoutException already has error_id
+            except StreamTimeoutError as timeout_exc:
+                # StreamTimeoutError already has error_id
                 log_error_with_context(
                     logger,
                     timeout_exc.error_id,
@@ -660,7 +662,7 @@ async def stream_orchestrated_response(
         error_id = generate_error_id()
         logger.error(f"[{error_id}] Unexpected error in streaming endpoint: {str(e)}")
 
-        async def unexpected_error_stream():
+        async def unexpected_error_stream() -> AsyncGenerator[str, None]:
             yield create_sse_error_stream(
                 request.chatId if hasattr(request, "chatId") else "unknown",
                 "I apologize, but I encountered an unexpected issue. Please try again.",

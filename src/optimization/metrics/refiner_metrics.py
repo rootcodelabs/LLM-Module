@@ -54,7 +54,7 @@ class RefinerMetric:
     This is Option B from the recommendations - full LLM judge with reasoning.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the LLM judge metric.
 
@@ -68,7 +68,10 @@ class RefinerMetric:
         )
 
     def __call__(
-        self, example: dspy.Example, prediction: dspy.Prediction, trace=None
+        self,
+        example: dspy.Example,
+        prediction: dspy.Prediction,
+        trace: Any | None = None,
     ) -> float:
         """
         Evaluate refinement quality using LLM judge.
@@ -197,12 +200,15 @@ class FastRefinerMetric:
     Trade-off: faster but potentially less accurate.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.judge = dspy.Predict(SimpleLLMJudge)
         logger.info("Initialized FastRefinerMetric with simple LLM judge")
 
     def __call__(
-        self, example: dspy.Example, prediction: dspy.Prediction, trace=None
+        self,
+        example: dspy.Example,
+        prediction: dspy.Prediction,
+        trace: Any | None = None,
     ) -> float:
         """Evaluate using fast LLM judge."""
         try:
@@ -269,7 +275,7 @@ def calculate_refiner_stats(
     scores = []
     refinement_counts = []
 
-    for example, prediction in zip(examples, predictions):
+    for example, prediction in zip(examples, predictions, strict=True):
         score = metric(example, prediction)
         scores.append(score)
 

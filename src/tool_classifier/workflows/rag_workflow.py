@@ -1,10 +1,18 @@
 """RAG workflow executor - Layer 3: Knowledge base retrieval."""
 
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict, Optional, Union, cast, TYPE_CHECKING
 from loguru import logger
 
-from models.request_models import OrchestrationRequest, OrchestrationResponse
+from models.request_models import (
+    OrchestrationRequest,
+    OrchestrationResponse,
+    TestOrchestrationResponse,
+)
+from src.utils.stream_manager import StreamContext
 from tool_classifier.base_workflow import BaseWorkflow
+
+if TYPE_CHECKING:
+    from llm_orchestration_service import LLMOrchestrationService
 
 
 class RAGWorkflowExecutor(BaseWorkflow):
@@ -35,7 +43,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
     Note: If no relevant chunks found, returns OOD response (not None)
     """
 
-    def __init__(self, orchestration_service: Any):
+    def __init__(self, orchestration_service: "LLMOrchestrationService") -> None:
         """
         Initialize RAG workflow executor.
 
@@ -51,7 +59,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
         request: OrchestrationRequest,
         context: Dict[str, Any],
         time_metric: Optional[Dict[str, float]] = None,
-    ) -> Optional[OrchestrationResponse]:
+    ) -> Optional[Union[OrchestrationResponse, TestOrchestrationResponse]]:
         """
         Execute RAG workflow in non-streaming mode.
 
@@ -181,7 +189,7 @@ class RAGWorkflowExecutor(BaseWorkflow):
             async for sse_chunk in self.orchestration_service._stream_rag_pipeline(
                 request=request,
                 components=components,
-                stream_ctx=stream_ctx,
+                stream_ctx=cast(StreamContext, stream_ctx),
                 costs_metric=costs_metric,
                 time_metric=time_metric,
             ):

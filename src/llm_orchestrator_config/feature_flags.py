@@ -51,7 +51,7 @@ class FeatureFlags:
     FALLBACK_TO_RAG_ON_ERROR = True
 
     @classmethod
-    def log_configuration(cls):
+    def log_configuration(cls) -> None:
         """Log current feature flag configuration (useful for debugging)."""
         logger.info("Tool Classifier Feature Flags:")
         logger.info(f"  TOOL_CLASSIFIER_ENABLED: {cls.TOOL_CLASSIFIER_ENABLED}")

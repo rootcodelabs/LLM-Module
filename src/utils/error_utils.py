@@ -3,7 +3,7 @@
 from datetime import datetime
 import random
 import string
-from typing import Optional, Dict, Any, Any as LoggerType
+from typing import Optional, Dict, Any
 
 
 def generate_error_id() -> str:
@@ -22,7 +22,7 @@ def generate_error_id() -> str:
 
 
 def log_error_with_context(
-    logger: LoggerType,
+    logger: Any,  # noqa: ANN401 - loguru logger type is complex, use Any
     error_id: str,
     stage: str,
     chat_id: Optional[str],

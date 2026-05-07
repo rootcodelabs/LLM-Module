@@ -4,6 +4,7 @@ import asyncio
 from typing import List, Dict, Any, Optional, Union
 import httpx
 from loguru import logger
+from typing_extensions import Self
 
 from vector_indexer.config.config_loader import VectorIndexerConfig
 
@@ -11,14 +12,14 @@ from vector_indexer.config.config_loader import VectorIndexerConfig
 class LLMOrchestrationAPIClient:
     """Client for calling LLM Orchestration Service API endpoints."""
 
-    def __init__(self, config: VectorIndexerConfig):
+    def __init__(self, config: VectorIndexerConfig) -> None:
         self.config = config
         self.session = httpx.AsyncClient(
             timeout=config.api_timeout,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -53,8 +54,10 @@ class LLMOrchestrationAPIClient:
             # Create semaphore to limit concurrent requests (max_concurrent_chunks_per_doc = 5)
             semaphore = asyncio.Semaphore(self.config.max_concurrent_chunks_per_doc)
 
-            async def generate_context_with_semaphore(chunk_content: str) -> str:
-                async with semaphore:
+            async def generate_context_with_semaphore(
+                chunk_content: str, sem: asyncio.Semaphore = semaphore
+            ) -> str:
+                async with sem:
                     return await self._generate_context_with_retry(
                         document_content, chunk_content
                     )
@@ -191,6 +194,6 @@ Please give a short succinct context to situate this chunk within the overall do
             logger.debug(f"Health check failed: {e}")
             return False
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP session."""
         await self.session.aclose()
