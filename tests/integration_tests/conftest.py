@@ -1226,7 +1226,7 @@ def setup_agency_sync_schema(postgres_client):
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS public.agency_sync (
-                agency_id VARCHAR(255) PRIMARY KEY,
+                id VARCHAR(255) PRIMARY KEY,
                 agency_data_hash VARCHAR(255),
                 data_url TEXT,
                 created_at TIMESTAMP DEFAULT NOW(),

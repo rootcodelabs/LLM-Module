@@ -96,6 +96,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(f"Redis session store unavailable, continuing without it: {e}")
         app.state.session_store = None
 
+    # Expose session_store on the orchestration service so workflow executors
+    # (e.g. APIToolWorkflowExecutor) can reach it via self.orchestration_service.
+    if (
+        hasattr(app.state, "orchestration_service")
+        and app.state.orchestration_service is not None
+    ):
+        app.state.orchestration_service.session_store = app.state.session_store
+
     yield
 
     # Shutdown
@@ -382,6 +390,13 @@ async def test_orchestrate_llm_request(
             if request.connectionId is not None
             else None,
         )
+
+        # test-LLM is single-turn only (no conversationHistory, no multi-turn loops).
+        # Clear any stale API tool session so each request starts fresh and never
+        # accidentally resumes a parameter-collection loop from a previous test query.
+        session_store = getattr(http_request.app.state, "session_store", None)
+        if session_store is not None:
+            await session_store.delete("test-session")
 
         logger.info(f"This is full request constructed for testing: {full_request}")
 

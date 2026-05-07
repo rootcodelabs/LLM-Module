@@ -107,3 +107,122 @@ Above this AND score gap is large → SERVICE without LLM confirmation."""
 DENSE_SCORE_GAP_THRESHOLD = 0.05
 """Cosine score gap (top - second) for high-confidence classification.
 Ensures the top result is significantly better than the runner-up."""
+
+
+# ============================================================================
+# API Tool Collection Search Configuration
+# ============================================================================
+
+API_TOOL_COLLECTION = "api_tool_collection"
+"""Qdrant collection name for API endpoint semantic search."""
+
+API_TOOL_SEARCH_TOP_K = 5
+"""Number of top endpoints to return from API tool semantic search."""
+
+API_TOOL_MIN_THRESHOLD = 0.40
+"""Minimum dense cosine similarity to consider a result as an API tool match.
+Below this → no API tool matched, fall through to other workflows."""
+
+API_TOOL_HIGH_CONFIDENCE_THRESHOLD = 0.60
+"""Dense cosine similarity for high-confidence API tool match.
+Above this AND score gap is large → route to API Tool Calling without further LLM disambiguation."""
+
+API_TOOL_SCORE_GAP_THRESHOLD = 0.05
+"""Cosine score gap (top - second) for high-confidence API tool classification."""
+
+
+# ============================================================================
+# Agentic Loop — Continuation Threshold
+# ============================================================================
+
+CONTINUATION_TURN = 3
+"""1-based turn count (after increment) at which the loop asks the user whether
+to continue collecting parameters or fall back to the RAG workflow.
+Only triggers when required params are still missing at exactly this turn.
+
+The turn counter is incremented on every run_turn() call, including the
+initial call that generates the bot's opening question (before the user
+speaks). With CONTINUATION_TURN=3 the conversation looks like:
+
+  run_turn #1 (turn 0→1): initial question — "Which country and date?"
+  run_turn #2 (turn 1→2): user gives partial answer — bot asks follow-up
+  run_turn #3 (turn 2→3): user doesn't answer properly → CONTINUATION CHECK
+"""
+
+CONTINUATION_QUESTION = (
+    "I still need a bit more information, but we've been at this for a while. "
+    "Would you like to keep going and answer a few more questions "
+    "(yes / no)"
+)
+"""Yes/no question shown to the user when the continuation threshold is reached."""
+
+CONTINUATION_QUESTION_ET = (
+    "Mul on vaja veel natuke lisateavet, kuid oleme selle kallal juba mõnda aega töötanud. "
+    "Kas soovite jätkata ja vastata veel mõnele küsimusele? (jah / ei)"
+)
+"""Estonian version of the continuation question."""
+
+CONTINUATION_QUESTION_RU = (
+    "Мне нужно ещё немного информации, но мы уже некоторое время занимаемся этим. "
+    "Хотите ли вы продолжить и ответить ещё на несколько вопросов? (да / нет)"
+)
+"""Russian version of the continuation question."""
+
+# ============================================================================
+# API Caller Configuration
+# ============================================================================
+
+API_CALL_TIMEOUT = 10
+"""Default timeout in seconds for external API calls made via APICaller."""
+
+# Circuit breaker state literals
+CB_STATE_CLOSED = "CLOSED"
+"""Circuit breaker is CLOSED: routes all requests normally."""
+
+CB_STATE_OPEN = "OPEN"
+"""Circuit breaker is OPEN: rejects all requests immediately (cooldown active)."""
+
+CB_STATE_HALF_OPEN = "HALF_OPEN"
+"""Circuit breaker is HALF_OPEN: allows one probe request to test recovery."""
+
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3
+"""Number of consecutive server/network failures before the circuit breaker opens."""
+
+CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60.0
+"""Seconds the circuit breaker stays OPEN before transitioning to HALF_OPEN."""
+
+# User-facing error messages for API call failures (multilingual: et / ru / en)
+SERVICE_UNAVAILABLE_MESSAGES = {
+    "et": "Teenus on ajutiselt kättesaamatu. Palun proovige hiljem uuesti.",
+    "ru": "Сервис временно недоступен. Пожалуйста, попробуйте позже.",
+    "en": "The service is temporarily unavailable. Please try again later.",
+}
+"""Friendly message returned on 5xx server errors."""
+
+SERVICE_TIMEOUT_MESSAGES = {
+    "et": "Teenuse päring aegus. Palun proovige mõne hetke pärast uuesti.",
+    "ru": "Запрос к сервису истёк по таймауту. Пожалуйста, попробуйте снова через несколько секунд.",
+    "en": "The service request timed out. Please try again in a moment.",
+}
+"""Friendly message returned on timeout or network errors."""
+
+CIRCUIT_BREAKER_OPEN_MESSAGES = {
+    "et": "Teenus on praegu kättesaamatu korduvate vigade tõttu. Palun proovige hiljem uuesti.",
+    "ru": "Сервис в данный момент недоступен из-за повторяющихся ошибок. Пожалуйста, попробуйте позже.",
+    "en": "The service is currently unavailable due to repeated failures. Please try again later.",
+}
+"""Friendly message returned when the circuit breaker is open."""
+
+REDIRECT_NOT_FOLLOWED_MESSAGES = {
+    "et": "Teenus tagastas ümbersuunamise, mida ei järgitud (HTTP {status_code}): {location}",
+    "ru": "Сервис вернул перенаправление, которое не было выполнено (HTTP {status_code}): {location}",
+    "en": "The service returned an unresolved redirect (HTTP {status_code}): {location}",
+}
+"""Friendly message returned when an HTTP 3xx redirect could not be followed."""
+
+CLIENT_ERROR_MESSAGES = {
+    "et": "Teie päringut ei saanud töödelda. Palun kontrollige sisestatud andmeid ja proovige uuesti.",
+    "ru": "Ваш запрос не удалось обработать. Пожалуйста, проверьте введённые данные и повторите попытку.",
+    "en": "Your request could not be processed. Please check the provided information and try again.",
+}
+"""Friendly message returned on 4xx client errors from external API calls."""

@@ -212,9 +212,9 @@ This test verifies the complete flow from upload to storage in the vector databa
             # Insert agency_sync record with initial hash
             cursor.execute(
                 """
-                INSERT INTO public.agency_sync (agency_id, agency_data_hash, data_url)
+                INSERT INTO public.agency_sync (id, agency_data_hash, data_url)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (agency_id) DO UPDATE
+                ON CONFLICT (id) DO UPDATE
                 SET agency_data_hash = EXCLUDED.agency_data_hash
                 """,
                 ("test_agency", "initial_hash_000", ""),

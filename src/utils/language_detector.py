@@ -70,7 +70,6 @@ def detect_language(text: str) -> LanguageCode:
         "võib",
         "olen",
         "oled",
-        "see",
         "seda",
         "jah",
         "või",
