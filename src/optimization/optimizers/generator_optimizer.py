@@ -24,17 +24,28 @@ class ResponseGeneratorSignature(dspy.Signature):
     """
     Produce a grounded answer from the provided context ONLY.
 
+    CRITICAL LANGUAGE RULE:
+    - The answer MUST be in the SAME language as the input question
+    - Estonian question → Estonian answer
+    - Russian question → Russian answer
+    - English question → English answer
+    - Maintain the natural language flow and grammar of the detected language
+
     Rules:
-    - Use ONLY the provided context blocks
+    - Use ONLY the provided context blocks; do not invent facts
     - If context is insufficient, set questionOutOfLLMScope=true
-    - Do not invent facts
+    - Do not include citations in the answer field
     - Be concise and direct
     """
 
-    question: str = dspy.InputField(desc="User's question")
+    question: str = dspy.InputField(
+        desc="User's question. Answer in the SAME language as this question."
+    )
     context_blocks: list[str] = dspy.InputField(desc="Relevant context chunks")
 
-    answer: str = dspy.OutputField(desc="Grounded answer from context")
+    answer: str = dspy.OutputField(
+        desc="Human-friendly answer in THE SAME LANGUAGE as the question, without citations"
+    )
     questionOutOfLLMScope: bool = dspy.OutputField(
         desc="True if context is insufficient to answer"
     )
