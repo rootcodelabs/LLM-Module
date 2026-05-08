@@ -1,13 +1,18 @@
 """Unit tests for APIResponseFormatterModule — DSPy JSON-to-natural-language formatter."""
 
 import json
-from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from collections.abc import AsyncGenerator, AsyncIterator, Generator
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import dspy
+import dspy.streaming
 import pytest
 
-from src.tool_classifier.api_response_formatter import APIResponseFormatterModule
+from src.tool_classifier.api_response_formatter import (
+    APIResponseFormatterModule,
+    _FORMATTER_ERROR_MESSAGES,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -352,3 +357,330 @@ class TestResilienceHandling:
 
         assert isinstance(result, str)
         assert len(result) > 0
+
+
+# ---------------------------------------------------------------------------
+# Custom instructions
+# ---------------------------------------------------------------------------
+
+
+class TestCustomInstructions:
+    """Custom instructions should be forwarded to the DSPy predictor unchanged."""
+
+    def test_custom_instructions_passed_to_predictor(self) -> None:
+        """When custom_instructions is set on the module, it must be sent to the LLM."""
+        module = APIResponseFormatterModule(
+            custom_instructions="Always respond in Estonian."
+        )
+        mock_result = _make_mock_result("Pühad on: uusaasta.")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="What are the holidays?",
+                api_response='{"holidays": ["New Year"]}',
+                endpoint_description="Get public holidays",
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert call_kwargs["custom_instructions"] == "Always respond in Estonian."
+
+    def test_empty_custom_instructions_passed_by_default(self) -> None:
+        """When no custom_instructions provided, the predictor receives an empty string."""
+        module = APIResponseFormatterModule()
+        mock_result = _make_mock_result("The holidays are: New Year.")
+
+        with patch.object(
+            module, "formatter", return_value=mock_result
+        ) as mock_formatter:
+            module.forward(
+                user_query="What are the holidays?",
+                api_response='{"holidays": ["New Year"]}',
+                endpoint_description="Get public holidays",
+            )
+
+        call_kwargs = mock_formatter.call_args.kwargs
+        assert call_kwargs["custom_instructions"] == ""
+
+    def test_custom_instructions_stored_on_instance(self) -> None:
+        """The custom_instructions value passed to __init__ must be stored."""
+        instructions = "Use formal language."
+        module = APIResponseFormatterModule(custom_instructions=instructions)
+        assert module._custom_instructions == instructions
+
+    def test_default_custom_instructions_is_empty_string(self) -> None:
+        """Modules initialised without custom_instructions must default to empty string."""
+        module = APIResponseFormatterModule()
+        assert module._custom_instructions == ""
+
+
+# ---------------------------------------------------------------------------
+# stream_forward — custom instructions
+# ---------------------------------------------------------------------------
+
+
+def _make_async_iter(*chunks: Any) -> AsyncMock:
+    """Return an async context manager that yields the given chunks then closes cleanly."""
+
+    async def _gen() -> AsyncGenerator[Any, None]:
+        for chunk in chunks:
+            yield chunk
+
+    mock_stream = AsyncMock()
+    mock_stream.__aiter__ = lambda self: _gen()
+    mock_stream.aclose = AsyncMock()
+    return mock_stream
+
+
+class TestStreamForwardCustomInstructions:
+    """stream_forward() must thread custom_instructions to the stream predictor."""
+
+    @pytest.mark.asyncio
+    async def test_custom_instructions_forwarded_to_stream_predictor(self) -> None:
+        """When custom_instructions is set, stream_forward must pass it to the predictor."""
+        module = APIResponseFormatterModule(
+            custom_instructions="Always respond in Estonian."
+        )
+
+        captured: dict[str, Any] = {}
+
+        def fake_stream_predictor(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return _make_async_iter()
+
+        mock_predictor = MagicMock(side_effect=fake_stream_predictor)
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            with patch.object(module, "forward", return_value="fallback"):
+                async for _ in module.stream_forward(
+                    user_query="What are the holidays?",
+                    api_response='{"holidays": ["New Year"]}',
+                    endpoint_description="Get public holidays",
+                ):
+                    pass
+
+        assert captured.get("custom_instructions") == "Always respond in Estonian."
+
+    @pytest.mark.asyncio
+    async def test_empty_custom_instructions_forwarded_to_stream_predictor(
+        self,
+    ) -> None:
+        """When no custom_instructions, stream_forward must pass an empty string."""
+        module = APIResponseFormatterModule()
+
+        captured: dict[str, Any] = {}
+
+        def fake_stream_predictor(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return _make_async_iter()
+
+        mock_predictor = MagicMock(side_effect=fake_stream_predictor)
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            with patch.object(module, "forward", return_value="fallback"):
+                async for _ in module.stream_forward(
+                    user_query="Test",
+                    api_response='{"key": "value"}',
+                    endpoint_description="Test",
+                ):
+                    pass
+
+        assert captured.get("custom_instructions") == ""
+
+    @pytest.mark.asyncio
+    async def test_stream_response_tokens_are_yielded(self) -> None:
+        """StreamResponse chunks for formatted_answer must be yielded token by token."""
+        module = APIResponseFormatterModule(custom_instructions="Use formal language.")
+
+        token1 = MagicMock(spec=dspy.streaming.StreamResponse)
+        token1.signature_field_name = "formatted_answer"
+        token1.chunk = "Hello "
+
+        token2 = MagicMock(spec=dspy.streaming.StreamResponse)
+        token2.signature_field_name = "formatted_answer"
+        token2.chunk = "world."
+
+        mock_predictor = MagicMock(return_value=_make_async_iter(token1, token2))
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            tokens = [
+                t
+                async for t in module.stream_forward(
+                    user_query="Say hello",
+                    api_response='{"msg": "hi"}',
+                    endpoint_description="Greet",
+                )
+            ]
+
+        assert tokens == ["Hello ", "world."]
+
+    @pytest.mark.asyncio
+    async def test_prediction_fallback_yields_full_answer(self) -> None:
+        """When streamify yields a Prediction (no tokens), the full answer is yielded once."""
+        module = APIResponseFormatterModule()
+
+        prediction = MagicMock(spec=dspy.Prediction)
+        prediction.formatted_answer = "Full answer without streaming."
+
+        mock_predictor = MagicMock(return_value=_make_async_iter(prediction))
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            tokens = [
+                t
+                async for t in module.stream_forward(
+                    user_query="What is the answer?",
+                    api_response='{"result": 42}',
+                    endpoint_description="Get result",
+                )
+            ]
+
+        assert tokens == ["Full answer without streaming."]
+
+    @pytest.mark.asyncio
+    async def test_blocking_forward_used_as_last_resort(self) -> None:
+        """When no tokens and no Prediction, stream_forward falls back to forward()."""
+        module = APIResponseFormatterModule()
+
+        mock_predictor = MagicMock(return_value=_make_async_iter())
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            with patch.object(
+                module, "forward", return_value="Blocking fallback."
+            ) as mock_fwd:
+                tokens = [
+                    t
+                    async for t in module.stream_forward(
+                        user_query="Fallback test",
+                        api_response='{"x": 1}',
+                        endpoint_description="Test",
+                        detected_language="en",
+                    )
+                ]
+
+        mock_fwd.assert_called_once()
+        assert tokens == ["Blocking fallback."]
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_yields_localized_error_on_exception(self) -> None:
+        """If the stream predictor raises, stream_forward yields a non-empty fallback."""
+        module = APIResponseFormatterModule()
+
+        mock_predictor = MagicMock(side_effect=RuntimeError("stream broken"))
+
+        with patch.object(module, "_get_stream_predictor", return_value=mock_predictor):
+            tokens = [
+                t
+                async for t in module.stream_forward(
+                    user_query="Anything",
+                    api_response='{"x": 1}',
+                    endpoint_description="Test",
+                    detected_language="en",
+                )
+            ]
+
+        assert len(tokens) == 1
+        assert isinstance(tokens[0], str)
+        assert len(tokens[0]) > 0
+
+
+# ---------------------------------------------------------------------------
+# stream_forward
+# ---------------------------------------------------------------------------
+
+
+class TestStreamForward:
+    """Tests for stream_forward() on APIResponseFormatterModule."""
+
+    @pytest.mark.asyncio
+    async def test_yields_tokens_from_stream_response(self) -> None:
+        """stream_forward() should yield token strings from the DSPy stream."""
+        formatter = APIResponseFormatterModule()
+        tokens_emitted = ["Estonia ", "has ", "10 ", "holidays."]
+
+        async def _fake_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            from dspy.streaming import StreamResponse
+
+            for token in tokens_emitted:
+                yield StreamResponse(
+                    predict_name="formatter",
+                    signature_field_name="formatted_answer",
+                    chunk=token,
+                    is_last_chunk=False,
+                )
+
+            yield dspy.Prediction(formatted_answer="Estonia has 10 holidays.")
+
+        with patch.object(
+            formatter, "_get_stream_predictor", return_value=_fake_stream
+        ):
+            collected = [
+                token
+                async for token in formatter.stream_forward(
+                    user_query="How many holidays in Estonia?",
+                    api_response={"count": 10},
+                    endpoint_description="Returns public holidays",
+                    detected_language="en",
+                )
+            ]
+
+        assert collected == tokens_emitted
+
+    @pytest.mark.asyncio
+    async def test_exception_in_stream_yields_localized_error(self) -> None:
+        """When the stream predictor raises, stream_forward yields the localized error.
+
+        forward() is NOT called — the exception is caught directly and the
+        localized error message is yielded instead.
+        """
+        formatter = APIResponseFormatterModule()
+
+        async def _raise_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            raise RuntimeError("Streaming unavailable")
+            yield  # noqa: F821
+
+        forward_mock = MagicMock(return_value="Should not be called")
+        formatter._get_stream_predictor = MagicMock(return_value=_raise_stream)
+        formatter.forward = forward_mock
+
+        collected = [
+            token
+            async for token in formatter.stream_forward(
+                user_query="Holidays?",
+                api_response={"holidays": []},
+                endpoint_description="Returns public holidays",
+                detected_language="en",
+            )
+        ]
+
+        assert collected == [_FORMATTER_ERROR_MESSAGES["en"]]
+        forward_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_yields_error_message_on_total_failure(self) -> None:
+        """When streaming raises, yield the localized error message for the given language."""
+        formatter = APIResponseFormatterModule()
+
+        async def _raise_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            raise RuntimeError("Streaming unavailable")
+            yield  # noqa: F821
+
+        formatter._get_stream_predictor = MagicMock(return_value=_raise_stream)
+
+        collected = [
+            token
+            async for token in formatter.stream_forward(
+                user_query="Holidays?",
+                api_response={"holidays": []},
+                endpoint_description="Returns public holidays",
+                detected_language="en",
+            )
+        ]
+
+        assert collected == [_FORMATTER_ERROR_MESSAGES["en"]]
