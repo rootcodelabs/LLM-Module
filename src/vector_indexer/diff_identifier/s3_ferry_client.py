@@ -3,44 +3,45 @@
 import asyncio
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import requests
 from loguru import logger
+from typing_extensions import Self
 
 from diff_identifier.diff_models import DiffConfig, DiffError
-from constants import GET_S3_FERRY_PAYLOAD
+from constants import get_s3_ferry_payload
 
 
 class S3Ferry:
     """Client for interacting with S3Ferry service."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str) -> None:
         self.url = url
 
     def transfer_file(
         self,
-        destinationFilePath: str,
-        destinationStorageType: str,
-        sourceFilePath: str,
-        sourceStorageType: str,
+        destination_file_path: str,
+        destination_storage_type: str,
+        source_file_path: str,
+        source_storage_type: str,
     ) -> requests.Response:
         """
         Transfer file using S3Ferry service.
 
         Args:
-            destinationFilePath: Path where file should be stored
-            destinationStorageType: "S3" or "FS" (filesystem)
-            sourceFilePath: Path of source file
-            sourceStorageType: "S3" or "FS" (filesystem)
+            destination_file_path: Path where file should be stored
+            destination_storage_type: "S3" or "FS" (filesystem)
+            source_file_path: Path of source file
+            source_storage_type: "S3" or "FS" (filesystem)
 
         Returns:
             requests.Response: Response from S3Ferry service
         """
-        payload = GET_S3_FERRY_PAYLOAD(
-            destinationFilePath,
-            destinationStorageType,
-            sourceFilePath,
-            sourceStorageType,
+        payload = get_s3_ferry_payload(
+            destination_file_path,
+            destination_storage_type,
+            source_file_path,
+            source_storage_type,
         )
 
         response = requests.post(self.url, json=payload)
@@ -55,11 +56,11 @@ class S3FerryClient:
     This client only needs to know the S3Ferry URL and metadata paths.
     """
 
-    def __init__(self, config: DiffConfig):
+    def __init__(self, config: DiffConfig) -> None:
         self.config = config
         self.s3_ferry = S3Ferry(config.s3_ferry_url)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -99,10 +100,10 @@ class S3FerryClient:
                 response = await asyncio.to_thread(
                     self._retry_with_backoff,
                     lambda: self.s3_ferry.transfer_file(
-                        destinationFilePath=self.config.metadata_s3_path,
-                        destinationStorageType="S3",
-                        sourceFilePath=s3ferry_source_path,
-                        sourceStorageType="FS",
+                        destination_file_path=self.config.metadata_s3_path,
+                        destination_storage_type="S3",
+                        source_file_path=s3ferry_source_path,
+                        source_storage_type="FS",
                     ),
                 )
 
@@ -125,7 +126,7 @@ class S3FerryClient:
                 await asyncio.to_thread(self._cleanup_temp_file, temp_file_path)
 
         except Exception as e:
-            raise DiffError(f"Failed to upload metadata: {str(e)}", e)
+            raise DiffError(f"Failed to upload metadata: {str(e)}", e) from e
 
     async def download_metadata(self) -> Optional[Dict[str, Any]]:
         """
@@ -149,10 +150,10 @@ class S3FerryClient:
                 response = await asyncio.to_thread(
                     self._retry_with_backoff,
                     lambda: self.s3_ferry.transfer_file(
-                        destinationFilePath=s3ferry_dest_path,
-                        destinationStorageType="FS",
-                        sourceFilePath=self.config.metadata_s3_path,
-                        sourceStorageType="S3",
+                        destination_file_path=s3ferry_dest_path,
+                        destination_storage_type="FS",
+                        source_file_path=self.config.metadata_s3_path,
+                        source_storage_type="S3",
                     ),
                 )
 
@@ -184,7 +185,9 @@ class S3FerryClient:
                 await asyncio.to_thread(self._cleanup_temp_file, temp_file_path)
 
         except json.JSONDecodeError as e:
-            raise DiffError(f"Failed to parse downloaded metadata JSON: {str(e)}", e)
+            raise DiffError(
+                f"Failed to parse downloaded metadata JSON: {str(e)}", e
+            ) from e
         except Exception as e:
             # Don't raise for file not found - it's expected on first run
             logger.warning(f"Failed to download metadata (may be first run): {str(e)}")
@@ -255,12 +258,14 @@ class S3FerryClient:
         except Exception as cleanup_error:
             logger.warning(f"Failed to cleanup temp file {file_path}: {cleanup_error}")
 
-    def _retry_with_backoff(self, operation: Any) -> requests.Response:
+    def _retry_with_backoff(
+        self, operation: Callable[[], requests.Response]
+    ) -> requests.Response:
         """
         Retry an operation with exponential backoff.
 
         Args:
-            operation: Operation to retry
+            operation: Operation to retry (callable that returns Response)
 
         Returns:
             Response from the operation
@@ -292,7 +297,7 @@ class S3FerryClient:
                     raise DiffError(
                         f"Operation failed after {self.config.max_retries} attempts: {str(e)}",
                         e,
-                    )
+                    ) from e
 
                 delay = min(1 * (2**attempt), self.config.max_delay_seconds)
                 time.sleep(delay)

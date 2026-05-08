@@ -30,7 +30,7 @@ class VectorIndexer:
 
     def __init__(
         self, config_path: Optional[str] = None, signed_url: Optional[str] = None
-    ):
+    ) -> None:
         # Load configuration
         self.config_path = (
             config_path or "src/vector_indexer/config/vector_indexer_config.yaml"
@@ -339,7 +339,7 @@ class VectorIndexer:
                 self.error_logger.log_document_failure(doc_info.document_hash, str(e))
                 raise
 
-    def _log_final_summary(self):
+    def _log_final_summary(self) -> None:
         """Log final processing summary."""
 
         logger.info("VECTOR INDEXER PROCESSING COMPLETE")
@@ -379,7 +379,7 @@ class VectorIndexer:
             async with QdrantManager(self.config) as qdrant_manager:
                 # Test basic Qdrant connectivity by trying to list collections
                 try:
-                    qdrant_url = getattr(self.config, "qdrant_url")
+                    qdrant_url = self.config.qdrant_url
                     response = await qdrant_manager.client.get(
                         f"{qdrant_url}/collections"
                     )
@@ -436,7 +436,7 @@ class VectorIndexer:
             return False
         # NOTE: Don't close API client here - it will be used by main processing
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up resources."""
         try:
             await self.api_client.close()
@@ -616,7 +616,7 @@ class VectorIndexer:
 
         return total_deleted
 
-    def _cleanup_datasets(self):
+    def _cleanup_datasets(self) -> None:
         """Remove datasets folder after processing."""
         try:
             datasets_path = Path(self.config.dataset_base_path)
@@ -630,7 +630,7 @@ class VectorIndexer:
             # Non-critical error - don't fail the entire process
 
 
-async def main():
+async def main() -> int:
     """Main entry point for the vector indexer."""
 
     # Parse command line arguments

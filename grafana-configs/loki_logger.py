@@ -17,7 +17,7 @@ class LokiLogger:
 
     def __init__(
         self, loki_url: str = "http://loki:3100", service_name: str = "default"
-    ):
+    ) -> None:
         """
         Initialize LokiLogger
 
@@ -32,7 +32,7 @@ class LokiLogger:
         # Set default timeout for all requests
         self.timeout = 5
 
-    def _send_to_loki(self, level: str, message: str):
+    def _send_to_loki(self, level: str, message: str) -> None:
         """Send log entry directly to Loki API"""
         try:
             # Create timestamp in nanoseconds (Loki requirement)
@@ -78,16 +78,16 @@ class LokiLogger:
 
         # Also print to console for immediate feedback
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] {level: <8} | {message}")
+        print(f"[{timestamp}] {level: <8} | {message}")  # noqa: T201
 
-    def info(self, message: str):
+    def info(self, message: str) -> None:
         self._send_to_loki("INFO", message)
 
-    def error(self, message: str):
+    def error(self, message: str) -> None:
         self._send_to_loki("ERROR", message)
 
-    def warning(self, message: str):
+    def warning(self, message: str) -> None:
         self._send_to_loki("WARNING", message)
 
-    def debug(self, message: str):
+    def debug(self, message: str) -> None:
         self._send_to_loki("DEBUG", message)

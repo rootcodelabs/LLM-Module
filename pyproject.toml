@@ -107,11 +107,16 @@ unfixable = []
 "src/contextual_retrieval/contextual_retrieval_api_client.py" = ["ANN401"]  # httpx **kwargs pass-through
 "src/tool_classifier/workflows/service_workflow.py" = ["ANN401"]  # LLMManager passed as Any - dynamic multi-provider LLM interface
 "src/guardrails/dspy_nemo_adapter.py" = ["ANN401"]  # LangChain LLM interface + DSPy dynamic types
+"src/tool_classifier/param_extractor.py" = ["ANN401"]  # DSPy streamify Any type
+"src/tool_classifier/api_response_formatter.py" = ["ANN401"]  # DSPy streamify Any type
 "src/llm_orchestrator_config/context_manager.py" = ["ANN401"]  # MockResponse with dynamic attributes
 "src/optimization/metrics/*.py" = ["ANN401"]  # DSPy optimizer trace parameter (internal type)
-"byk-stack-setup/script.py" = ["T201"]  # CLI script uses print 
+
+"byk-stack-setup/script.py" = ["T201"]  # Allow print statements in setup script
+
 
 "src/utils/api_tool_session_store.py" = ["ANN401"]  # Dynamic Pydantic model field updates via **kwargs
+"src/tool_classifier/workflows/api_tool_workflow.py" = ["ANN401", "N815"]  # Dynamic guardrails adapter + orchestration service Any types; camelCase _MinimalRequest field for API contract
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.

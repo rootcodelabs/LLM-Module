@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Sequence, Optional, Dict, Union, cast, List
+import contextlib
 import logging
 import dspy
 from pydantic import BaseModel, Field
@@ -215,7 +216,7 @@ class PromptRefinerAgent(dspy.Module):
         """
         return self._optimized_metadata.copy()
 
-    def _get_adapter_context(self):
+    def _get_adapter_context(self) -> contextlib.AbstractContextManager[Any]:
         """Return appropriate adapter context manager."""
         if self._use_json_adapter:
             return dspy.context(adapter=dspy.JSONAdapter())
@@ -223,7 +224,7 @@ class PromptRefinerAgent(dspy.Module):
 
     def forward(
         self,
-        history: Sequence[Dict[str, str]] | Any,
+        history: Sequence[Dict[str, str]],
         question: str,
         n: int | None = None,
     ) -> list[str]:
@@ -296,7 +297,7 @@ class PromptRefinerAgent(dspy.Module):
 
     def forward_structured(
         self,
-        history: Sequence[Dict[str, str]] | Any,
+        history: Sequence[Dict[str, str]],
         question: str,
         n: int | None = None,
     ) -> Dict[str, Any]:

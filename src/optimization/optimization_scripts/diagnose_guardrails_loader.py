@@ -11,7 +11,7 @@ from loguru import logger
 from src.guardrails.optimized_guardrails_loader import OptimizedGuardrailsLoader
 
 
-def main():
+def main() -> None:
     """Run diagnostics."""
     logger.info("GUARDRAILS LOADER DIAGNOSTICS")
 

@@ -12,12 +12,12 @@ from vector_indexer.models import ProcessingError, ProcessingStats
 class ErrorLogger:
     """Enhanced error logging with file-based failure tracking."""
 
-    def __init__(self, config: VectorIndexerConfig):
+    def __init__(self, config: VectorIndexerConfig) -> None:
         self.config = config
         self._ensure_log_directories()
         self._setup_logging()
 
-    def _ensure_log_directories(self):
+    def _ensure_log_directories(self) -> None:
         """Create log directories if they don't exist."""
         for log_file in [
             self.config.failure_log_file,
@@ -26,7 +26,7 @@ class ErrorLogger:
         ]:
             Path(log_file).parent.mkdir(parents=True, exist_ok=True)
 
-    def _setup_logging(self):
+    def _setup_logging(self) -> None:
         """Setup loguru logging with file output."""
         logger.remove()  # Remove default handler
 
@@ -48,7 +48,7 @@ class ErrorLogger:
 
     def log_document_failure(
         self, document_hash: str, error: str, retry_count: int = 0
-    ):
+    ) -> None:
         """Log document processing failure."""
         if not self.config.log_failures:
             return
@@ -73,7 +73,7 @@ class ErrorLogger:
 
     def log_chunk_failure(
         self, document_hash: str, chunk_index: int, error: str, retry_count: int
-    ):
+    ) -> None:
         """Log individual chunk processing failure."""
         if not self.config.log_failures:
             return
@@ -99,7 +99,7 @@ class ErrorLogger:
 
     def log_context_generation_failure(
         self, document_hash: str, chunk_index: int, error: str, retry_count: int
-    ):
+    ) -> None:
         """Log context generation failure."""
         if not self.config.log_failures:
             return
@@ -123,7 +123,9 @@ class ErrorLogger:
             f"Context generation failed for chunk {chunk_index} in document {document_hash}: {error}"
         )
 
-    def log_embedding_failure(self, document_hash: str, error: str, retry_count: int):
+    def log_embedding_failure(
+        self, document_hash: str, error: str, retry_count: int
+    ) -> None:
         """Log embedding creation failure."""
         if not self.config.log_failures:
             return
@@ -145,7 +147,7 @@ class ErrorLogger:
 
         logger.error(f"Embedding creation failed for document {document_hash}: {error}")
 
-    def log_processing_stats(self, stats: ProcessingStats):
+    def log_processing_stats(self, stats: ProcessingStats) -> None:
         """Log final processing statistics."""
         try:
             stats_dict = stats.model_dump()
@@ -169,7 +171,9 @@ class ErrorLogger:
         except Exception as e:
             logger.error(f"Failed to write stats log: {e}")
 
-    def log_progress(self, completed: int, total: int, current_document: str = ""):
+    def log_progress(
+        self, completed: int, total: int, current_document: str = ""
+    ) -> None:
         """Log processing progress."""
         percentage = (completed / total * 100) if total > 0 else 0
         if current_document:

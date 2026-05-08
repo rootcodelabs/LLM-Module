@@ -7,7 +7,9 @@ import dspy
 import httpx
 from loguru import logger
 
+from llm_orchestrator_config.llm_manager import LLMManager
 from src.guardrails.nemo_rails_adapter import NeMoRailsAdapter
+
 from src.utils.cost_utils import get_lm_usage_since
 
 from models.request_models import (
@@ -108,7 +110,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
 
     def __init__(
         self,
-        llm_manager: Any,
+        llm_manager: Optional[LLMManager] = None,
         orchestration_service: Optional[LLMServiceProtocol] = None,
     ) -> None:
         """Initialize service workflow executor."""

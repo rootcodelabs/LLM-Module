@@ -20,7 +20,7 @@ class ContextualProcessor:
         api_client: LLMOrchestrationAPIClient,
         config: VectorIndexerConfig,
         error_logger: ErrorLogger,
-    ):
+    ) -> None:
         self.api_client = api_client
         self.config = config
         self.error_logger = error_logger
@@ -70,7 +70,9 @@ class ContextualProcessor:
             contextual_chunks: List[ContextualChunk] = []
             valid_contextual_contents: List[str] = []
 
-            for i, (base_chunk, context) in enumerate(zip(base_chunks, contexts)):
+            for i, (base_chunk, context) in enumerate(
+                zip(base_chunks, contexts, strict=True)
+            ):
                 if isinstance(context, Exception):
                     self.error_logger.log_context_generation_failure(
                         document.document_hash, i, str(context), self.config.max_retries
@@ -136,7 +138,7 @@ class ContextualProcessor:
 
                 # Step 5: Add embeddings to chunks
                 for chunk, embedding in zip(
-                    contextual_chunks, embeddings_response["embeddings"]
+                    contextual_chunks, embeddings_response["embeddings"], strict=True
                 ):
                     chunk.embedding = embedding
                     chunk.embedding_model = embeddings_response["model_used"]

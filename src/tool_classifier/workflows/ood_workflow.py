@@ -31,7 +31,7 @@ class OODWorkflowExecutor(BaseWorkflow):
     - For streaming: chunk message and stream for UX consistency
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize OOD workflow executor."""
         logger.info("OOD workflow executor initialized (skeleton)")
 

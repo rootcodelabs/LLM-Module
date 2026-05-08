@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from loguru import logger
 import httpx
 import uuid
+from typing_extensions import Self
 
 from vector_indexer.config.config_loader import VectorIndexerConfig
 from vector_indexer.models import ContextualChunk
@@ -18,7 +19,7 @@ class QdrantOperationError(Exception):
 class QdrantManager:
     """Manages Qdrant vector database operations for contextual chunks."""
 
-    def __init__(self, config: VectorIndexerConfig):
+    def __init__(self, config: VectorIndexerConfig) -> None:
         self.config = config
         self.qdrant_url: str = getattr(config, "qdrant_url", "http://localhost:6333")
         self.client = httpx.AsyncClient(timeout=30.0)
@@ -40,7 +41,7 @@ class QdrantManager:
             },
         }
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -53,7 +54,7 @@ class QdrantManager:
         """Async context manager exit."""
         await self.client.aclose()
 
-    async def ensure_collections_exist(self):
+    async def ensure_collections_exist(self) -> None:
         """Create collections if they don't exist."""
         logger.info("Ensuring Qdrant collections exist")
 
@@ -62,7 +63,7 @@ class QdrantManager:
 
     async def _create_collection_if_not_exists(
         self, collection_name: str, collection_config: Dict[str, Any]
-    ):
+    ) -> None:
         """Create a collection if it doesn't exist."""
 
         try:
@@ -108,7 +109,7 @@ class QdrantManager:
             logger.error(f"Error ensuring collection {collection_name} exists: {e}")
             raise
 
-    async def store_chunks(self, chunks: List[ContextualChunk]):
+    async def store_chunks(self, chunks: List[ContextualChunk]) -> None:
         """
         Store contextual chunks in appropriate Qdrant collection.
 
@@ -135,7 +136,7 @@ class QdrantManager:
 
     async def _store_chunks_in_collection(
         self, collection_name: str, chunks: List[ContextualChunk]
-    ):
+    ) -> None:
         """Store chunks in specific collection."""
 
         logger.debug(f"Storing {len(chunks)} chunks in collection {collection_name}")
@@ -450,7 +451,7 @@ class QdrantManager:
             )
             raise QdrantOperationError(
                 f"Failed to delete chunks by document hash: {str(e)}"
-            )
+            ) from e
 
     async def delete_chunks_by_file_path(
         self, collection_name: str, file_path: str
@@ -523,7 +524,7 @@ class QdrantManager:
             logger.error(f"Failed to delete chunks for file {file_path}: {e}")
             raise QdrantOperationError(
                 f"Failed to delete chunks by file path: {str(e)}"
-            )
+            ) from e
 
     async def get_chunks_for_document(
         self, collection_name: str, document_hash: str
@@ -591,6 +592,6 @@ class QdrantManager:
             logger.error(f"Error deleting collection {collection_name}: {e}")
             return False
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP client."""
         await self.client.aclose()

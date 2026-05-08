@@ -180,7 +180,7 @@ def split_generator_dataset(
     )
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     logger.info("Starting DSPy dataset splitting process")
 

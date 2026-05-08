@@ -399,7 +399,7 @@ class ParamExtractionModule(dspy.Module):
 
     def _parse_prediction(
         self,
-        result: Any,
+        result: dspy.Prediction,
         params_schema: List[Dict[str, Any]],
         already_collected: Dict[str, Any],
     ) -> ParamExtractionResult:

@@ -123,27 +123,27 @@ class LoggingConstants:
     PROGRESS_REPORT_INTERVAL = 10  # Report every N documents
 
 
-def GET_S3_FERRY_PAYLOAD(
-    destinationFilePath: str,
-    destinationStorageType: str,
-    sourceFilePath: str,
-    sourceStorageType: str,
-) -> dict[str, str]:  # noqa: N802
+def get_s3_ferry_payload(
+    destination_file_path: str,
+    destination_storage_type: str,
+    source_file_path: str,
+    source_storage_type: str,
+) -> dict[str, str]:
     """
     Generate S3Ferry payload for file transfer operations.
 
     Args:
-        destinationFilePath: Path where file should be stored
-        destinationStorageType: "S3" or "FS" (filesystem)
-        sourceFilePath: Path of source file
-        sourceStorageType: "S3" or "FS" (filesystem)
+        destination_file_path: Path where file should be stored
+        destination_storage_type: "S3" or "FS" (filesystem)
+        source_file_path: Path of source file
+        source_storage_type: "S3" or "FS" (filesystem)
 
     Returns:
         dict: Payload for S3Ferry API
     """
     return {
-        "destinationFilePath": destinationFilePath,
-        "destinationStorageType": destinationStorageType,
-        "sourceFilePath": sourceFilePath,
-        "sourceStorageType": sourceStorageType,
+        "destinationFilePath": destination_file_path,
+        "destinationStorageType": destination_storage_type,
+        "sourceFilePath": source_file_path,
+        "sourceStorageType": source_storage_type,
     }

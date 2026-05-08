@@ -165,13 +165,13 @@ Answer only with the succinct context and nothing else."""
 
         # Return a response object with the expected structure
         class MockResponse:
-            def __init__(self, content: str, model: str):
+            def __init__(self, content: str, model: str) -> None:
                 self.content = content
                 self.model = model
                 self.usage = MockUsage(content, prompt)
 
         class MockUsage:
-            def __init__(self, content: str, prompt: str):
+            def __init__(self, content: str, prompt: str) -> None:
                 self.input_tokens = int(len(prompt.split()) * 1.3)  # Rough estimate
                 self.output_tokens = int(len(content.split()) * 1.3)
 

@@ -41,7 +41,7 @@ from mocks.dummy_llm_orchestrator import process_query
 class ComprehensiveResultCollector:
     """Collects comprehensive test results during execution."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.results: dict[str, Any] = {
             "total_tests": 0,
             "passed_tests": 0,
@@ -124,7 +124,7 @@ class ComprehensiveResultCollector:
                 vulnerability_scores[vuln_name]["passed"] += 1
 
         # Calculate scores
-        for vuln_name, counts in vulnerability_scores.items():
+        for counts in vulnerability_scores.values():
             counts["score"] = (
                 counts["passed"] / counts["total"] if counts["total"] > 0 else 0.0
             )
@@ -167,7 +167,7 @@ class TestRAGSystemRedTeaming:
     """Comprehensive red teaming test suite - all tests in one place."""
 
     @classmethod
-    def setup_class(cls):
+    def setup_class(cls) -> None:
         """Setup comprehensive test class with all attacks and vulnerabilities."""
         print("Setting up comprehensive RAG security testing...")
 
@@ -358,7 +358,7 @@ class TestRAGSystemRedTeaming:
         attack_type: str,
         failed_assertions: List[str],
         language: str = "en",
-    ):
+    ) -> None:
         """Test a specific category of attacks against vulnerabilities."""
         print(f"\n--- {category_name} ---")
         category_start = datetime.datetime.now()

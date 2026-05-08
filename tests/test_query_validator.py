@@ -22,7 +22,7 @@ class TestQueryValidatorEmpty:
             "    \t\n\r  ",
         ],
     )
-    def test_empty_queries_rejected(self, query):
+    def test_empty_queries_rejected(self, query: str):
         """Empty or whitespace-only queries should be rejected."""
         result = validate_query_basic(query)
         assert result.is_valid is False
@@ -64,7 +64,7 @@ class TestQueryValidatorSpecialCharsOnly:
             "????",  # 4 question marks - special chars only
         ],
     )
-    def test_special_chars_only_rejected(self, query):
+    def test_special_chars_only_rejected(self, query: str):
         """Queries with only special characters should be rejected."""
         result = validate_query_basic(query)
         assert result.is_valid is False
@@ -89,7 +89,7 @@ class TestQueryValidatorTooShort:
             "!a!",
         ],
     )
-    def test_too_short_queries_rejected(self, query):
+    def test_too_short_queries_rejected(self, query: str):
         """Queries with fewer than 2 meaningful characters should be rejected."""
         result = validate_query_basic(query)
         assert result.is_valid is False
@@ -121,7 +121,7 @@ class TestQueryValidatorRepetitive:
             "___",  # 3 underscores - repetitive (underscore is \w)
         ],
     )
-    def test_repetitive_queries_rejected(self, query):
+    def test_repetitive_queries_rejected(self, query: str):
         """Queries with only one unique meaningful character should be rejected."""
         result = validate_query_basic(query)
         assert result.is_valid is False
@@ -168,7 +168,7 @@ class TestQueryValidatorValid:
             "õõte",
         ],
     )
-    def test_valid_queries_accepted(self, query):
+    def test_valid_queries_accepted(self, query: str):
         """Valid queries with meaningful content should be accepted."""
         result = validate_query_basic(query)
         assert result.is_valid is True

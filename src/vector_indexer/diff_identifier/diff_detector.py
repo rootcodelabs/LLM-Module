@@ -16,7 +16,7 @@ load_dotenv(".env")
 class DiffDetector:
     """Main orchestrator for diff identification."""
 
-    def __init__(self, config: DiffConfig):
+    def __init__(self, config: DiffConfig) -> None:
         self.config = config
         self.version_manager = VersionManager(config)
 
@@ -109,7 +109,7 @@ class DiffDetector:
             except Exception as fallback_error:
                 raise DiffError(
                     f"Both diff identification and fallback failed: {fallback_error}", e
-                )
+                ) from fallback_error
 
     async def mark_files_processed(
         self,
@@ -207,7 +207,7 @@ class DiffDetector:
             )
 
         except Exception as e:
-            raise DiffError(f"Failed to mark files as processed: {str(e)}", e)
+            raise DiffError(f"Failed to mark files as processed: {str(e)}", e) from e
 
     async def _handle_first_run(self) -> DiffResult:
         """
@@ -240,7 +240,7 @@ class DiffDetector:
             )
 
         except Exception as e:
-            raise DiffError(f"First run setup failed: {str(e)}", e)
+            raise DiffError(f"First run setup failed: {str(e)}", e) from e
 
 
 def create_diff_config() -> DiffConfig:
@@ -321,4 +321,4 @@ def create_diff_config() -> DiffConfig:
         return config
 
     except Exception as e:
-        raise DiffError(f"Failed to create diff configuration: {str(e)}", e)
+        raise DiffError(f"Failed to create diff configuration: {str(e)}", e) from e

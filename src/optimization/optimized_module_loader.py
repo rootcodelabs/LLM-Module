@@ -24,7 +24,7 @@ class OptimizedModuleLoader:
     - Module-level caching for performance (singleton pattern)
     """
 
-    def __init__(self, optimized_modules_dir: Optional[Path] = None):
+    def __init__(self, optimized_modules_dir: Optional[Path] = None) -> None:
         """
         Initialize the module loader.
 
@@ -284,7 +284,7 @@ class OptimizedModuleLoader:
         return metadata
 
     @staticmethod
-    def _get_guardrails_signature():
+    def _get_guardrails_signature() -> type[dspy.Signature]:
         """Get guardrails signature class."""
 
         class GuardrailsChecker(dspy.Signature):
@@ -311,7 +311,7 @@ class OptimizedModuleLoader:
         return GuardrailsChecker
 
     @staticmethod
-    def _get_refiner_signature():
+    def _get_refiner_signature() -> type[dspy.Signature]:
         """Get refiner signature class."""
 
         class PromptRefinerSignature(dspy.Signature):
@@ -337,7 +337,7 @@ class OptimizedModuleLoader:
         return PromptRefinerSignature
 
     @staticmethod
-    def _get_generator_signature():
+    def _get_generator_signature() -> type[dspy.Signature]:
         """Get generator signature class."""
 
         class ResponseGeneratorSignature(dspy.Signature):

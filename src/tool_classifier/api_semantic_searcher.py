@@ -19,6 +19,7 @@ from tool_classifier.constants import (
     QDRANT_TIMEOUT,
 )
 from tool_classifier.sparse_encoder import compute_sparse_vector
+from tool_classifier.sparse_encoder import SparseVector
 
 
 class EmbeddingServiceProtocol(Protocol):
@@ -535,7 +536,7 @@ class APISemanticSearcher:
     async def _hybrid_search(
         self,
         dense_vector: List[float],
-        sparse_vector: Any,
+        sparse_vector: SparseVector,
         top_k: int,
     ) -> List[Dict[str, Any]]:
         """Hybrid search using dense + sparse + RRF fusion.

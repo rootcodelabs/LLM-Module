@@ -1,9 +1,13 @@
 """Abstract base class for workflow executors."""
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict, Optional, Union
 
-from models.request_models import OrchestrationRequest, OrchestrationResponse
+from models.request_models import (
+    OrchestrationRequest,
+    OrchestrationResponse,
+    TestOrchestrationResponse,
+)
 
 
 class BaseWorkflow(ABC):
@@ -34,7 +38,7 @@ class BaseWorkflow(ABC):
         request: OrchestrationRequest,
         context: Dict[str, Any],
         time_metric: Optional[Dict[str, float]] = None,
-    ) -> Optional[OrchestrationResponse]:
+    ) -> Optional[Union[OrchestrationResponse, TestOrchestrationResponse]]:
         """
         Execute workflow in non-streaming mode.
 

@@ -9,7 +9,7 @@ load_dotenv()
 class MockQdrantRetriever:
     """Mock implementation of Qdrant vector database with predefined test data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.knowledge_base: Dict[str, List[str]] = {
             "pension": [
                 "In 2021, the pension will become more flexible. People will be able to choose the most suitable time for their retirement, partially withdraw their pension or stop payment of their pension if they wish, in effect creating their own personal pension plan.",
@@ -170,7 +170,7 @@ class MockQdrantRetriever:
 class DummyLLMOrchestrator:
     """Main orchestrator that handles the complete RAG pipeline."""
 
-    def __init__(self, provider: str = "anthropic"):
+    def __init__(self, provider: str = "anthropic") -> None:
         self.provider = provider
         self.retriever = MockQdrantRetriever()
 

@@ -1,6 +1,6 @@
 """LLM Manager - Main entry point for the LLM Config Module."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 from contextlib import contextmanager
 import threading
 
@@ -185,7 +185,9 @@ class LLMManager:
                     self._configured = True
 
     @contextmanager
-    def use_task_local(self, provider: Optional[LLMProvider] = None):
+    def use_task_local(
+        self, provider: Optional[LLMProvider] = None
+    ) -> Generator[None, None, None]:
         """Use a task/thread-local DSPy LM without reconfiguring globally."""
         lm = self.get_dspy_client(provider)
         with dspy.context(lm=lm):
