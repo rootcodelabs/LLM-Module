@@ -1,13 +1,16 @@
 """Unit tests for APIResponseFormatterModule — DSPy JSON-to-natural-language formatter."""
 
 import json
-from collections.abc import Generator
+from collections.abc import AsyncIterator, Generator
 from unittest.mock import MagicMock, patch
 
 import dspy
 import pytest
 
-from src.tool_classifier.api_response_formatter import APIResponseFormatterModule
+from src.tool_classifier.api_response_formatter import (
+    APIResponseFormatterModule,
+    _FORMATTER_ERROR_MESSAGES,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -352,3 +355,105 @@ class TestResilienceHandling:
 
         assert isinstance(result, str)
         assert len(result) > 0
+
+
+# ---------------------------------------------------------------------------
+# stream_forward
+# ---------------------------------------------------------------------------
+
+
+class TestStreamForward:
+    """Tests for stream_forward() on APIResponseFormatterModule."""
+
+    @pytest.mark.asyncio
+    async def test_yields_tokens_from_stream_response(self) -> None:
+        """stream_forward() should yield token strings from the DSPy stream."""
+        formatter = APIResponseFormatterModule()
+        tokens_emitted = ["Estonia ", "has ", "10 ", "holidays."]
+
+        async def _fake_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            from dspy.streaming import StreamResponse
+
+            for token in tokens_emitted:
+                yield StreamResponse(
+                    predict_name="formatter",
+                    signature_field_name="formatted_answer",
+                    chunk=token,
+                    is_last_chunk=False,
+                )
+
+            yield dspy.Prediction(formatted_answer="Estonia has 10 holidays.")
+
+        with patch.object(
+            formatter, "_get_stream_predictor", return_value=_fake_stream
+        ):
+            collected = [
+                token
+                async for token in formatter.stream_forward(
+                    user_query="How many holidays in Estonia?",
+                    api_response={"count": 10},
+                    endpoint_description="Returns public holidays",
+                    detected_language="en",
+                )
+            ]
+
+        assert collected == tokens_emitted
+
+    @pytest.mark.asyncio
+    async def test_exception_in_stream_yields_localized_error(self) -> None:
+        """When the stream predictor raises, stream_forward yields the localized error.
+
+        forward() is NOT called — the exception is caught directly and the
+        localized error message is yielded instead.
+        """
+        formatter = APIResponseFormatterModule()
+
+        async def _raise_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            raise RuntimeError("Streaming unavailable")
+            yield  # noqa: F821
+
+        forward_mock = MagicMock(return_value="Should not be called")
+        formatter._get_stream_predictor = MagicMock(return_value=_raise_stream)
+        formatter.forward = forward_mock
+
+        collected = [
+            token
+            async for token in formatter.stream_forward(
+                user_query="Holidays?",
+                api_response={"holidays": []},
+                endpoint_description="Returns public holidays",
+                detected_language="en",
+            )
+        ]
+
+        assert collected == [_FORMATTER_ERROR_MESSAGES["en"]]
+        forward_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_yields_error_message_on_total_failure(self) -> None:
+        """When streaming raises, yield the localized error message for the given language."""
+        formatter = APIResponseFormatterModule()
+
+        async def _raise_stream(
+            *args: object, **kwargs: object
+        ) -> AsyncIterator[object]:
+            raise RuntimeError("Streaming unavailable")
+            yield  # noqa: F821
+
+        formatter._get_stream_predictor = MagicMock(return_value=_raise_stream)
+
+        collected = [
+            token
+            async for token in formatter.stream_forward(
+                user_query="Holidays?",
+                api_response={"holidays": []},
+                endpoint_description="Returns public holidays",
+                detected_language="en",
+            )
+        ]
+
+        assert collected == [_FORMATTER_ERROR_MESSAGES["en"]]
