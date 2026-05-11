@@ -210,6 +210,7 @@ class APISemanticSearcher:
         connection_id: Optional[str] = None,
         top_k: int = API_TOOL_SEARCH_TOP_K,
         precomputed_embedding: Optional[List[float]] = None,
+        min_cosine_override: Optional[float] = None,
     ) -> List[APIToolSearchResult]:
         """Search api_tool_collection for the best matching API endpoints.
 
@@ -217,10 +218,13 @@ class APISemanticSearcher:
         1. Dense search → get real cosine similarity scores
         2. Hybrid search (dense + sparse + RRF) → get best-ranked matches
 
-        Returns endpoints annotated with confidence level:
+        The effective minimum cosine threshold is determined by ``min_cosine_override``
+        when provided, otherwise ``API_TOOL_MIN_THRESHOLD`` is used. Confidence levels
+        are always evaluated against the same effective minimum:
+
         - "high":   cosine >= API_TOOL_HIGH_CONFIDENCE_THRESHOLD AND score gap is large
-        - "medium": cosine >= API_TOOL_MIN_THRESHOLD but ambiguous
-        - "none":   cosine < API_TOOL_MIN_THRESHOLD (no match)
+        - "medium": cosine >= effective minimum threshold but ambiguous
+        - "none":   cosine < effective minimum threshold (no match)
 
         Args:
             query: Natural language user query.
@@ -230,6 +234,11 @@ class APISemanticSearcher:
             precomputed_embedding: Dense vector already computed upstream (e.g. by
                 the service classifier). When provided the embedding step is skipped
                 entirely, saving one embedding API call per request.
+            min_cosine_override: Optional cosine similarity threshold that replaces
+                ``API_TOOL_MIN_THRESHOLD`` for this call. Pass a lower value to
+                broaden matching (e.g. during multi-intent re-classification) or a
+                higher value to tighten it. When None, ``API_TOOL_MIN_THRESHOLD``
+                applies unchanged.
 
         Returns:
             List containing exactly one APIToolSearchResult (the resolved best match),
@@ -263,6 +272,12 @@ class APISemanticSearcher:
         )
         cosine_gap = top_cosine - second_cosine
 
+        effective_min = (
+            min_cosine_override
+            if min_cosine_override is not None
+            else API_TOOL_MIN_THRESHOLD
+        )
+
         logger.info(f"APISemanticSearcher: query={query!r}")
         logger.info(
             f"APISemanticSearcher: dense top={dense_results[0]['name']} "
@@ -270,10 +285,10 @@ class APISemanticSearcher:
         )
 
         # Below minimum threshold → no match
-        if top_cosine < API_TOOL_MIN_THRESHOLD:
+        if top_cosine < effective_min:
             logger.info(
                 f"APISemanticSearcher: cosine {top_cosine:.4f} < "
-                f"threshold {API_TOOL_MIN_THRESHOLD} — no API tool match"
+                f"threshold {effective_min} — no API tool match"
             )
             return []
 
@@ -319,11 +334,12 @@ class APISemanticSearcher:
 
             if (
                 point_cosine >= API_TOOL_HIGH_CONFIDENCE_THRESHOLD
+                and point_cosine >= effective_min
                 and effective_gap >= API_TOOL_SCORE_GAP_THRESHOLD
                 and i == 0
             ):
                 confidence = "high"
-            elif point_cosine >= API_TOOL_MIN_THRESHOLD:
+            elif point_cosine >= effective_min:
                 confidence = "medium"
             else:
                 continue  # Skip results below threshold

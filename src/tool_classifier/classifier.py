@@ -38,6 +38,7 @@ from tool_classifier.constants import (
     DENSE_MIN_THRESHOLD,
     DENSE_HIGH_CONFIDENCE_THRESHOLD,
     DENSE_SCORE_GAP_THRESHOLD,
+    API_TOOL_INTENT_SWITCH_THRESHOLD,
 )
 
 from tool_classifier.sparse_encoder import SparseVector, compute_sparse_vector
@@ -191,7 +192,9 @@ class ToolClassifier:
                         # If so, abandon the old session and start fresh rather
                         # than treating the new query as a param-collection reply.
                         new_api_match = await self._try_api_tool_classification(
-                            query, request
+                            query,
+                            request,
+                            min_cosine_override=API_TOOL_INTENT_SWITCH_THRESHOLD,
                         )
                         if (
                             new_api_match is not None
@@ -760,6 +763,7 @@ class ToolClassifier:
         query: str,
         request: Optional[OrchestrationRequest] = None,
         precomputed_embedding: Optional[List[float]] = None,
+        min_cosine_override: Optional[float] = None,
     ) -> Optional[ClassificationResult]:
         """Search api_tool_collection and return a ClassificationResult if a match is found.
 
@@ -772,6 +776,12 @@ class ToolClassifier:
             precomputed_embedding: Dense embedding vector already computed for this
                 query by the service search step. When provided, the ATC searcher
                 reuses it instead of making a second embedding API call.
+            min_cosine_override: Optional cosine similarity threshold that replaces
+                the default ATC minimum score configured in the searcher. When
+                provided, only endpoints whose cosine score meets or exceeds this
+                value are considered a match. Use a lower value to broaden matching
+                (e.g. during multi-intent re-classification) or a higher value to
+                tighten it. When None, the searcher's default threshold applies.
 
         Returns:
             ClassificationResult with API_TOOL_CALLING workflow if a match is found,
@@ -790,6 +800,7 @@ class ToolClassifier:
                 environment=environment,
                 connection_id=connection_id,
                 precomputed_embedding=precomputed_embedding,
+                min_cosine_override=min_cosine_override,
             )
             if results:
                 matched = results[0]

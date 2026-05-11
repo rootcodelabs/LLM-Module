@@ -38,11 +38,13 @@
   {
     "endpointId": "3b8d4e33-7f6a-4c2d-a911-2c4b8f330004",
     "name": "get_vehicle_tax_info",
-    "description": "Arvuta sõidukimaks registreerimisnumbri alusel.",
-    "url": "https://avalik.emta.ee/msm-public/v1/vehicle-tax",
-    "method": "POST",
+    "description": "Arvuta sõidukimaks ja registreerimistasu Eesti sõiduki registreerimisnumbri alusel. Tagastab aastase sõidukimaksu ja ühekordse registreerimistasu koos CO2 ja massikomponentidega.",
+    "url": "https://avalik.emta.ee/msm-public/v1/vehicle-tax/calculate-by-reg-nr",
+    "method": "GET",
     "params": [
-      { "name": "registrationNumber", "type": "string", "required": true, "description": "Sõiduki registreerimisnumber" }
+      { "name": "regNr", "type": "string", "required": true, "description": "Sõiduki registreerimisnumber (nt 123ABC, 456DEF)" },
+      { "name": "calculationYear", "type": "integer", "required": true, "description": "Aasta, mille kohta maksu arvutatakse (nt 2026, 2027). Kohustuslik parameeter — kasutaja peab aasta täpsustama." },
+      { "name": "showRegFee", "type": "boolean", "required": false, "description": "Kui true, lisatakse vastusesse ka ühekordne registreerimistasu (regFee). Vaikimisi false. Kasuta true, kui kasutaja küsib registreerimistasu kohta." }
     ]
   },
   {
@@ -154,5 +156,17 @@
     "url": "https://ilmmicroservice.envir.ee/api/forecasts",
     "method": "GET",
     "params": []
+  },
+  {
+    "endpointId": "9b4d0e99-7a8b-4c9d-b033-9d1c5f990016",
+    "name": "check_legal_eligibility",
+    "description": "Kontrolli isiku õiguslikku sobivust teatud toimingute tegemiseks vanuse ja kodakondsuse alusel.",
+    "url": "https://bcd831cf-cd1b-40b9-af86-b760cd6143e8.mock.pstmn.io/api/legal-check",
+    "method": "POST",
+    "params": [
+      { "name": "action", "type": "string", "required": true, "description": "Toiming, mille jaoks sobivust kontrollitakse (nt start_business, vote, drive)" },
+      { "name": "citizenship", "type": "string", "required": true, "description": "Kahetäheline ISO kodakondsuskood (nt EE, LV, FI)" },
+      { "name": "age", "type": "integer", "required": true, "description": "Isiku vanus täisaastates" }
+    ]
   }
 ]
