@@ -1,5 +1,6 @@
 """LLM Orchestration Service API - FastAPI application."""
 
+import os
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
@@ -48,6 +49,7 @@ from models.request_models import (
     ContextGenerationRequest,
     ContextGenerationResponse,
     EmbeddingErrorResponse,
+    DeepEvalTestOrchestrationResponse,
 )
 
 
@@ -784,6 +786,84 @@ async def get_available_embedding_models(
         )
         raise HTTPException(
             status_code=500, detail="Failed to retrieve embedding models"
+        ) from e
+
+
+@app.post("/orchestrate-eval")
+async def orchestrate_llm_request_eval(
+    http_request: Request,
+    request: OrchestrationRequest,
+) -> DeepEvalTestOrchestrationResponse:
+    """
+    Process LLM orchestration request with additional testing data.
+
+    This endpoint is only available when EVAL_MODE=true and returns
+    retrieval context and refined questions for DeepEval metrics evaluation.
+
+    Args:
+        http_request: FastAPI Request object for accessing app state
+        request: OrchestrationRequest containing user message and context
+
+    Returns:
+        OrchestrationResponse: Response with LLM output, status flags, and test data
+
+    Raises:
+        HTTPException: For processing errors or if not in testing mode
+    """
+    # Check if eval mode is enabled
+    eval_mode = os.getenv("EVAL_MODE", "false").lower() == "true"
+    if not eval_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Eval endpoint not available in production mode",
+        )
+
+    try:
+        logger.info(f"Received EVAL orchestration request for chatId: {request.chatId}")
+
+        if not hasattr(http_request.app.state, "orchestration_service"):
+            logger.error("Orchestration service not found in app state")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        orchestration_service = http_request.app.state.orchestration_service
+        if orchestration_service is None:
+            logger.error("Orchestration service is None")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Service not initialized",
+            )
+
+        # Process the request (will include test data due to EVAL_MODE env var)
+        response = await orchestration_service.process_orchestration_request(request)
+
+        # Convert to test response with additional fields
+        # Response may be OrchestrationResponse or TestOrchestrationResponse
+        chat_id = getattr(response, "chatId", request.chatId)
+        retrieval_ctx = getattr(response, "retrieval_context", None)
+
+        test_response = DeepEvalTestOrchestrationResponse(
+            chatId=chat_id,
+            llmServiceActive=response.llmServiceActive,
+            questionOutOfLLMScope=response.questionOutOfLLMScope,
+            inputGuardFailed=response.inputGuardFailed,
+            content=response.content,
+            retrieval_context=retrieval_ctx,
+            expected_output=None,  # Will be populated by test framework
+        )
+
+        logger.info(f"Successfully processed TEST request for chatId: {request.chatId}")
+        return test_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error processing TEST request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred",
         ) from e
 
 
