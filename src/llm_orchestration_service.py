@@ -2664,7 +2664,7 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=TECHNICAL_ISSUE_MESSAGE,
+                    content=localized_msg,
                 )
 
         try:
@@ -2821,7 +2821,7 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=TECHNICAL_ISSUE_MESSAGE,
+                    content=localized_msg,
                 )
 
     # ========================================================================
