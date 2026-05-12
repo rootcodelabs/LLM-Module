@@ -24,6 +24,9 @@ class APIResponseFormatterSignature(dspy.Signature):
     - IGNORE the language of user_query for output language decisions — short follow-up
       messages are unreliable indicators. Always use response_language.
 
+    If custom_instructions is non-empty, follow those rules with HIGHEST PRIORITY —
+    they override defaults (e.g. language policy, tone, formatting style).
+
     Rules:
     - Format data in a readable way using bullet points, numbered lists, or natural prose.
       Do NOT return raw JSON or wrap content in code blocks.
@@ -69,6 +72,14 @@ class APIResponseFormatterSignature(dspy.Signature):
             "Always use this — do not infer language from api_response content."
         )
     )
+    custom_instructions: str = dspy.InputField(
+        desc=(
+            "Optional system-level instructions configured by the organisation "
+            "(e.g. 'Always respond in Estonian', 'Use structured format'). "
+            "Empty string when no custom config is active. "
+            "When non-empty, follow these rules with highest priority."
+        )
+    )
 
     formatted_answer: str = dspy.OutputField(
         desc=(
@@ -95,10 +106,17 @@ _FORMATTER_ERROR_MESSAGES: Dict[str, str] = {
 class APIResponseFormatterModule(dspy.Module):
     """DSPy Module that converts raw API JSON responses into natural-language answers."""
 
-    def __init__(self) -> None:
-        """Initialize formatter with a direct DSPy Predict."""
+    def __init__(self, custom_instructions: str = "") -> None:
+        """Initialize formatter with a direct DSPy Predict.
+
+        Args:
+            custom_instructions: Optional organisation-level prompt rules (e.g. language
+                policy).  Passed verbatim to the DSPy predictor on every call.  Defaults
+                to empty string (no custom config).
+        """
         super().__init__()
         self.formatter = dspy.Predict(APIResponseFormatterSignature)
+        self._custom_instructions = custom_instructions
 
     def forward(
         self,
@@ -131,6 +149,7 @@ class APIResponseFormatterModule(dspy.Module):
                 api_response=normalized,
                 endpoint_description=endpoint_description,
                 response_language=response_language,
+                custom_instructions=self._custom_instructions,
             )
             return result.formatted_answer  # type: ignore[no-any-return]
 
@@ -195,6 +214,7 @@ class APIResponseFormatterModule(dspy.Module):
             if detected_language in _FORMATTER_ERROR_MESSAGES
             else "en"
         )
+        output_stream = None
         try:
             normalized = self._normalize_response(api_response)
             normalized = self._annotate_empty(normalized)
@@ -207,6 +227,7 @@ class APIResponseFormatterModule(dspy.Module):
                 api_response=normalized,
                 endpoint_description=endpoint_description,
                 response_language=response_language,
+                custom_instructions=self._custom_instructions,
             )
 
             stream_started = False
@@ -255,6 +276,12 @@ class APIResponseFormatterModule(dspy.Module):
                 f"APIResponseFormatterModule.stream_forward failed: {e}", exc_info=True
             )
             yield get_localized_message(_FORMATTER_ERROR_MESSAGES, safe_language)
+        finally:
+            if output_stream is not None:
+                try:
+                    await output_stream.aclose()
+                except Exception as cleanup_error:
+                    logger.debug(f"Error during stream cleanup: {cleanup_error}")
 
     # ------------------------------------------------------------------
 

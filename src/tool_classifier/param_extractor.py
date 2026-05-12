@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -14,6 +15,33 @@ _TRUTHY_STRINGS = {"true", "yes", "jah", "1", "on", "õige", "да"}
 _FALSY_STRINGS = {"false", "no", "ei", "0", "off", "vale", "нет"}
 
 _MAX_HISTORY_TURNS = 5
+
+# Regex patterns to strip format hints from parameter descriptions before
+# they are fed to the question-generation prompt. This prevents the LLM
+# from including format instructions (e.g. "YYYY-MM-DD") in its questions.
+_FORMAT_HINT_PATTERNS: List[re.Pattern[str]] = [
+    # Parenthesised format hints: (YYYY-MM-DD), (ISO 8601), (2-letter code), (HH:MM:SS)
+    re.compile(
+        r"\s*\([^)]*(?:YYYY|MM|DD|HH|SS|ISO\s*\d*|letter|format)[^)]*\)",
+        re.IGNORECASE,
+    ),
+    # Trailing phrases: "in format YYYY-MM-DD" or "in the format YYYY-MM-DD"
+    re.compile(r"\s*,?\s*in\s+(?:the\s+)?format\s+\S+", re.IGNORECASE),
+]
+
+
+def _strip_format_hints(description: str) -> str:
+    """Remove format hints from a parameter description.
+
+    Strips patterns such as ``(YYYY-MM-DD)``, ``(ISO 8601)``,
+    ``(2-letter code)``, ``(HH:MM:SS)``, and trailing
+    ``in the format YYYY-MM-DD`` phrases.  The sanitised description is used
+    only for LLM question generation; the original description (with format
+    hints intact) is still used for extraction context.
+    """
+    for pattern in _FORMAT_HINT_PATTERNS:
+        description = pattern.sub("", description)
+    return description.strip()
 
 
 class ParamExtractionResult(TypedDict):
@@ -34,6 +62,9 @@ class ParamExtractionSignature(dspy.Signature):
       short follow-up messages ("I'm not sure", "2026-01-01") are unreliable indicators.
       Always use session_language.
 
+    If custom_instructions is non-empty, follow those rules with HIGHEST PRIORITY —
+    they override defaults (e.g. language policy, tone) for the clarifying_question output.
+
     Extraction rules:
     - Extract values for ALL parameters listed in params_schema that appear in user_message
       or conversation_history, regardless of whether they are already in already_collected
@@ -42,6 +73,12 @@ class ParamExtractionSignature(dspy.Signature):
     - Only skip extraction for a param if the user has NOT mentioned it at all in this turn
     - Validate types: dates must be ISO 8601 (YYYY-MM-DD), integers must be whole numbers,
       numbers must be numeric, booleans must be true or false
+    - SINGLE-VALUE ASSIGNMENT RULE: When the user's message contains exactly ONE value of a
+      given type (e.g. one date) and MULTIPLE required parameters of the same type are still
+      missing (e.g. both startDate and endDate are missing), assign that single value to the
+      FIRST such missing required parameter in the order they appear in params_schema — never
+      to a later one. For example, if startDate appears before endDate in params_schema and
+      both are missing, a lone date like "2026-04-01" must be assigned to startDate, not endDate.
 
     missing_required rules:
     - List every required parameter (required=true in schema) whose value is absent
@@ -59,6 +96,11 @@ class ParamExtractionSignature(dspy.Signature):
     - Use each missing parameter's description field to phrase the question naturally
       (e.g., "Which country and date would you like to use?" not "Provide countryIsoCode and startDate")
     - Never expose raw parameter names (camelCase identifiers) to the user
+    - NEVER include format requirements, expected formats, format examples, or
+      structural hints (such as "YYYY-MM-DD", "ISO 8601", "2-letter code",
+      "in the format...") in the question — only ask WHAT information is needed,
+      not HOW it should be formatted. The system handles format conversion
+      internally from any natural-language input the user provides.
     """
 
     user_message: str = dspy.InputField(
@@ -85,6 +127,14 @@ class ParamExtractionSignature(dspy.Signature):
             "still extract the new value — corrections are allowed."
         )
     )
+    custom_instructions: str = dspy.InputField(
+        desc=(
+            "Optional system-level instructions configured by the organisation "
+            "(e.g. 'Always respond in Estonian', 'Use formal tone'). "
+            "Empty string when no custom config is active. "
+            "When non-empty, follow these rules with highest priority for the clarifying_question."
+        )
+    )
 
     extracted_params: str = dspy.OutputField(
         desc='Valid JSON object of newly extracted parameters only: {"param_name": value}. Empty object {} if nothing new found.'
@@ -93,17 +143,29 @@ class ParamExtractionSignature(dspy.Signature):
         desc='Valid JSON array of required parameter names still missing after extraction: ["param1", "param2"]. Empty array [] if all required params are satisfied.'
     )
     clarifying_question: str = dspy.OutputField(
-        desc='A single natural-language question that asks for ALL missing parameters at once, or the literal string "none" if all required params are collected.'
+        desc=(
+            "A single natural-language question that asks for ALL missing parameters "
+            'at once, or the literal string "none" if all required params are collected. '
+            'Never include format instructions or examples (e.g. "YYYY-MM-DD", '
+            '"ISO 8601", "2-letter code") — only ask what information is needed.'
+        )
     )
 
 
 class ParamExtractionModule(dspy.Module):
     """DSPy Module for API parameter extraction from natural language."""
 
-    def __init__(self) -> None:
-        """Initialize param extraction module with Predict (direct prediction)."""
+    def __init__(self, custom_instructions: str = "") -> None:
+        """Initialize param extraction module with Predict (direct prediction).
+
+        Args:
+            custom_instructions: Optional organisation-level prompt rules (e.g. language
+                policy).  Passed verbatim to the DSPy predictor on every call.  Defaults
+                to empty string (no custom config).
+        """
         super().__init__()
         self.extractor = dspy.Predict(ParamExtractionSignature)
+        self._custom_instructions = custom_instructions
 
     def forward(
         self,
@@ -130,7 +192,13 @@ class ParamExtractionModule(dspy.Module):
         already_collected = already_collected or {}
 
         history_text = self._format_conversation_history(conversation_history)
-        params_schema_json = json.dumps(params_schema, ensure_ascii=False)
+        sanitized_schema = [
+            {**p, "description": _strip_format_hints(p.get("description", ""))}
+            if isinstance(p, dict)
+            else p
+            for p in params_schema
+        ]
+        params_schema_json = json.dumps(sanitized_schema, ensure_ascii=False)
         already_collected_json = json.dumps(already_collected, ensure_ascii=False)
 
         result = None
@@ -141,6 +209,7 @@ class ParamExtractionModule(dspy.Module):
                 session_language=session_language,
                 params_schema=params_schema_json,
                 already_collected=already_collected_json,
+                custom_instructions=self._custom_instructions,
             )
             return self._parse_prediction(result, params_schema, already_collected)
 
@@ -206,9 +275,16 @@ class ParamExtractionModule(dspy.Module):
         already_collected = already_collected or {}
 
         history_text = self._format_conversation_history(conversation_history)
-        params_schema_json = json.dumps(params_schema, ensure_ascii=False)
+        sanitized_schema = [
+            {**p, "description": _strip_format_hints(p.get("description", ""))}
+            if isinstance(p, dict)
+            else p
+            for p in params_schema
+        ]
+        params_schema_json = json.dumps(sanitized_schema, ensure_ascii=False)
         already_collected_json = json.dumps(already_collected, ensure_ascii=False)
 
+        output_stream = None
         try:
             stream_predictor = self._get_stream_predictor()
             output_stream = stream_predictor(
@@ -217,6 +293,7 @@ class ParamExtractionModule(dspy.Module):
                 session_language=session_language,
                 params_schema=params_schema_json,
                 already_collected=already_collected_json,
+                custom_instructions=self._custom_instructions,
             )
 
             tokens: List[str] = []
@@ -272,6 +349,15 @@ class ParamExtractionModule(dspy.Module):
         except Exception as e:
             logger.exception(f"ParamExtractionModule.stream_forward failed: {e}")
             return [], self._safe_defaults(params_schema, already_collected)
+
+        finally:
+            if output_stream is not None:
+                try:
+                    await output_stream.aclose()
+                except Exception as cleanup_error:
+                    logger.debug(
+                        f"Error during param extraction stream cleanup: {cleanup_error}"
+                    )
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -447,6 +533,31 @@ class ParamExtractionModule(dspy.Module):
                     f"(expected {param_type}, got {raw_value!r})"
                 )
                 type_invalid_params.append(param_name)
+
+        # SINGLE-VALUE REASSIGNMENT: if the LLM assigned a value to a later same-type
+        # param while an earlier same-type param is still missing, move the value forward.
+        # This fixes the common case where a lone date like "2026-04-01" is extracted as
+        # endDate when startDate is still missing.
+        combined_after_extraction = {**already_collected, **validated_params}
+        required_schema_order = [
+            p for p in params_schema if isinstance(p, dict) and p.get("required", False)
+        ]
+        for idx, missing_entry in enumerate(required_schema_order):
+            m_name = missing_entry["name"]
+            m_type = missing_entry.get("type", "string")
+            if m_name in combined_after_extraction:
+                continue  # already satisfied
+            # Find the first later param with the same type that was just extracted
+            for later_entry in required_schema_order[idx + 1 :]:
+                l_name = later_entry["name"]
+                l_type = later_entry.get("type", "string")
+                if l_type == m_type and l_name in validated_params:
+                    logger.debug(
+                        f"ParamExtractor: reassigning '{l_name}' → '{m_name}' "
+                        f"(single {m_type} value assigned to wrong param by LLM)"
+                    )
+                    validated_params[m_name] = validated_params.pop(l_name)
+                    break
 
         # Re-derive missing required params after type validation.
         # validated_params (current turn) takes precedence over already_collected

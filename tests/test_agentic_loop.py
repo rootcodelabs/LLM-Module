@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tool_classifier.agentic_loop import AgenticLoop
-from tool_classifier.enums import AgenticLoopStatus
-from tool_classifier.param_extractor import ParamExtractionResult
+from src.tool_classifier.agentic_loop import AgenticLoop
+from src.tool_classifier.enums import AgenticLoopStatus
+from src.tool_classifier.param_extractor import ParamExtractionResult
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +290,8 @@ class TestParamMerging:
         }
 
     @pytest.mark.asyncio
-    async def test_prior_params_not_overwritten_by_extractor(self) -> None:
-        # Extractor tries to update countryIsoCode, but prior value is authoritative
+    async def test_newly_extracted_param_overrides_prior_value(self) -> None:
+        # Extractor returns a corrected countryIsoCode; new value should win
         extractor_mock = _make_extractor_mock(
             _extraction({"countryIsoCode": "LV"}, [], "none")
         )
@@ -306,8 +306,8 @@ class TestParamMerging:
             turn_count=2,
         )
 
-        # Prior "EE" must not be overwritten by newly "extracted" "LV"
-        assert result.collected_params["countryIsoCode"] == "EE"
+        # Newly extracted "LV" overrides the prior "EE" so the user can correct mistakes
+        assert result.collected_params["countryIsoCode"] == "LV"
         assert result.status == AgenticLoopStatus.COMPLETED
 
     @pytest.mark.asyncio
@@ -539,6 +539,7 @@ class TestErrorHandling:
             _SCHEMA_TWO_REQUIRED,
             _HISTORY,
             {"validFrom": "2026-01-01"},
+            "en",
         )
 
 
@@ -779,3 +780,186 @@ class TestContinuationDecision:
         )
 
         store_mock.update.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# stream_run_turn — streaming path
+# ---------------------------------------------------------------------------
+
+
+def _make_stream_extractor_mock(
+    tokens: List[str],
+    result: ParamExtractionResult,
+) -> MagicMock:
+    """Return a MagicMock whose stream_forward() coroutine returns (tokens, result)."""
+    mock = MagicMock()
+    mock.stream_forward = AsyncMock(return_value=(tokens, result))
+    return mock
+
+
+class TestStreamRunTurn:
+    """stream_run_turn() must mirror run_turn() semantics while returning streamed tokens."""
+
+    @pytest.mark.asyncio
+    async def test_completed_returns_empty_tokens(self) -> None:
+        """All params collected → COMPLETED result with no question tokens."""
+        extractor_mock = _make_stream_extractor_mock(
+            [],
+            _extraction(
+                {"countryIsoCode": "EE", "validFrom": "2026-01-01"}, [], "none"
+            ),
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="Estonia, January 2026",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={},
+            turn_count=0,
+        )
+
+        assert result.status == AgenticLoopStatus.COMPLETED
+        assert tokens == []
+        assert result.collected_params == {
+            "countryIsoCode": "EE",
+            "validFrom": "2026-01-01",
+        }
+
+    @pytest.mark.asyncio
+    async def test_needs_input_returns_question_tokens(self) -> None:
+        """Missing params → NEEDS_INPUT result with streamed question tokens."""
+        extractor_mock = _make_stream_extractor_mock(
+            ["Which", " country", "?"],
+            _extraction(
+                {"validFrom": "2026-01-01"}, ["countryIsoCode"], "Which country?"
+            ),
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="January 2026",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={},
+            turn_count=0,
+        )
+
+        assert result.status == AgenticLoopStatus.NEEDS_INPUT
+        assert tokens == ["Which", " country", "?"]
+        assert result.clarifying_question == "Which country?"
+
+    @pytest.mark.asyncio
+    async def test_re_extracted_param_overrides_prior_value(self) -> None:
+        """Re-extracted value overwrites the previously collected one (correction allowed)."""
+        extractor_mock = _make_stream_extractor_mock(
+            [],
+            _extraction({"countryIsoCode": "LV"}, [], "none"),
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="Latvia",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={"countryIsoCode": "EE", "validFrom": "2026-01-01"},
+            turn_count=1,
+        )
+
+        assert result.status == AgenticLoopStatus.COMPLETED
+        assert result.collected_params["countryIsoCode"] == "LV"
+        assert tokens == []
+
+    @pytest.mark.asyncio
+    async def test_max_turns_reached_returns_empty_tokens(self) -> None:
+        """Turn limit guard returns MAX_TURNS_REACHED with empty token list."""
+        extractor_mock = _make_stream_extractor_mock(
+            ["Some", " question"],
+            _extraction({}, ["countryIsoCode"], "Which country?"),
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="Estonia",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={},
+            turn_count=5,
+            max_turns=5,
+        )
+
+        assert result.status == AgenticLoopStatus.MAX_TURNS_REACHED
+        assert tokens == []
+
+    @pytest.mark.asyncio
+    async def test_stream_extraction_exception_returns_safe_defaults(self) -> None:
+        """An exception from stream_forward must return NEEDS_INPUT with empty tokens."""
+        extractor_mock = MagicMock()
+        extractor_mock.stream_forward = AsyncMock(
+            side_effect=RuntimeError("stream failure")
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="hello",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={},
+            turn_count=0,
+        )
+
+        assert result.status == AgenticLoopStatus.NEEDS_INPUT
+        assert tokens == []
+        assert result.collected_params == {}
+
+    @pytest.mark.asyncio
+    async def test_session_language_forwarded_to_stream_forward(self) -> None:
+        """session_language must be passed through to stream_forward."""
+        extractor_mock = _make_stream_extractor_mock(
+            ["Millist", " riiki?"],
+            _extraction({}, ["countryIsoCode"], "Millist riiki?"),
+        )
+        loop = _make_loop(extractor_mock)
+
+        await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="Mis riik?",
+            conversation_history=_HISTORY,
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={},
+            turn_count=0,
+            session_language="et",
+        )
+
+        extractor_mock.stream_forward.assert_awaited_once()
+        call_kwargs = extractor_mock.stream_forward.call_args.kwargs
+        assert call_kwargs["session_language"] == "et"
+
+    @pytest.mark.asyncio
+    async def test_user_exit_during_stream_returns_empty_tokens(self) -> None:
+        """When awaiting_continuation and user says 'no', return MAX_TURNS_REACHED + []."""
+        extractor_mock = _make_stream_extractor_mock(
+            ["Which", " country?"],
+            _extraction({}, ["countryIsoCode"], "Which country?"),
+        )
+        loop = _make_loop(extractor_mock)
+
+        result, tokens = await loop.stream_run_turn(
+            chat_id=_CHAT_ID,
+            user_message="no",
+            conversation_history=[],
+            params_schema=_SCHEMA_TWO_REQUIRED,
+            collected_params={"validFrom": "2026-01-01"},
+            turn_count=3,
+            awaiting_continuation=True,
+        )
+
+        assert result.status == AgenticLoopStatus.MAX_TURNS_REACHED
+        assert tokens == []
+        # Collected params returned unchanged on exit
+        assert result.collected_params == {"validFrom": "2026-01-01"}
