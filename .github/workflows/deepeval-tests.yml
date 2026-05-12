@@ -3,7 +3,7 @@ name: DeepEval RAG System Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: ["deepeval-test"]
+    branches: ["llm-434-deepeval-debug"]
     paths:
       - 'src/**'
       - 'tests/**'
