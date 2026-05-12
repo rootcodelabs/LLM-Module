@@ -787,7 +787,7 @@ def rag_stack() -> Generator[RAGStackTestContainers, None, None]:
 @pytest.fixture(scope="function")
 def orchestration_client(rag_stack: RAGStackTestContainers):
     """
-    Function-scoped fixture that provides the orchestration service URL.
+    function-scoped fixture that provides the orchestration service URL.
     Tests can use either requests (sync) or httpx (async).
     """
 

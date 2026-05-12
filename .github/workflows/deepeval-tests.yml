@@ -24,7 +24,7 @@ jobs:
       - name: Validate required secrets
         id: validate_secrets
         run: |
-          echo "Validating required environment variables..."
+          echo "validating required environment variables..."
           MISSING_SECRETS=()
           
           # Check Azure OpenAI secrets
