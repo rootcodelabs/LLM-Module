@@ -128,7 +128,7 @@ class RAGStackTestContainers:
     """Manages test containers for RAG stack including Vault, Qdrant, Langfuse, and LLM orchestration service"""
 
     def __init__(self, compose_file_name: str = "docker-compose-eval.yml"):
-        self.project_root = Path(__file__).parent.parent
+        self.project_root = Path(__file__).parent.parent.parent
         self.compose_file_path = self.project_root / compose_file_name
         self.compose: Optional[DockerCompose] = None
         self.services_info: Dict[str, Dict[str, Any]] = {}
