@@ -62,6 +62,18 @@ jobs:
             MISSING_SECRETS+=("AZURE_STORAGE_BLOB_NAME")
           fi
 
+          if [ -z "${{ secrets.NEXTAUTH_SECRET }}" ]; then
+            MISSING_SECRETS+=("NEXTAUTH_SECRET")
+          fi
+
+          if [ -z "${{ secrets.ENCRYPTION_KEY }}" ]; then
+            MISSING_SECRETS+=("ENCRYPTION_KEY")
+          fi
+
+          if [ -z "${{ secrets.SALT }}" ]; then
+            MISSING_SECRETS+=("SALT")
+          fi
+
 
           # If any secrets are missing, fail
           if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
@@ -192,6 +204,10 @@ jobs:
           AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
           AZURE_STORAGE_BLOB_NAME: ${{ secrets.AZURE_STORAGE_BLOB_NAME }}
           EVAL_MODE: "true"
+          # Langfuse auth secrets (required by docker-compose-eval.yml)
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          SALT: ${{ secrets.SALT }}
         run: |
           # Run tests sequentially (one at a time) to avoid rate limiting
           uv run python -m pytest tests/deepeval_tests/standard_tests.py -v --tb=short --log-cli-level=INFO -n 0
