@@ -35,9 +35,12 @@ def _strip_format_hints(description: str) -> str:
 
     Strips patterns such as ``(YYYY-MM-DD)``, ``(ISO 8601)``,
     ``(2-letter code)``, ``(HH:MM:SS)``, and trailing
-    ``in the format YYYY-MM-DD`` phrases.  The sanitised description is used
-    only for LLM question generation; the original description (with format
-    hints intact) is still used for extraction context.
+    ``in the format YYYY-MM-DD`` phrases before the schema is passed to the
+    LLM for both extraction and question generation.  This prevents format
+    instructions from leaking into clarifying questions (e.g. "What date?
+    (YYYY-MM-DD)").  Type coercion is handled independently by
+    :meth:`~ParamExtractionModule._validate_param_type`, so the format hints
+    are not needed by the extractor.
     """
     for pattern in _FORMAT_HINT_PATTERNS:
         description = pattern.sub("", description)
@@ -533,31 +536,6 @@ class ParamExtractionModule(dspy.Module):
                     f"(expected {param_type}, got {raw_value!r})"
                 )
                 type_invalid_params.append(param_name)
-
-        # SINGLE-VALUE REASSIGNMENT: if the LLM assigned a value to a later same-type
-        # param while an earlier same-type param is still missing, move the value forward.
-        # This fixes the common case where a lone date like "2026-04-01" is extracted as
-        # endDate when startDate is still missing.
-        combined_after_extraction = {**already_collected, **validated_params}
-        required_schema_order = [
-            p for p in params_schema if isinstance(p, dict) and p.get("required", False)
-        ]
-        for idx, missing_entry in enumerate(required_schema_order):
-            m_name = missing_entry["name"]
-            m_type = missing_entry.get("type", "string")
-            if m_name in combined_after_extraction:
-                continue  # already satisfied
-            # Find the first later param with the same type that was just extracted
-            for later_entry in required_schema_order[idx + 1 :]:
-                l_name = later_entry["name"]
-                l_type = later_entry.get("type", "string")
-                if l_type == m_type and l_name in validated_params:
-                    logger.debug(
-                        f"ParamExtractor: reassigning '{l_name}' → '{m_name}' "
-                        f"(single {m_type} value assigned to wrong param by LLM)"
-                    )
-                    validated_params[m_name] = validated_params.pop(l_name)
-                    break
 
         # Re-derive missing required params after type validation.
         # validated_params (current turn) takes precedence over already_collected
