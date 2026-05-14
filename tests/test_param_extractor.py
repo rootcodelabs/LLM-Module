@@ -5,9 +5,13 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import dspy
+import dspy.streaming
 import pytest
 
-from src.tool_classifier.param_extractor import ParamExtractionModule
+from src.tool_classifier.param_extractor import (
+    ParamExtractionModule,
+    _strip_format_hints,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -136,16 +140,16 @@ class TestParamExtraction:
         assert result["extracted_params"].get("date") == "2026-04-03"
         assert result["missing_required"] == []
 
-    def test_llm_reoutput_of_collected_param_is_dropped(self) -> None:
-        """When the LLM re-outputs a param that is already in already_collected, it must
-        be silently dropped — the previously collected value must not be overridden."""
+    def test_llm_reoutput_of_collected_param_overrides_prior_value(self) -> None:
+        """When the LLM re-extracts a param already in already_collected, the new value
+        overrides the old one — corrections from the user are intentionally allowed."""
         schema = _make_schema(
             ("city", "string", True, "City name"),
             ("date", "date", True, "Date of query"),
         )
         module = ParamExtractionModule()
 
-        # LLM incorrectly re-extracts 'city' (with a different value) alongside 'date'
+        # LLM re-extracts 'city' with a corrected value alongside 'date'
         mock_result = _make_mock_result(
             {"city": "Tartu", "date": "2026-04-09"}, [], "none"
         )
@@ -156,9 +160,9 @@ class TestParamExtraction:
                 already_collected={"city": "Tallinn"},
             )
 
-        # 'city' must not appear in extracted_params — prior turn is authoritative
-        assert "city" not in result["extracted_params"]
-        # The new param 'date' extracted in this turn should still be present
+        # 'city' override IS present in extracted_params (correction allowed)
+        assert result["extracted_params"].get("city") == "Tartu"
+        # The new param 'date' extracted in this turn should also be present
         assert result["extracted_params"].get("date") == "2026-04-09"
         assert result["missing_required"] == []
 
@@ -687,3 +691,371 @@ class TestConversationHistoryFormatting:
         result = module._format_conversation_history(history)
         assert "assistant" not in result
         assert result == "user: Hello\nuser: Continue"
+
+
+# ---------------------------------------------------------------------------
+# Custom instructions
+# ---------------------------------------------------------------------------
+
+
+class TestCustomInstructions:
+    """Custom instructions should be forwarded to the DSPy predictor unchanged."""
+
+    def _make_schema(self) -> list[dict]:
+        return _make_schema(("city", "string", True, "City name"))
+
+    def test_custom_instructions_passed_to_predictor(self) -> None:
+        """When custom_instructions is set on the module, it must be sent to the LLM."""
+        schema = self._make_schema()
+        module = ParamExtractionModule(custom_instructions="Use formal Estonian.")
+
+        mock_result = _make_mock_result({"city": "Tallinn"}, [], "none")
+        with patch.object(
+            module, "extractor", return_value=mock_result
+        ) as mock_extractor:
+            module.forward(user_message="Tallinn", params_schema=schema)
+
+        call_kwargs = mock_extractor.call_args.kwargs
+        assert call_kwargs["custom_instructions"] == "Use formal Estonian."
+
+    def test_empty_custom_instructions_passed_by_default(self) -> None:
+        """When no custom_instructions provided, the predictor receives an empty string."""
+        schema = self._make_schema()
+        module = ParamExtractionModule()
+
+        mock_result = _make_mock_result({"city": "Tallinn"}, [], "none")
+        with patch.object(
+            module, "extractor", return_value=mock_result
+        ) as mock_extractor:
+            module.forward(user_message="Tallinn", params_schema=schema)
+
+        call_kwargs = mock_extractor.call_args.kwargs
+        assert call_kwargs["custom_instructions"] == ""
+
+    def test_custom_instructions_stored_on_instance(self) -> None:
+        """The custom_instructions value passed to __init__ must be stored."""
+        instructions = "Always reply in Russian."
+        module = ParamExtractionModule(custom_instructions=instructions)
+        assert module._custom_instructions == instructions
+
+    def test_default_custom_instructions_is_empty_string(self) -> None:
+        """Modules initialised without custom_instructions must default to empty string."""
+        module = ParamExtractionModule()
+        assert module._custom_instructions == ""
+
+
+# ---------------------------------------------------------------------------
+# _strip_format_hints helper
+# ---------------------------------------------------------------------------
+
+
+class TestStripFormatHints:
+    """_strip_format_hints() should remove format hints from descriptions."""
+
+    @pytest.mark.parametrize(
+        "description, expected",
+        [
+            # Parenthesised YYYY-MM-DD pattern
+            ("Start date (YYYY-MM-DD)", "Start date"),
+            # Parenthesised ISO 8601
+            ("End date (ISO 8601)", "End date"),
+            # Parenthesised 2-letter code
+            ("Country code (2-letter code)", "Country code"),
+            # Parenthesised HH:MM:SS
+            ("Time of day (HH:MM:SS)", "Time of day"),
+            # Trailing "in the format X"
+            ("Date in the format YYYY-MM-DD", "Date"),
+            # Trailing "in format X"
+            ("Date in format YYYY-MM-DD", "Date"),
+            # No format hints — unchanged
+            ("City name", "City name"),
+            # Empty string — unchanged
+            ("", ""),
+            # Mixed: parenthesised hint plus trailing comma residue
+            ("Start date (YYYY-MM-DD)", "Start date"),
+        ],
+    )
+    def test_strips_known_patterns(self, description: str, expected: str) -> None:
+        assert _strip_format_hints(description) == expected
+
+    def test_preserves_unrelated_parentheses(self) -> None:
+        """Parentheses that don't contain format-like keywords are kept."""
+        desc = "City name (required)"
+        # "required" does not match the keyword list, so it should be preserved
+        result = _strip_format_hints(desc)
+        assert "required" in result
+
+    def test_idempotent(self) -> None:
+        """Calling twice produces the same result."""
+        desc = "Start date (YYYY-MM-DD)"
+        assert _strip_format_hints(_strip_format_hints(desc)) == _strip_format_hints(
+            desc
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sanitized schema in forward()
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizedSchemaInForward:
+    """forward() must strip format hints from descriptions before passing to the LLM."""
+
+    def test_format_hints_stripped_from_params_schema_json(self) -> None:
+        """The JSON sent to the predictor must not contain YYYY-MM-DD in descriptions."""
+        schema = _make_schema(
+            ("startDate", "date", True, "Start date (YYYY-MM-DD)"),
+            ("country", "string", True, "Country ISO code (2-letter code)"),
+        )
+        module = ParamExtractionModule()
+
+        mock_result = _make_mock_result(
+            {}, ["startDate", "country"], "Which dates and country?"
+        )
+        with patch.object(
+            module, "extractor", return_value=mock_result
+        ) as mock_extractor:
+            module.forward(user_message="Hello", params_schema=schema)
+
+        call_kwargs = mock_extractor.call_args.kwargs
+        params_json = call_kwargs["params_schema"]
+        assert "YYYY-MM-DD" not in params_json
+        assert "2-letter code" not in params_json
+        # Parameter names must still be present
+        assert "startDate" in params_json
+        assert "country" in params_json
+
+    def test_clarifying_question_does_not_contain_format_hints(self) -> None:
+        """End-to-end: even if LLM echoes a hint, result is whatever the LLM returns —
+        but the schema fed to the LLM no longer contains the hint text."""
+        schema = _make_schema(
+            ("startDate", "date", True, "Start date (YYYY-MM-DD)"),
+        )
+        module = ParamExtractionModule()
+
+        # LLM returns a clean question (as expected when no hint is in the schema)
+        mock_result = _make_mock_result(
+            {},
+            ["startDate"],
+            "For which date would you like the information?",
+        )
+        with patch.object(module, "extractor", return_value=mock_result):
+            result = module.forward(user_message="Hello", params_schema=schema)
+
+        assert "YYYY-MM-DD" not in result["clarifying_question"]
+
+
+# ---------------------------------------------------------------------------
+# stream_forward
+# ---------------------------------------------------------------------------
+
+
+class TestStreamForward:
+    """stream_forward() should mirror forward() via the streaming predictor."""
+
+    def _make_stream_predictor(
+        self,
+        stream_tokens: list,
+        prediction: dspy.Prediction,
+        capture_kwargs: dict | None = None,
+    ):
+        """Return a callable that yields StreamResponse tokens then a Prediction."""
+
+        async def _stream(**kwargs):
+            if capture_kwargs is not None:
+                capture_kwargs.update(kwargs)
+            for token in stream_tokens:
+                yield dspy.streaming.StreamResponse(
+                    chunk=token,
+                    signature_field_name="clarifying_question",
+                    predict_name="extractor",
+                    is_last_chunk=False,
+                )
+            yield prediction
+
+        return _stream
+
+    def _make_prediction(
+        self,
+        extracted_params: dict,
+        missing_required: list,
+        clarifying_question: str,
+    ) -> dspy.Prediction:
+        return dspy.Prediction(
+            extracted_params=json.dumps(extracted_params),
+            missing_required=json.dumps(missing_required),
+            clarifying_question=clarifying_question,
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_returns_result_when_all_params_satisfied(
+        self,
+    ) -> None:
+        """stream_forward() returns parsed result and empty tokens when no question needed."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        prediction = self._make_prediction({"city": "Tallinn"}, [], "none")
+        stream_predictor = self._make_stream_predictor([], prediction)
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            tokens, result = await module.stream_forward(
+                user_message="Tallinn", params_schema=schema
+            )
+
+        assert tokens == []
+        assert result["extracted_params"] == {"city": "Tallinn"}
+        assert result["missing_required"] == []
+        assert result["clarifying_question"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_collects_tokens_for_clarifying_question(self) -> None:
+        """Token strings from StreamResponse chunks are collected and returned."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        prediction = self._make_prediction({}, ["city"], "Which city?")
+        stream_predictor = self._make_stream_predictor(
+            ["Which", " city", "?"], prediction
+        )
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            tokens, result = await module.stream_forward(
+                user_message="Give me the weather", params_schema=schema
+            )
+
+        assert tokens == ["Which", " city", "?"]
+        assert result["missing_required"] == ["city"]
+        assert result["clarifying_question"] != "none"
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_tokens_cleared_when_question_is_none(self) -> None:
+        """Token list is empty even if tokens streamed when the final question is 'none'."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        prediction = self._make_prediction({"city": "Pärnu"}, [], "none")
+        stream_predictor = self._make_stream_predictor(
+            ["Which", " city", "?"], prediction
+        )
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            tokens, result = await module.stream_forward(
+                user_message="Pärnu", params_schema=schema
+            )
+
+        assert tokens == []
+        assert result["clarifying_question"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_passes_custom_instructions_to_predictor(self) -> None:
+        """custom_instructions on the module must reach the streaming predictor call."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule(custom_instructions="Always reply in Estonian.")
+
+        prediction = self._make_prediction({"city": "Tartu"}, [], "none")
+        captured_kwargs: dict = {}
+        stream_predictor = self._make_stream_predictor([], prediction, captured_kwargs)
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            await module.stream_forward(user_message="Tartu", params_schema=schema)
+
+        assert captured_kwargs.get("custom_instructions") == "Always reply in Estonian."
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_empty_custom_instructions_by_default(self) -> None:
+        """When no custom_instructions set, empty string reaches the streaming predictor."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        prediction = self._make_prediction({"city": "Narva"}, [], "none")
+        captured_kwargs: dict = {}
+        stream_predictor = self._make_stream_predictor([], prediction, captured_kwargs)
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            await module.stream_forward(user_message="Narva", params_schema=schema)
+
+        assert captured_kwargs.get("custom_instructions") == ""
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_fallback_when_no_prediction_received(self) -> None:
+        """If the stream ends with no Prediction object, forward() fallback is used."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        async def _stream_no_prediction(**kwargs):
+            yield dspy.streaming.StreamResponse(
+                chunk="Which city?",
+                signature_field_name="clarifying_question",
+                predict_name="extractor",
+                is_last_chunk=True,
+            )
+
+        fallback_result = {
+            "extracted_params": {},
+            "missing_required": ["city"],
+            "clarifying_question": "Which city?",
+        }
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=_stream_no_prediction
+        ):
+            with patch.object(module, "forward", return_value=fallback_result):
+                tokens, result = await module.stream_forward(
+                    user_message="Hello", params_schema=schema
+                )
+
+        assert result["missing_required"] == ["city"]
+        assert tokens == ["Which city?"]
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_exception_returns_safe_defaults(self) -> None:
+        """An exception raised by the stream predictor returns safe defaults."""
+        schema = _make_schema(("city", "string", True, "City name"))
+        module = ParamExtractionModule()
+
+        def _raise(**kwargs):
+            raise RuntimeError("Stream failure")
+
+        with patch.object(module, "_get_stream_predictor", return_value=_raise):
+            tokens, result = await module.stream_forward(
+                user_message="Hello", params_schema=schema
+            )
+
+        assert tokens == []
+        assert result["extracted_params"] == {}
+        assert "city" in result["missing_required"]
+
+    @pytest.mark.asyncio
+    async def test_stream_forward_session_language_forwarded(self) -> None:
+        """session_language passed to stream_forward must reach the predictor."""
+        schema = _make_schema(("city", "string", True, "Linn"))
+        module = ParamExtractionModule()
+
+        prediction = self._make_prediction({}, ["city"], "Millist linna soovite?")
+        captured_kwargs: dict = {}
+        stream_predictor = self._make_stream_predictor(
+            ["Millist linna soovite?"], prediction, captured_kwargs
+        )
+
+        with patch.object(
+            module, "_get_stream_predictor", return_value=stream_predictor
+        ):
+            tokens, result = await module.stream_forward(
+                user_message="Mis on ilm?",
+                params_schema=schema,
+                session_language="et",
+            )
+
+        assert captured_kwargs.get("session_language") == "et"
+        assert tokens == ["Millist linna soovite?"]

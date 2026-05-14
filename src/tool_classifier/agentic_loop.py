@@ -1,7 +1,7 @@
 """Standalone agentic loop for multi-turn parameter collection."""
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
@@ -106,6 +106,7 @@ class AgenticLoop:
         awaiting_continuation: bool = False,
         continuation_turn: int = CONTINUATION_TURN,
         session_language: str = "en",
+        continuation_language: Optional[str] = None,
     ) -> AgenticLoopResult:
         """Process one user turn of the parameter-collection loop.
 
@@ -279,8 +280,9 @@ class AgenticLoop:
                 turn_count,
                 chat_id,
             )
+            effective_continuation_lang = continuation_language or session_language
             continuation_q = _CONTINUATION_QUESTIONS.get(
-                session_language, CONTINUATION_QUESTION
+                effective_continuation_lang, CONTINUATION_QUESTION
             )
             await self._save_session(
                 chat_id, merged_params, updated_turn_count, awaiting_continuation=True
@@ -314,6 +316,7 @@ class AgenticLoop:
         awaiting_continuation: bool = False,
         continuation_turn: int = CONTINUATION_TURN,
         session_language: str = "en",
+        continuation_language: Optional[str] = None,
     ) -> tuple[AgenticLoopResult, List[str]]:
         """Process one user turn like :meth:`run_turn` but stream clarifying_question tokens.
 
@@ -454,8 +457,9 @@ class AgenticLoop:
                 turn_count,
                 chat_id,
             )
+            effective_continuation_lang = continuation_language or session_language
             continuation_q = _CONTINUATION_QUESTIONS.get(
-                session_language, CONTINUATION_QUESTION
+                effective_continuation_lang, CONTINUATION_QUESTION
             )
             await self._save_session(
                 chat_id, merged_params, updated_turn_count, awaiting_continuation=True
