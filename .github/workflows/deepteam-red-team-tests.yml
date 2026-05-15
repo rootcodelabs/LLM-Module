@@ -3,7 +3,7 @@ name: DeepTeam Red Team Security Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: ["llm-434-deepeval-debug"]
+    branches: ["wip"]
     paths:
       - 'src/**'
       - 'tests/**'
