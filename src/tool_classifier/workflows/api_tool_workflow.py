@@ -77,6 +77,7 @@ class _LoopStep:
     user_query: str = ""
     question: str = ""
     question_tokens: List[str] = field(default_factory=list)
+    custom_instructions: str = ""
 
 
 class APIToolWorkflowExecutor(BaseWorkflow):
@@ -105,7 +106,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
     ) -> None:
         self.orchestration_service = orchestration_service
         self._api_caller = APICaller()
-        self._formatter = APIResponseFormatterModule()
+        self._prompt_config_loader = (
+            getattr(orchestration_service, "prompt_config_loader", None)
+            if orchestration_service is not None
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -135,12 +140,73 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             return safe_init(environment, connection_id)
         return None
 
-    def _build_agentic_loop(self, session_store: APIToolSessionStore) -> AgenticLoop:
+    async def _get_custom_instructions(self) -> str:
+        """Fetch custom prompt instructions from the loader, or return empty string.
+
+        Mirrors LLMOrchestrationService._get_custom_instructions_for_response_generation.
+        The PromptConfigurationLoader has a 5-minute TTL cache, so this is cheap.
+        Returns empty string on any failure so existing behaviour is preserved.
+
+        Runs the synchronous requests call in a thread pool via asyncio.to_thread so
+        that a cache miss or slow Ruuter response never blocks the event loop.
+        """
+        if self._prompt_config_loader is None:
+            return ""
+        try:
+            custom_prompt = await asyncio.to_thread(
+                self._prompt_config_loader.get_custom_instructions
+            )
+            return custom_prompt if custom_prompt else ""
+        except Exception as e:
+            logger.error(f"APIToolWorkflow: failed to fetch custom instructions: {e}")
+            return ""
+
+    def _build_agentic_loop(
+        self, session_store: Any, custom_instructions: str = ""
+    ) -> AgenticLoop:
         """Construct a fresh AgenticLoop for one request."""
         return AgenticLoop(
             session_store=session_store,
-            param_extractor=ParamExtractionModule(),
+            param_extractor=ParamExtractionModule(
+                custom_instructions=custom_instructions
+            ),
         )
+
+    @staticmethod
+    def _language_from_custom_instructions(custom_instructions: str) -> Optional[str]:
+        """Detect the directed response language from custom instructions.
+
+        Returns the ISO language code (``'en'``, ``'et'``, or ``'ru'``) when the
+        instructions contain a recognisable language directive, or ``None`` when no
+        directive is found.
+
+        English is checked first so that a prompt written in Estonian that says
+        "respond in English" (or the Estonian equivalent ``"inglise keeles"``) is
+        correctly identified as directing English responses.  This ensures that both
+        the hardcoded continuation question and the LLM-generated clarifying questions
+        use the same directed response language.
+
+        ``'inglise'`` (Estonian for "English") and ``'английск'`` (Russian stem for
+        "English") are recognised so prompts written entirely in those languages work.
+
+        Args:
+            custom_instructions: The raw custom instructions string from the
+                ``PromptConfigurationLoader``.
+
+        Returns:
+            ``'en'``, ``'et'``, ``'ru'``, or ``None``.
+        """
+        if not custom_instructions:
+            return None
+        lower = custom_instructions.lower()
+        # "inglise" = Estonian for "English"; "английск" covers "английский/английском"
+        if "english" in lower or "inglise" in lower or "английск" in lower:
+            return "en"
+        if "estonian" in lower or "eesti" in lower:
+            return "et"
+        if "russian" in lower or "vene" in lower or "русск" in lower:
+            return "ru"
+        return None
 
     @staticmethod
     def _required_params(params: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -153,6 +219,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         collected_params: Dict[str, Any],
         user_query: str,
         detected_language: str,
+        custom_instructions: str = "",
     ) -> OrchestrationResponse:
         """Call the external API with collected params and return a formatted response.
 
@@ -181,8 +248,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"[{chat_id}] APIToolWorkflow: API call succeeded "
                 f"(status={api_result.status_code})"
             )
+            formatter = APIResponseFormatterModule(
+                custom_instructions=custom_instructions
+            )
             content = await asyncio.to_thread(
-                self._formatter.forward,
+                formatter.forward,
                 user_query=user_query,
                 api_response=api_result.response_data,
                 endpoint_description=description,
@@ -240,6 +310,8 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         if session_store is not None:
             session = await session_store.get(chat_id)
 
+        custom_instructions = await self._get_custom_instructions()
+
         if session is not None:
             # Resume path — endpoint comes from persisted session
             endpoint = session.selected_endpoint
@@ -280,6 +352,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     collected_params={},
                     detected_language=getattr(request, "_detected_language", "en"),
                     user_query=request.message,
+                    custom_instructions=custom_instructions,
                 )
 
             # Create a new session before running the first loop turn
@@ -321,7 +394,16 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"agentic loop running without persistence"
             )
 
-        loop = self._build_agentic_loop(session_store)  # type: ignore[arg-type]
+        loop = self._build_agentic_loop(session_store, custom_instructions)  # type: ignore[arg-type]
+
+        # If custom_instructions contain a language directive (e.g. "respond in English"
+        # inside an Estonian-language prompt), use that directed language for all
+        # user-facing questions — both the LLM-generated clarifying questions and the
+        # hardcoded continuation question.  Falls back to the session-detected language.
+        effective_session_language = (
+            self._language_from_custom_instructions(custom_instructions)
+            or session.detected_language
+        )
 
         result, question_tokens = await loop.stream_run_turn(
             chat_id=chat_id,
@@ -339,7 +421,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             turn_count=session.turn_count,
             max_turns=session.max_turns,
             awaiting_continuation=session.awaiting_continuation,
-            session_language=session.detected_language,
+            session_language=effective_session_language,
         )
 
         # ── Translate result into a _LoopStep ─────────────────────────────
@@ -355,8 +437,9 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 chat_id=chat_id,
                 endpoint=endpoint,
                 collected_params=result.collected_params,
-                detected_language=session.detected_language,
+                detected_language=effective_session_language,
                 user_query=session.original_query or request.message,
+                custom_instructions=custom_instructions,
             )
 
         if result.status == AgenticLoopStatus.MAX_TURNS_REACHED:
@@ -377,6 +460,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             chat_id=chat_id,
             question=result.clarifying_question,
             question_tokens=question_tokens,
+            custom_instructions=custom_instructions,
         )
 
     async def _run(
@@ -400,6 +484,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             collected_params=step.collected_params,
             user_query=step.user_query,
             detected_language=step.detected_language,
+            custom_instructions=step.custom_instructions,
         )
 
         # Output guardrails — only on successful LLM-formatted answers
@@ -441,6 +526,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         orchestration_service: OrchestrationServiceProtocol,
         request: OrchestrationRequest,
         costs_metric: Optional[Dict[str, Any]] = None,
+        custom_instructions: str = "",
     ) -> AsyncIterator[str]:
         """Call the external API and stream the formatted response token by token.
 
@@ -470,9 +556,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             )
             # Buffer all tokens first, then validate with output guardrails before
             # streaming to the client (validate-first approach).
+            formatter = APIResponseFormatterModule(
+                custom_instructions=custom_instructions
+            )
             buffered_tokens = [
                 token
-                async for token in self._formatter.stream_forward(
+                async for token in formatter.stream_forward(
                     user_query=user_query,
                     api_response=api_result.response_data,
                     endpoint_description=description,
@@ -570,4 +659,5 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             orchestration_service=orchestration_service,
             request=request,
             costs_metric=context.get("costs_metric"),
+            custom_instructions=step.custom_instructions,
         )
