@@ -537,6 +537,31 @@ class ParamExtractionModule(dspy.Module):
                 )
                 type_invalid_params.append(param_name)
 
+        # SINGLE-VALUE REASSIGNMENT: if the LLM assigned a value to a later same-type
+        # param while an earlier same-type param is still missing, move the value forward.
+        # This fixes the common case where a lone date like "2026-04-01" is extracted as
+        # endDate when startDate is still missing.
+        combined_after_extraction = {**already_collected, **validated_params}
+        required_schema_order = [
+            p for p in params_schema if isinstance(p, dict) and p.get("required", False)
+        ]
+        for idx, missing_entry in enumerate(required_schema_order):
+            m_name = missing_entry["name"]
+            m_type = missing_entry.get("type", "string")
+            if m_name in combined_after_extraction:
+                continue  # already satisfied
+            # Find the first later param with the same type that was just extracted
+            for later_entry in required_schema_order[idx + 1 :]:
+                l_name = later_entry["name"]
+                l_type = later_entry.get("type", "string")
+                if l_type == m_type and l_name in validated_params:
+                    logger.debug(
+                        f"ParamExtractor: reassigning '{l_name}' → '{m_name}' "
+                        f"(single {m_type} value assigned to wrong param by LLM)"
+                    )
+                    validated_params[m_name] = validated_params.pop(l_name)
+                    break
+
         # Re-derive missing required params after type validation.
         # validated_params (current turn) takes precedence over already_collected
         # so that explicit user corrections override prior values.
