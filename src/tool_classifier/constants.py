@@ -130,6 +130,11 @@ Above this AND score gap is large → route to API Tool Calling without further 
 API_TOOL_SCORE_GAP_THRESHOLD = 0.05
 """Cosine score gap (top - second) for high-confidence API tool classification."""
 
+API_TOOL_INTENT_SWITCH_THRESHOLD = 0.50
+"""Minimum cosine required to abandon an active session and switch intent.
+Higher than API_TOOL_MIN_THRESHOLD (0.40).
+Only a clear, unambiguous new query (cosine >= 0.50) should override a session."""
+
 
 # ============================================================================
 # Agentic Loop — Continuation Threshold
