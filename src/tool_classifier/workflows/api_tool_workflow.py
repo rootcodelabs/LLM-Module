@@ -77,6 +77,7 @@ class _LoopStep:
     user_query: str = ""
     question: str = ""
     question_tokens: List[str] = field(default_factory=list)
+    custom_instructions: str = ""
 
 
 class APIToolWorkflowExecutor(BaseWorkflow):
@@ -218,6 +219,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         collected_params: Dict[str, Any],
         user_query: str,
         detected_language: str,
+        custom_instructions: str = "",
     ) -> OrchestrationResponse:
         """Call the external API with collected params and return a formatted response.
 
@@ -247,7 +249,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"(status={api_result.status_code})"
             )
             formatter = APIResponseFormatterModule(
-                custom_instructions=await self._get_custom_instructions()
+                custom_instructions=custom_instructions
             )
             content = await asyncio.to_thread(
                 formatter.forward,
@@ -308,6 +310,8 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         if session_store is not None:
             session = await session_store.get(chat_id)
 
+        custom_instructions = await self._get_custom_instructions()
+
         if session is not None:
             # Resume path — endpoint comes from persisted session
             endpoint = session.selected_endpoint
@@ -348,6 +352,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     collected_params={},
                     detected_language=getattr(request, "_detected_language", "en"),
                     user_query=request.message,
+                    custom_instructions=custom_instructions,
                 )
 
             # Create a new session before running the first loop turn
@@ -389,7 +394,6 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"agentic loop running without persistence"
             )
 
-        custom_instructions = await self._get_custom_instructions()
         loop = self._build_agentic_loop(session_store, custom_instructions)  # type: ignore[arg-type]
 
         # If custom_instructions contain a language directive (e.g. "respond in English"
@@ -435,6 +439,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 collected_params=result.collected_params,
                 detected_language=effective_session_language,
                 user_query=session.original_query or request.message,
+                custom_instructions=custom_instructions,
             )
 
         if result.status == AgenticLoopStatus.MAX_TURNS_REACHED:
@@ -455,6 +460,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             chat_id=chat_id,
             question=result.clarifying_question,
             question_tokens=question_tokens,
+            custom_instructions=custom_instructions,
         )
 
     async def _run(
@@ -478,6 +484,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             collected_params=step.collected_params,
             user_query=step.user_query,
             detected_language=step.detected_language,
+            custom_instructions=step.custom_instructions,
         )
 
         # Output guardrails — only on successful LLM-formatted answers
@@ -519,6 +526,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         orchestration_service: OrchestrationServiceProtocol,
         request: OrchestrationRequest,
         costs_metric: Optional[Dict[str, Any]] = None,
+        custom_instructions: str = "",
     ) -> AsyncIterator[str]:
         """Call the external API and stream the formatted response token by token.
 
@@ -549,7 +557,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             # Buffer all tokens first, then validate with output guardrails before
             # streaming to the client (validate-first approach).
             formatter = APIResponseFormatterModule(
-                custom_instructions=await self._get_custom_instructions()
+                custom_instructions=custom_instructions
             )
             buffered_tokens = [
                 token
@@ -651,4 +659,5 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             orchestration_service=orchestration_service,
             request=request,
             costs_metric=context.get("costs_metric"),
+            custom_instructions=step.custom_instructions,
         )
