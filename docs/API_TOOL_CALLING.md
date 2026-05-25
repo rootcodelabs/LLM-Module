@@ -14,9 +14,14 @@ loop collects all required parameters from the user before the API call is made.
 |---|---|---|
 | **Indexing pipeline** | Takes an endpoint definition → enriches it with LLM context → stores hybrid vectors in Qdrant | ✅ Complete |
 | **Tool classifier** | At query time, routes to the best matching endpoint via hybrid search + LLM disambiguation | ✅ Complete |
+| **Multi-intent detection** | Score-band gate triggers `IntentDecomposer` (DSPy) to decompose a multi-intent query into focused sub-queries; each sub-query is matched in parallel via `asyncio.gather` | ✅ Phase 1 & 2 Complete |
 | **Agentic loop** | Multi-turn parameter collection with session persistence, language-aware clarifying questions, param correction, continuation prompt, and intent-switch detection | ✅ Complete |
 | **API caller** | Execute collected params against the real API endpoint, with circuit-breaker protection and localized error handling | ✅ Complete |
 | **Response formatter** | Convert raw API JSON into a natural-language answer via DSPy, streamed token-by-token to the GUI | ✅ Complete |
+| **Multi-endpoint loop** | Merges param schemas for all parallel endpoints; collects params across turns with a single deduplicated clarifying question per turn; distributes values back per endpoint | ✅ Phase 3 Complete |
+| **Parallel API caller** | Fires all completed endpoint calls concurrently via `asyncio.gather` with batch timeout and partial-failure handling | ✅ Phase 4 Complete |
+| **Multi-response formatter** | DSPy module that synthesises N API results into a single coherent natural-language answer; supports streaming and blocking execution | ✅ Phase 5 Complete |
+| **Full wiring** | `APIToolWorkflowExecutor` routes parallel sessions through `MultiEndpointAgenticLoop` → `MultiAPICaller` → `MultiResponseFormatterModule` with output guardrails | ✅ Phase 6 Complete |
 
 ---
 
@@ -36,17 +41,31 @@ api_tool_collection  (Qdrant)
 APISemanticSearcher  (src/tool_classifier/api_semantic_searcher.py)
         ↑  called by
 ToolClassifier._try_api_tool_classification()
+        │
+        ├─ score ≥ HIGH_CONFIDENCE → single path (unchanged)
+        │
+        └─ score in ambiguous band → IntentDecomposer (DSPy)
+               │
+               ├─ mode=single  → top candidate, existing path
+               └─ mode=parallel → asyncio.gather(search per sub-query)
+                      ↓  ClassificationResult(execution_mode=parallel, matched_endpoints=[...])
         ↓  ClassificationResult(workflow=API_TOOL_CALLING)
 APIToolWorkflowExecutor  (src/tool_classifier/workflows/api_tool_workflow.py)
-        ↓  multi-turn param collection
-AgenticLoop  (src/tool_classifier/agentic_loop.py)
-        ↓  session state
+        │
+        ├─ execution_mode=single  → AgenticLoop
+        └─ execution_mode=parallel → MultiEndpointAgenticLoop
+               ↓  merged schema; one clarifying question per turn
+               ↓  distributes extracted values back per endpoint
 APIToolSessionStore  (Redis, keyed by chat_id, 30-min TTL)
-        ↓  all params collected
-APICaller  (src/tool_classifier/api_caller.py)
-        ↓  raw JSON response
-APIResponseFormatterModule  (src/tool_classifier/api_response_formatter.py)
-        ↓  SSE token stream
+        ↓  all endpoints completed
+        ├─ single  → APICaller
+        └─ parallel → MultiAPICaller → asyncio.gather per endpoint
+               ↓  batch timeout: MULTI_API_BATCH_TIMEOUT (30 s)
+               ↓  raw JSON responses (partial-failure safe)
+        ├─ single  → APIResponseFormatterModule
+        └─ parallel → MultiResponseFormatterModule (DSPy)
+               ↓  buffer-first guardrails validation
+               ↓  SSE token stream
 User (GUI)
 ```
 
@@ -768,3 +787,397 @@ uv run --no-project --with requests python tests/api_tool_eval/integration_test_
 | 7 | Session isolation | 2 | Two different chat IDs — no param leak between sessions |
 | 8 | AWAITING_CONTINUATION → yes | 4+ | User says “yes” at continuation prompt → loop resumes → API call on completion |
 | 9 | MAX_TURNS_REACHED | 5+ | User never provides params → falls back to RAG |
+
+---
+
+## Part 7 — Multi-Intent Handling
+
+> **Status:** All phases complete. Phase 1 (intent detection + parallel search), Phase 2 (session model extension), Phase 3 (multi-endpoint agentic loop), Phase 4 (parallel API caller), Phase 5 (multi-response formatter), and Phase 6 (full wiring in workflow executor) are production-ready.
+
+### Overview
+
+A multi-intent query like *"What are the public holidays in Estonia and what is the current electricity price?"* produces a **diluted embedding** — the dense vector sits between two endpoints rather than close to either one. The cosine score lands in the ambiguous band (≥ `API_TOOL_MIN_THRESHOLD`, < `API_TOOL_HIGH_CONFIDENCE_THRESHOLD`) rather than producing a clean high-confidence hit.
+
+Phase 1 adds a **score-band gate** that intercepts these ambiguous results and passes the raw query to `IntentDecomposer`. If two or more distinct intents are detected, sub-queries are searched in parallel and the results are stored in the session for eventual multi-endpoint execution.
+
+---
+
+### Phase 1: Score-Band Gate + Intent Decomposer
+
+#### Gate Logic (`classifier.py` — `_try_api_tool_classification`)
+
+```
+cosine ≥ HIGH_CONFIDENCE_THRESHOLD           → single path, existing code unchanged
+cosine in [MIN_THRESHOLD, HIGH_CONFIDENCE)   → ambiguous band → IntentDecomposer
+cosine < MIN_THRESHOLD                       → no match → RAG fallback
+```
+
+The gate only fires when:
+- `FeatureFlags.MULTI_INTENT_ENABLED = true` (env: `MULTI_INTENT_ENABLED`, default `true`)
+- The top result was **not already LLM-validated** by the disambiguator (`llm_validated=False`)
+
+The `llm_validated` flag on `APIToolSearchResult` prevents double LLM calls: when the disambiguator has already selected a winner it sets `llm_validated=True`, so the IntentDecomposer gate is skipped for that result.
+
+#### Disambiguator Edge Case Fix
+
+When `APISemanticSearcher` runs LLM disambiguation and the disambiguator **rejects all candidates** (returns `winner_id=None`):
+
+- **Old behaviour:** return `[]` → classified as RAG/CONTEXT even when the query was multi-intent
+- **New behaviour:** if there were multiple medium-confidence candidates, return the top cosine result *without* `llm_validated=True` so the IntentDecomposer gate can run
+
+This is the key fix that allows multi-intent queries to reach `IntentDecomposer` instead of falling through to RAG.
+
+#### `IntentDecomposerModule` (`src/tool_classifier/intent_decomposer.py`)
+
+DSPy module — receives the **raw user query**
+
+| Output | Description |
+|---|---|
+| `mode` | `"single"` or `"parallel"` |
+| `sub_queries` | List of focused sub-queries when `mode=parallel`; empty for single |
+
+**Conservative by design:** returns `"single"` on any failure or ambiguity — never forces a parallel path.
+
+Run asynchronously via `asyncio.to_thread(self, user_query)` (calls `__call__`, not `forward`, to avoid a DSPy warning).
+
+Sub-query count is capped at `MULTI_API_MAX_ENDPOINTS = 3`.
+
+#### Parallel Sub-Query Search
+
+When `mode=parallel`, each sub-query is independently searched against `api_tool_collection` using `asyncio.gather`:
+
+```python
+results = await asyncio.gather(
+    *[self._api_searcher.search(q, ...) for q in sub_queries]
+)
+```
+
+Each search generates its own focused embedding — no dilution from the combined query.
+
+Results are **deduplicated by endpoint name** (a single endpoint matched by two sub-queries counts once). If fewer than 2 distinct endpoints are found after dedup, the parallel result is discarded and the classifier falls back to the single path.
+
+#### `ExecutionMode` Enum (`src/tool_classifier/enums.py`)
+
+```python
+class ExecutionMode(str, Enum):
+    SINGLE   = "single"
+    PARALLEL = "parallel"
+```
+
+Inherits from `str` so values serialize cleanly to JSON. Always compare against the enum member (e.g. `== ExecutionMode.PARALLEL`), not a string literal.
+
+#### `ClassificationResult` metadata for parallel mode
+
+| Key | Type | Description |
+|---|---|---|
+| `execution_mode` | `ExecutionMode` | `SINGLE` or `PARALLEL` |
+| `matched_endpoint` | dict | Set for single mode |
+| `matched_endpoints` | list[dict] | Set for parallel mode — all deduplicated endpoints |
+
+---
+
+### Phase 2: Session Model Extension
+
+Defined in [src/models/session_models.py](../src/models/session_models.py).
+
+#### `EndpointSessionState` (new model)
+
+Tracks per-endpoint collection state within a parallel session:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `endpoint` | dict | required | Full endpoint payload |
+| `collected_params` | dict | `{}` | Params gathered for this endpoint so far |
+| `completed` | bool | `False` | Flipped to `True` when all params are collected and the API has been called |
+
+#### Extended `APIToolSession` fields
+
+Three new fields added — all optional with safe defaults so **existing Redis sessions deserialize without error**:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `execution_mode` | str | `"single"` | `"single"` or `"parallel"` — drives which loop handles this session |
+| `parallel_endpoints` | list[EndpointSessionState] | `[]` | One entry per matched endpoint; empty in single mode |
+| `active_endpoint_index` | int | `0` | Index of the endpoint currently being collected; advanced by Phase 3 |
+
+The existing single-mode fields (`selected_endpoint`, `collected_params`, `turn_count`, etc.) are **completely unchanged**. Single-mode sessions have `execution_mode="single"` and `parallel_endpoints=[]`.
+
+#### Session creation in parallel mode (`api_tool_workflow.py`)
+
+When `context["execution_mode"] == ExecutionMode.PARALLEL`, the workflow captures all matched endpoints from context and populates `parallel_endpoints`:
+
+```python
+APIToolSession(
+    ...
+    execution_mode="parallel",
+    parallel_endpoints=[
+        EndpointSessionState(endpoint=e) for e in all_matched
+    ],
+)
+```
+
+
+
+---
+
+### Phase 3: Multi-Endpoint Agentic Loop
+
+Defined in [src/tool_classifier/multi_agentic_loop.py](../src/tool_classifier/multi_agentic_loop.py).
+
+`MultiEndpointAgenticLoop` replaces `AgenticLoop` for parallel sessions. It is stateless between HTTP requests — all mutable state is held in the `EndpointSessionState` list passed in on each call.
+
+**Key behaviours:**
+
+- **Merged schema:** All endpoint `params` schemas are merged and deduplicated by param name. A param shared across two endpoints is asked once and applied to both.
+- **One question per turn:** The loop generates a single clarifying question covering the next highest-priority missing param across all endpoints.
+- **Per-endpoint distribution:** After extraction, `_distribute_params()` copies each extracted value to every endpoint whose schema includes that param name.
+- **Completion tracking:** An endpoint is marked `completed=True` in its `EndpointSessionState` once all its required params are present. The loop returns `COMPLETED` only when every endpoint is completed.
+- **Turn limit:** `max_turns = min(3 × num_endpoints, MULTI_API_MAX_TURNS)` — scales with the number of endpoints, capped at 9.
+- **Continuation threshold:** `continuation_turn = num_endpoints + 1` — fires after at least one dedicated turn per endpoint.
+
+**`stream_run_turn` signature:**
+
+```python
+await multi_loop.stream_run_turn(
+    chat_id=chat_id,
+    user_message=request.message,
+    conversation_history=conversation_history,
+    endpoint_states=session.parallel_endpoints,   # list[EndpointSessionState]
+    turn_count=session.turn_count,
+    awaiting_continuation=session.awaiting_continuation,
+    session_language=effective_session_language,
+)
+```
+
+Returns `(AgenticLoopResult, list[str])` — the result and pre-tokenised question tokens.
+
+---
+
+### Phase 4: Parallel API Caller
+
+Defined in [src/tool_classifier/multi_api_caller.py](../src/tool_classifier/multi_api_caller.py).
+
+`MultiAPICaller` wraps `APICaller` and fires all endpoint calls concurrently via `asyncio.gather`.
+
+**Key design decisions:**
+
+- Reuses the shared `APICaller` instance so per-URL circuit breaker state is preserved across single and batch invocations.
+- Expects a `"call_params"` key on each endpoint dict (distinct from the `"params"` schema list) to prevent the schema descriptor from being forwarded to the HTTP call.
+- A `MULTI_API_BATCH_TIMEOUT` (30 s) caps total wall-clock time. Pending tasks are cancelled on timeout and replaced with failure results — the caller always receives a fully-populated `MultiAPICallResult`.
+- Results are returned in the same order as the input endpoint list.
+- Partial failure is safe — a failed endpoint produces `APICallResult(success=False, error=<localized message>)` without affecting other endpoints.
+
+**Usage:**
+
+```python
+call_payloads = [
+    {**state.endpoint, "call_params": state.collected_params}
+    for state in parallel_endpoints
+]
+multi_result = await MultiAPICaller(api_caller).call_all(call_payloads, language=detected_language)
+```
+
+---
+
+### Phase 5: Multi-Response Formatter
+
+Defined in [src/tool_classifier/multi_response_formatter.py](../src/tool_classifier/multi_response_formatter.py).
+
+`MultiResponseFormatterModule` is a DSPy module that synthesises N API results into one unified natural-language answer.
+
+**DSPy Signature:** `MultiResponseFormatterSignature`
+
+| Input field | Description |
+|---|---|
+| `user_query` | The user's original first-turn question |
+| `api_results_block` | Formatted block of all API results (name, description, data) |
+| `num_results` | Number of results being synthesised |
+| `response_language` | `"English"`, `"Estonian"`, or `"Russian"` |
+| `custom_instructions` | Optional operator prompt overrides |
+
+| Output field | Description |
+|---|---|
+| `unified_answer` | Single coherent natural-language answer covering all endpoints |
+
+**Rules enforced by signature:**
+- Always write in `response_language` regardless of API data language.
+- Address every result — do not silently omit any endpoint.
+- Gracefully acknowledge failed or empty results without dwelling on them.
+- No raw JSON, no markdown headers, no follow-up invitation sentences.
+
+**Max input size:** 100 KB across all results combined (`_MAX_TOTAL_RESPONSE_BYTES`).
+
+**Methods:** `forward(user_query, api_results, detected_language)` (blocking) and `stream_forward_multi(user_query, api_results, detected_language)` (async token iterator).
+
+---
+
+### Phase 6: Full Wiring in `APIToolWorkflowExecutor`
+
+Defined in [src/tool_classifier/workflows/api_tool_workflow.py](../src/tool_classifier/workflows/api_tool_workflow.py).
+
+`_LoopStep` now has four possible `kind` values:
+
+| `kind` | Meaning |
+|---|---|
+| `"api_call"` | Single endpoint; all params collected; call API and format |
+| `"multi_api_call"` | Parallel endpoints; call all APIs concurrently and merge results |
+| `"question"` | Agentic loop needs more input; return question to user |
+| `"fallback"` | Nothing to do; caller falls back to RAG |
+
+**Parallel fast-path:** When all matched endpoints have no required params, `_compute_loop_step` skips session creation and returns a `"multi_api_call"` step immediately.
+
+**Streaming path (`_stream_multi_api_and_format`):**
+1. Builds `call_params`-keyed payloads for each `EndpointSessionState`.
+2. Calls `MultiAPICaller.call_all()` — all HTTP calls fire concurrently.
+3. Collects tokens from `MultiResponseFormatterModule.stream_forward_multi()` into a buffer.
+4. Runs output guardrails on the full buffered response before yielding any token to the client.
+5. Yields tokens one-by-one via `format_sse`, then yields `format_sse(chat_id, "END")`.
+
+**Blocking path (`_execute_multi_api_and_format`):**
+Same API call steps, then `asyncio.to_thread(formatter.forward, ...)` for the synthesis step.
+
+---
+
+
+### Constants and Feature Flags
+
+Defined in [src/tool_classifier/constants.py](../src/tool_classifier/constants.py) and [src/llm_orchestrator_config/feature_flags.py](../src/llm_orchestrator_config/feature_flags.py):
+
+| Name | Value | Description |
+|---|---|---|
+| `MULTI_INTENT_ENABLED` | `true` (env override) | Feature flag — set `MULTI_INTENT_ENABLED=false` to disable the IntentDecomposer gate globally |
+| `MULTI_API_MAX_ENDPOINTS` | `3` | Hard cap on parallel sub-queries per request |
+| `MULTI_API_MAX_TURNS` | `9` | Absolute cap on turns for any parallel session (`min(3×N, 9)` per session) |
+| `MULTI_API_BATCH_TIMEOUT` | `30` | Seconds before the parallel HTTP batch is cancelled and partial results returned |
+| `API_TOOL_HIGH_CONFIDENCE_THRESHOLD` | `0.60` | Cosine score above which single-path is taken immediately |
+| `API_TOOL_MIN_THRESHOLD` | `0.40` | Minimum score for any match (below → RAG) |
+| `API_TOOL_INTENT_SWITCH_THRESHOLD` | `0.50` | Minimum cosine for the new match to trigger intent-switch detection |
+
+---
+
+### Multi-Intent End-to-End Flow
+
+```
+Turn 1 — User: "Can you find an address for me and also calculate my vehicle tax?"
+    │
+    ▼
+APISemanticSearcher.search()
+    → top result: search_address, cosine=0.54 (ambiguous band)
+    → disambiguator rejects both candidates (multi-intent dilution)
+    → returns top candidate WITHOUT llm_validated=True
+    │
+    ▼
+_try_api_tool_classification() — gate fires
+    → MULTI_INTENT_ENABLED=true AND not llm_validated
+    → IntentDecomposer (DSPy, asyncio.to_thread)
+          → mode=parallel
+          → sub_queries=["address lookup and location search", "vehicle tax calculation"]
+    │
+    ▼
+asyncio.gather(
+    search("address lookup and location search") → search_address,       cosine=0.82
+    search("vehicle tax calculation")           → get_vehicle_tax_info, cosine=0.79
+)
+    → 2 distinct endpoints after dedup → parallel path confirmed
+    │
+    ▼
+ClassificationResult(
+    workflow=API_TOOL_CALLING,
+    metadata={
+        execution_mode: ExecutionMode.PARALLEL,
+        matched_endpoints: [search_address, get_vehicle_tax_info]
+    }
+)
+    │
+    ▼
+APIToolWorkflowExecutor._compute_loop_step()
+    → no existing session → create new:
+        APIToolSession(
+            execution_mode="parallel",
+            selected_endpoint=search_address,        # first endpoint
+            original_query="Can you find an address...",
+            parallel_endpoints=[
+                EndpointSessionState(endpoint=search_address,       collected_params={}),
+                EndpointSessionState(endpoint=get_vehicle_tax_info, collected_params={}),
+            ],
+            turn_count=0,
+            max_turns=6,                             # min(3×2, 9)
+        )
+    → MultiEndpointAgenticLoop.stream_run_turn(endpoint_states=[...], turn_count=0)
+          → merged schema: {address, regNr, calculationYear}  (deduped across both endpoints)
+          → nothing extracted from turn-1 message (intent query, not param values)
+          → missing: [address, regNr, calculationYear]
+          → NEEDS_INPUT → clarifying question
+    │
+    Session saved to Redis, _LoopStep(kind="question")
+    ▼
+Bot: "To help you, I need a few details: the address you'd like to look up,
+      your vehicle registration number (regNr), and the calculation year for the vehicle tax."
+
+───────────────────────────────────────────────────────────────
+
+Turn 2 — User: "123ABC"
+    │
+    ▼
+ToolClassifier.classify()
+    → Active session found → intent-switch check
+    → "123ABC" cosine < API_TOOL_INTENT_SWITCH_THRESHOLD → no switch
+    → ClassificationResult(reason=active_session_resume)
+    │
+    ▼
+MultiEndpointAgenticLoop.stream_run_turn(turn_count=1)
+    → ParamExtractionModule extracts regNr="123ABC"
+    → _distribute_params: regNr → get_vehicle_tax_info.collected_params
+    → still missing: [address, calculationYear]
+    → NEEDS_INPUT → clarifying question covers ALL remaining missing params
+    ▼
+Bot: "Got it! I still need two more things: the address you'd like to look up,
+      and the calculation year for the vehicle tax."
+
+───────────────────────────────────────────────────────────────
+
+Turn 3 — User: "Viru tn 4, Tallinn and year 2026"
+    │
+    ▼
+MultiEndpointAgenticLoop.stream_run_turn(turn_count=2)
+    → ParamExtractionModule extracts address="Viru tn 4, Tallinn", calculationYear="2026"
+    → _distribute_params:
+          address         → search_address.collected_params       → completed=True
+          calculationYear → get_vehicle_tax_info.collected_params
+    → get_vehicle_tax_info now has [regNr, calculationYear] → completed=True
+    → ALL endpoints completed → AgenticLoopStatus.COMPLETED
+    │
+    Session DELETED from Redis
+    _LoopStep(kind="multi_api_call", parallel_endpoints=[...])
+    ▼
+APIToolWorkflowExecutor._stream_multi_api_and_format()
+    │
+    ├─ Build call_payloads:
+    │     [{...search_address,       call_params: {address: "Viru tn 4, Tallinn"}},
+    │      {...get_vehicle_tax_info, call_params: {regNr: "123ABC", calculationYear: "2026"}}]
+    │
+    ├─ MultiAPICaller.call_all(payloads, language="en")
+    │     asyncio.gather(
+    │         GET /address-search?address=Viru+tn+4%2C+Tallinn  → 200 OK, address JSON
+    │         GET /vehicle-tax?regNr=123ABC&year=2026           → 200 OK, tax JSON
+    │     )  # batch_timeout=30 s; 2/2 succeeded
+    │
+    ├─ MultiResponseFormatterModule.stream_forward_multi(
+    │       user_query=session.original_query,      # full first-turn message
+    │       api_results=[("search_address", ..., address_data),
+    │                    ("get_vehicle_tax_info", ..., tax_data)],
+    │       detected_language="en"
+    │   )
+    │     → DSPy streams unified answer tokens
+    │     → buffer-first: collect all tokens
+    │
+    ├─ Output guardrails on full buffered response → passed
+    │
+    └─ yield format_sse(chat_id, token) per token → yield format_sse(chat_id, "END")
+    ▼
+Bot: "Here's what I found: The address Viru tn 4 is located in Tallinn city centre
+      (full address: Viru tn 4, 10111 Tallinn). For vehicle 123ABC, the estimated
+      vehicle tax for 2026 is €127.40."  ← streamed token-by-token
+```
+
+---

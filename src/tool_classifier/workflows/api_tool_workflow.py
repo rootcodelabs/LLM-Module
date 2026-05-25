@@ -22,14 +22,17 @@ from models.request_models import (
     OrchestrationResponse,
     TestOrchestrationResponse,
 )
-from models.session_models import APIToolSession
+from models.session_models import APIToolSession, EndpointSessionState
 from tool_classifier.agentic_loop import AgenticLoop
 from tool_classifier.api_caller import APICaller
 from tool_classifier.api_response_formatter import APIResponseFormatterModule
 from tool_classifier.base_workflow import BaseWorkflow
-from tool_classifier.enums import AgenticLoopStatus
+from tool_classifier.enums import AgenticLoopStatus, ExecutionMode
 from tool_classifier.param_extractor import ParamExtractionModule
 from utils.api_tool_session_store import APIToolSessionStore
+from tool_classifier.multi_agentic_loop import MultiEndpointAgenticLoop
+from tool_classifier.multi_api_caller import MultiAPICaller
+from tool_classifier.multi_response_formatter import MultiResponseFormatterModule
 
 if TYPE_CHECKING:
     from guardrails.nemo_rails_adapter import NeMoRailsAdapter
@@ -64,14 +67,21 @@ class _LoopStep:
 
     ``kind`` drives both the sync and streaming execution paths:
 
-    * ``"api_call"``  — all params collected; call the external API and format.
-    * ``"question"``  — agentic loop needs more input; return ``question`` to user.
-    * ``"fallback"``  — nothing to do; caller should fall back to RAG.
+    * ``"api_call"``       — single endpoint; all params collected; call API and format.
+                            Populates: ``endpoint``, ``collected_params``, ``user_query``.
+    * ``"multi_api_call"`` — parallel endpoints; call all APIs concurrently and merge results.
+                            Populates: ``parallel_endpoints``, ``user_query``.
+                            ``endpoint`` and ``collected_params`` are empty/unused.
+    * ``"question"``       — agentic loop needs more input; return ``question`` to user.
+                            Populates: ``question``, ``question_tokens``.
+    * ``"fallback"``       — nothing to do; caller should fall back to RAG.
+                            No additional fields are populated.
     """
 
-    kind: Literal["api_call", "question", "fallback"]
+    kind: Literal["api_call", "multi_api_call", "question", "fallback"]
     chat_id: str = ""
     endpoint: Dict[str, Any] = field(default_factory=dict)
+    parallel_endpoints: List[EndpointSessionState] = field(default_factory=list)
     collected_params: Dict[str, Any] = field(default_factory=dict)
     detected_language: str = "en"
     user_query: str = ""
@@ -257,6 +267,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 api_response=api_result.response_data,
                 endpoint_description=description,
                 detected_language=detected_language,
+                collected_params=collected_params,
             )
         else:
             logger.warning(
@@ -282,6 +293,171 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             inputGuardFailed=False,
             content=question,
         )
+
+    async def _execute_multi_api_and_format(
+        self,
+        chat_id: str,
+        parallel_endpoints: List[EndpointSessionState],
+        user_query: str,
+        detected_language: str,
+        custom_instructions: str = "",
+    ) -> OrchestrationResponse:
+        """Call all parallel endpoints concurrently and return a merged natural-language response.
+
+        Builds a ``call_params``-keyed payload for each :class:`EndpointSessionState`,
+        dispatches all calls concurrently via :class:`MultiAPICaller`, then synthesises
+        the results into one unified answer with :class:`MultiResponseFormatterModule`.
+        """
+        call_payloads = [
+            {**state.endpoint, "call_params": state.collected_params}
+            for state in parallel_endpoints
+        ]
+        ep_names = [
+            state.endpoint.get("name", "<unnamed>") for state in parallel_endpoints
+        ]
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow: parallel — calling {len(call_payloads)} APIs "
+            f"concurrently: {ep_names}"
+        )
+
+        multi_caller = MultiAPICaller(self._api_caller)
+        multi_result = await multi_caller.call_all(
+            call_payloads, language=detected_language
+        )
+
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow: parallel batch complete — "
+            f"{sum(r.success for r in multi_result.results)}/{len(multi_result.results)} succeeded"
+        )
+
+        api_results = [
+            (
+                state.endpoint.get("name", ""),
+                state.endpoint.get("description", ""),
+                result.response_data if result.success else result.error or "",
+                state.collected_params,
+            )
+            for state, result in zip(
+                parallel_endpoints, multi_result.results, strict=True
+            )
+        ]
+
+        formatter = MultiResponseFormatterModule(
+            custom_instructions=custom_instructions
+        )
+        content = await asyncio.to_thread(
+            formatter.forward,
+            user_query=user_query,
+            api_results=api_results,
+            detected_language=detected_language,
+        )
+
+        return OrchestrationResponse(
+            chatId=chat_id,
+            llmServiceActive=True,
+            questionOutOfLLMScope=False,
+            inputGuardFailed=False,
+            content=content,
+        )
+
+    async def _stream_multi_api_and_format(
+        self,
+        chat_id: str,
+        parallel_endpoints: List[EndpointSessionState],
+        user_query: str,
+        detected_language: str,
+        orchestration_service: OrchestrationServiceProtocol,
+        request: OrchestrationRequest,
+        costs_metric: Optional[Dict[str, Any]] = None,
+        custom_instructions: str = "",
+    ) -> AsyncIterator[str]:
+        """Call all parallel APIs concurrently, then stream the merged answer token by token.
+
+        API calls are pre-resolved before streaming starts so the LLM synthesis step
+        receives all results at once.  Uses the same buffer-first guardrails approach as
+        :meth:`_stream_api_and_format` — the full response is assembled and validated
+        before any token is sent to the client.
+        """
+        call_payloads = [
+            {**state.endpoint, "call_params": state.collected_params}
+            for state in parallel_endpoints
+        ]
+        ep_names = [
+            state.endpoint.get("name", "<unnamed>") for state in parallel_endpoints
+        ]
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow (streaming): parallel — calling {len(call_payloads)} APIs "
+            f"concurrently: {ep_names}"
+        )
+
+        multi_caller = MultiAPICaller(self._api_caller)
+        multi_result = await multi_caller.call_all(
+            call_payloads, language=detected_language
+        )
+
+        logger.info(
+            f"[{chat_id}] APIToolWorkflow (streaming): parallel batch complete — "
+            f"{sum(r.success for r in multi_result.results)}/{len(multi_result.results)} succeeded"
+        )
+
+        api_results = [
+            (
+                state.endpoint.get("name", ""),
+                state.endpoint.get("description", ""),
+                result.response_data if result.success else result.error or "",
+                state.collected_params,
+            )
+            for state, result in zip(
+                parallel_endpoints, multi_result.results, strict=True
+            )
+        ]
+
+        formatter = MultiResponseFormatterModule(
+            custom_instructions=custom_instructions
+        )
+        buffered_tokens = [
+            token
+            async for token in formatter.stream_forward_multi(
+                user_query=user_query,
+                api_results=api_results,
+                detected_language=detected_language,
+            )
+        ]
+
+        full_response = "".join(buffered_tokens)
+
+        guardrails_passed = True
+        if orchestration_service is not None:
+            guardrails_adapter = self._get_guardrails_adapter(
+                request.environment, request.connection_id
+            )
+            if guardrails_adapter is not None:
+                dummy_response = OrchestrationResponse(
+                    chatId=chat_id,
+                    llmServiceActive=True,
+                    questionOutOfLLMScope=False,
+                    inputGuardFailed=False,
+                    content=full_response,
+                )
+                checked = await orchestration_service.handle_output_guardrails(
+                    guardrails_adapter,
+                    dummy_response,
+                    request,
+                    costs_metric if costs_metric is not None else {},
+                )
+                if checked.content != full_response:
+                    logger.warning(
+                        f"[{chat_id}] APIToolWorkflow (streaming): "
+                        f"parallel output blocked by guardrails"
+                    )
+                    yield orchestration_service.format_sse(chat_id, checked.content)
+                    guardrails_passed = False
+
+        if guardrails_passed:
+            for token in buffered_tokens:
+                yield orchestration_service.format_sse(chat_id, token)
+
+        yield orchestration_service.format_sse(chat_id, "END")
 
     # ------------------------------------------------------------------
     # Core loop handler — shared by async and streaming paths
@@ -323,13 +499,35 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     await session_store.delete(chat_id)
                 return _LoopStep(kind="fallback", chat_id=chat_id)
 
-            logger.info(
-                f"[{chat_id}] APIToolWorkflow: resuming session "
-                f"(turn={session.turn_count}, endpoint={endpoint.get('name')!r})"
-            )
+            if session.execution_mode == ExecutionMode.PARALLEL.value:
+                ep_names = [s.endpoint.get("name") for s in session.parallel_endpoints]
+                logger.info(
+                    f"[{chat_id}] APIToolWorkflow: resuming parallel session "
+                    f"(turn={session.turn_count}, endpoints={ep_names})"
+                )
+            else:
+                logger.info(
+                    f"[{chat_id}] APIToolWorkflow: resuming session "
+                    f"(turn={session.turn_count}, endpoint={endpoint.get('name')!r})"
+                )
         else:
-            # New-session path — endpoint must come from classifier context
-            endpoint = context.get("matched_endpoint")
+            # New-session path — endpoint must come from classifier context.
+            # For parallel execution_mode, drive param collection for the first
+            # endpoint (Phase 3 MultiEndpointAgenticLoop will advance the index).
+            all_matched: list[dict[str, Any]] = []
+            if context.get("execution_mode") == ExecutionMode.PARALLEL:
+                all_matched = context.get("matched_endpoints", [])
+                endpoint = all_matched[0] if all_matched else None
+                if endpoint:
+                    logger.info(
+                        f"[{chat_id}] APIToolWorkflow: parallel mode — "
+                        f"starting param collection for first endpoint "
+                        f"{endpoint.get('name')!r} "
+                        f"({len(all_matched)} endpoints total)"
+                    )
+            else:
+                endpoint = context.get("matched_endpoint")
+
             if not endpoint:
                 logger.warning(
                     f"[{chat_id}] APIToolWorkflow: no matched_endpoint in context "
@@ -339,8 +537,32 @@ class APIToolWorkflowExecutor(BaseWorkflow):
 
             params_schema: List[Dict[str, Any]] = endpoint.get("params", [])
 
-            # Fast path: no required params — call API immediately
-            if not self._required_params(params_schema):
+            # Fast path — skip the agentic loop when no required params need collecting.
+            # user_query falls back to request.message on the fast path because no session
+            # exists yet (original_query is only stored once a session is created).
+            user_query_for_fast_path = request.message
+            if all_matched:
+                # Parallel mode: fast-path only when ALL endpoints have no required params.
+                if all(
+                    not self._required_params(ep.get("params", []))
+                    for ep in all_matched
+                ):
+                    logger.info(
+                        f"[{chat_id}] APIToolWorkflow: parallel fast path — "
+                        f"all {len(all_matched)} endpoints have no required params"
+                    )
+                    return _LoopStep(
+                        kind="multi_api_call",
+                        chat_id=chat_id,
+                        parallel_endpoints=[
+                            EndpointSessionState(endpoint=e) for e in all_matched
+                        ],
+                        detected_language=getattr(request, "_detected_language", "en"),
+                        user_query=user_query_for_fast_path,
+                        custom_instructions=custom_instructions,
+                    )
+            elif not self._required_params(params_schema):
+                # Single mode: the only endpoint has no required params.
                 logger.info(
                     f"[{chat_id}] APIToolWorkflow: endpoint {endpoint.get('name')!r} "
                     f"has no required params — fast path"
@@ -351,7 +573,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     endpoint=endpoint,
                     collected_params={},
                     detected_language=getattr(request, "_detected_language", "en"),
-                    user_query=request.message,
+                    user_query=user_query_for_fast_path,
                     custom_instructions=custom_instructions,
                 )
 
@@ -367,6 +589,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     awaiting_continuation=False,
                     detected_language=getattr(request, "_detected_language", "en"),
                     original_query=request.message,
+                    execution_mode=ExecutionMode.PARALLEL.value
+                    if all_matched
+                    else ExecutionMode.SINGLE.value,
+                    parallel_endpoints=[
+                        EndpointSessionState(endpoint=e) for e in all_matched
+                    ],
                 )
                 await session_store.save(new_session)
                 session = new_session
@@ -385,6 +613,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     awaiting_continuation=False,
                     detected_language=getattr(request, "_detected_language", "en"),
                     original_query=request.message,
+                    execution_mode=ExecutionMode.PARALLEL.value
+                    if all_matched
+                    else ExecutionMode.SINGLE.value,
+                    parallel_endpoints=[
+                        EndpointSessionState(endpoint=e) for e in all_matched
+                    ],
                 )
 
         # ── Run one loop turn ─────────────────────────────────────────────
@@ -393,8 +627,6 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"[{chat_id}] APIToolWorkflow: session store unavailable — "
                 f"agentic loop running without persistence"
             )
-
-        loop = self._build_agentic_loop(session_store, custom_instructions)  # type: ignore[arg-type]
 
         # If custom_instructions contain a language directive (e.g. "respond in English"
         # inside an Estonian-language prompt), use that directed language for all
@@ -405,17 +637,80 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             or session.detected_language
         )
 
+        conversation_history_for_loop = (
+            []
+            if session.turn_count == 0
+            else [
+                {"authorRole": item.authorRole, "message": item.message}
+                for item in (request.conversationHistory or [])
+            ]
+        )
+
+        if session.execution_mode == ExecutionMode.PARALLEL.value:
+            # Parallel path: MultiEndpointAgenticLoop operates on the full
+            # parallel_endpoints list and builds a merged schema internally so
+            # only one clarifying question is asked per turn.
+            multi_loop = MultiEndpointAgenticLoop(
+                session_store=session_store,
+                param_extractor=ParamExtractionModule(
+                    custom_instructions=custom_instructions
+                ),
+            )
+            result, question_tokens = await multi_loop.stream_run_turn(
+                chat_id=chat_id,
+                user_message=request.message,
+                conversation_history=conversation_history_for_loop,
+                endpoint_states=session.parallel_endpoints,
+                turn_count=session.turn_count,
+                awaiting_continuation=session.awaiting_continuation,
+                session_language=effective_session_language,
+            )
+
+            if result.status == AgenticLoopStatus.COMPLETED:
+                logger.info(
+                    f"[{chat_id}] APIToolWorkflow: parallel params fully collected "
+                    f"(turns={result.turn_count}, "
+                    f"endpoints={[s.endpoint.get('name') for s in session.parallel_endpoints]})"
+                )
+                if session_store is not None:
+                    await session_store.delete(chat_id)
+                return _LoopStep(
+                    kind="multi_api_call",
+                    chat_id=chat_id,
+                    parallel_endpoints=session.parallel_endpoints,
+                    detected_language=effective_session_language,
+                    user_query=session.original_query or request.message,
+                    custom_instructions=custom_instructions,
+                )
+
+            if result.status == AgenticLoopStatus.MAX_TURNS_REACHED:
+                logger.info(
+                    f"[{chat_id}] APIToolWorkflow: parallel max turns reached — deleting session"
+                )
+                if session_store is not None:
+                    await session_store.delete(chat_id)
+                return _LoopStep(kind="fallback", chat_id=chat_id)
+
+            # NEEDS_INPUT or AWAITING_CONTINUATION_DECISION
+            logger.info(
+                f"[{chat_id}] APIToolWorkflow: parallel — asking for more info "
+                f"(status={result.status.value}, turn={result.turn_count})"
+            )
+            return _LoopStep(
+                kind="question",
+                chat_id=chat_id,
+                question=result.clarifying_question,
+                question_tokens=question_tokens,
+                custom_instructions=custom_instructions,
+            )
+
+        # Single path: AgenticLoop (untouched)
+        loop = self._build_agentic_loop(session_store, custom_instructions)  # type: ignore[arg-type]
+
         result, question_tokens = await loop.stream_run_turn(
             chat_id=chat_id,
             user_message=request.message,
-            conversation_history=(
-                []
-                if session.turn_count == 0
-                else [
-                    {"authorRole": item.authorRole, "message": item.message}
-                    for item in (request.conversationHistory or [])
-                ]
-            ),
+            conversation_history=conversation_history_for_loop,
             params_schema=endpoint.get("params", []),
             collected_params=session.collected_params,
             turn_count=session.turn_count,
@@ -424,7 +719,6 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             session_language=effective_session_language,
         )
 
-        # ── Translate result into a _LoopStep ─────────────────────────────
         if result.status == AgenticLoopStatus.COMPLETED:
             logger.info(
                 f"[{chat_id}] APIToolWorkflow: all params collected "
@@ -477,6 +771,31 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         if step.kind == "question":
             return self._build_question_response(step.chat_id, step.question)
 
+        # multi_api_call — concurrent batch execution + multi-formatter
+        if step.kind == "multi_api_call":
+            response = await self._execute_multi_api_and_format(
+                chat_id=step.chat_id,
+                parallel_endpoints=step.parallel_endpoints,
+                user_query=step.user_query,
+                detected_language=step.detected_language,
+                custom_instructions=step.custom_instructions,
+            )
+            if response.llmServiceActive and self.orchestration_service is not None:
+                guardrails_adapter = self._get_guardrails_adapter(
+                    request.environment, request.connection_id
+                )
+                if guardrails_adapter is not None:
+                    response = cast(
+                        OrchestrationResponse,
+                        await self.orchestration_service.handle_output_guardrails(
+                            guardrails_adapter,
+                            response,
+                            request,
+                            {},
+                        ),
+                    )
+            return response
+
         # api_call — blocking
         response = await self._execute_api_and_format(
             chat_id=step.chat_id,
@@ -492,15 +811,16 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             guardrails_adapter = self._get_guardrails_adapter(
                 request.environment, request.connection_id
             )
-            response = cast(
-                OrchestrationResponse,
-                await self.orchestration_service.handle_output_guardrails(
-                    guardrails_adapter,
-                    response,
-                    request,
-                    {},
-                ),
-            )
+            if guardrails_adapter is not None:
+                response = cast(
+                    OrchestrationResponse,
+                    await self.orchestration_service.handle_output_guardrails(
+                        guardrails_adapter,
+                        response,
+                        request,
+                        {},
+                    ),
+                )
 
         return response
 
@@ -566,6 +886,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     api_response=api_result.response_data,
                     endpoint_description=description,
                     detected_language=detected_language,
+                    collected_params=collected_params,
                 )
             ]
 
@@ -648,6 +969,19 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 yield orchestration_service.format_sse(step.chat_id, "END")
 
             return _stream_question()
+
+        # multi_api_call — stream the merged answer from all parallel APIs
+        if step.kind == "multi_api_call":
+            return self._stream_multi_api_and_format(
+                chat_id=step.chat_id,
+                parallel_endpoints=step.parallel_endpoints,
+                user_query=step.user_query,
+                detected_language=step.detected_language,
+                orchestration_service=orchestration_service,
+                request=request,
+                costs_metric=context.get("costs_metric"),
+                custom_instructions=step.custom_instructions,
+            )
 
         # api_call — stream the LLM-formatted answer token by token
         return self._stream_api_and_format(
