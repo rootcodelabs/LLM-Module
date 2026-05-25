@@ -1443,6 +1443,31 @@ class LLMOrchestrationService:
         )
         time_metric[timing_key] = time.time() - start_time
 
+        # Populate retrieval_context for eval mode (DeepEval metrics need this)
+        eval_mode = os.getenv("EVAL_MODE", "false").lower() == "true"
+        if eval_mode and isinstance(generated_response, OrchestrationResponse):
+            eval_chunks: List[Dict[str, Any]] = []
+            for chunk in relevant_chunks:
+                meta = chunk.get("meta", {})
+                meta_dict = meta if isinstance(meta, dict) else {}
+                eval_chunks.append(
+                    {
+                        "content": chunk.get("content", chunk.get("text", "")),
+                        "metadata": {
+                            "fused_score": meta_dict.get(
+                                "fused_score", chunk.get("fused_score", 0)
+                            ),
+                            "bm25_score": meta_dict.get(
+                                "bm25_score", chunk.get("bm25_score", 0)
+                            ),
+                            "semantic_score": meta_dict.get(
+                                "semantic_score", chunk.get("semantic_score", 0)
+                            ),
+                        },
+                    }
+                )
+            generated_response.retrieval_context = eval_chunks
+
         # Step 4: Output Guardrails Check
         # Apply guardrails to all response types for consistent safety across all environments
         start_time = time.time()
@@ -2664,7 +2689,7 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=localized_msg,
+                    content=TECHNICAL_ISSUE_MESSAGE,
                 )
 
         try:
@@ -2821,7 +2846,7 @@ class LLMOrchestrationService:
                     llmServiceActive=False,
                     questionOutOfLLMScope=False,
                     inputGuardFailed=False,
-                    content=localized_msg,
+                    content=TECHNICAL_ISSUE_MESSAGE,
                 )
 
     # ========================================================================
