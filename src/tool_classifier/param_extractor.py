@@ -35,9 +35,12 @@ def _strip_format_hints(description: str) -> str:
 
     Strips patterns such as ``(YYYY-MM-DD)``, ``(ISO 8601)``,
     ``(2-letter code)``, ``(HH:MM:SS)``, and trailing
-    ``in the format YYYY-MM-DD`` phrases.  The sanitised description is used
-    only for LLM question generation; the original description (with format
-    hints intact) is still used for extraction context.
+    ``in the format YYYY-MM-DD`` phrases before the schema is passed to the
+    LLM for both extraction and question generation.  This prevents format
+    instructions from leaking into clarifying questions (e.g. "What date?
+    (YYYY-MM-DD)").  Type coercion is handled independently by
+    :meth:`~ParamExtractionModule._validate_param_type`, so the format hints
+    are not needed by the extractor.
     """
     for pattern in _FORMAT_HINT_PATTERNS:
         description = pattern.sub("", description)
