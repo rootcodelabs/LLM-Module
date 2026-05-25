@@ -164,6 +164,10 @@ class OrchestrationResponse(BaseModel):
         default=None,
         description="Optional list of choice buttons for MCQ step responses",
     )
+    retrieval_context: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Retrieved chunks with metadata, populated only in EVAL_MODE",
+    )
 
 
 # New models for embedding and context generation
@@ -288,3 +292,16 @@ class TestOrchestrationResponse(BaseModel):
     chunks: Optional[List[ChunkInfo]] = Field(
         default=None, description="Retrieved chunks with rank and content"
     )
+
+
+class DeepEvalTestOrchestrationResponse(BaseModel):
+    """Extended response model for testing with additional evaluation data."""
+
+    chatId: str
+    llmServiceActive: bool
+    questionOutOfLLMScope: bool
+    inputGuardFailed: bool
+    content: str
+    retrieval_context: Optional[List[Dict[str, Any]]] = None
+    refined_questions: Optional[List[str]] = None
+    expected_output: Optional[str] = None  # For DeepEval
