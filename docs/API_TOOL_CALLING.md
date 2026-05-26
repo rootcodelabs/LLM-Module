@@ -888,7 +888,7 @@ Tracks per-endpoint collection state within a parallel session:
 |---|---|---|---|
 | `endpoint` | dict | required | Full endpoint payload |
 | `collected_params` | dict | `{}` | Params gathered for this endpoint so far |
-| `completed` | bool | `False` | Flipped to `True` when all params are collected and the API has been called |
+| `completed` | bool | `False` | Flipped to `True` when all required params for this endpoint have been collected; API execution happens later, gated on `AgenticLoopStatus.COMPLETED` at the loop level |
 
 #### Extended `APIToolSession` fields
 
@@ -898,7 +898,7 @@ Three new fields added — all optional with safe defaults so **existing Redis s
 |---|---|---|---|
 | `execution_mode` | str | `"single"` | `"single"` or `"parallel"` — drives which loop handles this session |
 | `parallel_endpoints` | list[EndpointSessionState] | `[]` | One entry per matched endpoint; empty in single mode |
-| `active_endpoint_index` | int | `0` | Index of the endpoint currently being collected; advanced by Phase 3 |
+| `active_endpoint_index` | int | `0` | Reserved for future sequential endpoint-tracking logic; not currently read or written by the parallel workflow |
 
 The existing single-mode fields (`selected_endpoint`, `collected_params`, `turn_count`, etc.) are **completely unchanged**. Single-mode sessions have `execution_mode="single"` and `parallel_endpoints=[]`.
 
@@ -932,8 +932,12 @@ Defined in [src/tool_classifier/multi_agentic_loop.py](../src/tool_classifier/mu
 - **One question per turn:** The loop generates a single clarifying question covering the next highest-priority missing param across all endpoints.
 - **Per-endpoint distribution:** After extraction, `_distribute_params()` copies each extracted value to every endpoint whose schema includes that param name.
 - **Completion tracking:** An endpoint is marked `completed=True` in its `EndpointSessionState` once all its required params are present. The loop returns `COMPLETED` only when every endpoint is completed.
-- **Turn limit:** `max_turns = min(3 × num_endpoints, MULTI_API_MAX_TURNS)` — scales with the number of endpoints, capped at 9.
-- **Continuation threshold:** `continuation_turn = num_endpoints + 1` — fires after at least one dedicated turn per endpoint.
+- **Turn limit:** Determined by `_compute_turn_limits(num_endpoints)`:
+  - Multi-intent (`num_endpoints > 1`): fixed `MULTI_INTENT_MAX_TURNS` (6).
+  - Single-intent (`num_endpoints == 1`): `min(3 × num_endpoints, MULTI_API_MAX_TURNS)` — scales with endpoint count, capped at 9.
+- **Continuation threshold:** Also from `_compute_turn_limits`:
+  - Multi-intent: fixed `MULTI_INTENT_CONTINUATION_TURN` (4).
+  - Single-intent: `num_endpoints + 1`.
 
 **`stream_run_turn` signature:**
 
