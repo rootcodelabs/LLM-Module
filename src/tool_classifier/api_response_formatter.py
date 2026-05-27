@@ -1,6 +1,7 @@
 """API response formatter using DSPy — converts raw JSON API responses to natural language."""
 
 import json
+import re
 from typing import Any, AsyncIterator, Dict, List, Union
 
 import dspy
@@ -80,6 +81,13 @@ class APIResponseFormatterSignature(dspy.Signature):
             "When non-empty, follow these rules with highest priority."
         )
     )
+    query_params_context: str = dspy.InputField(
+        desc=(
+            "If non-empty, briefly acknowledge the time period or filter at the "
+            "start of the answer (e.g. 'For the period 2026-01-01 to 2026-12-31, ...'). "
+            "Empty string when no date or time filter was applied."
+        )
+    )
 
     formatted_answer: str = dspy.OutputField(
         desc=(
@@ -94,6 +102,38 @@ class APIResponseFormatterSignature(dspy.Signature):
 
 
 _LANGUAGE_NAMES: Dict[str, str] = {"en": "English", "et": "Estonian", "ru": "Russian"}
+
+# ISO-8601 datetime pattern with optional timezone (Z or ±HH:MM).
+# Anchored at both start (^) and end ($) to avoid partial matches like "2026-01-01foo".
+_DATE_VALUE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})?)?$"
+)
+
+
+def build_params_context(collected_params: Dict[str, Any]) -> str:
+    """Format date/datetime valued params into a readable context string.
+
+    Detects values that look like ISO-8601 date strings (``YYYY-MM-DD`` or
+    ``YYYY-MM-DDTHH:MM:SS``) and formats them as human-readable key-value pairs.
+    Returns an empty string when no date-type values are found.
+
+    Args:
+        collected_params: Dict of param names → values collected from the user.
+
+    Returns:
+        A comma-separated string such as
+        ``"start date: 2026-01-01, end date: 2026-12-31"``
+        or ``""`` when no date params are present.
+    """
+    parts: List[str] = []
+    for name, value in collected_params.items():
+        if isinstance(value, str) and _DATE_VALUE_RE.match(value):
+            # Convert camelCase to spaced words, lower-case.
+            readable = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
+            readable = readable.replace("_", " ")
+            parts.append(f"{readable}: {value}")
+    return ", ".join(parts)
+
 
 _FORMATTER_ERROR_MESSAGES: Dict[str, str] = {
     "et": "Vastuse kuvamine ebaõnnestus. Palun proovige uuesti.",
@@ -124,6 +164,7 @@ class APIResponseFormatterModule(dspy.Module):
         api_response: Union[str, Dict[str, Any], List[Any]],
         endpoint_description: str,
         detected_language: str = "en",
+        collected_params: Dict[str, Any] | None = None,
     ) -> str:
         """Convert a raw API response to a natural-language answer.
 
@@ -134,15 +175,20 @@ class APIResponseFormatterModule(dspy.Module):
             detected_language: ISO language code from the agentic loop session
                 ('en', 'et', 'ru'). Defaults to 'en'. This is the authoritative
                 language for the answer — the LLM will not infer it from the data.
+            collected_params: Dict of param names → values collected from the user.
+                Used to build a date-range acknowledgment prefix when date params
+                are present. Defaults to None.
 
         Returns:
             A clean, natural-language answer ready for display to the user.
         """
+        collected_params = collected_params or {}
         try:
             normalized = self._normalize_response(api_response)
             normalized = self._annotate_empty(normalized)
             normalized = self._truncate_if_needed(normalized)
             response_language = _LANGUAGE_NAMES.get(detected_language, "English")
+            params_context = build_params_context(collected_params)
 
             result = self.formatter(
                 user_query=user_query,
@@ -150,6 +196,7 @@ class APIResponseFormatterModule(dspy.Module):
                 endpoint_description=endpoint_description,
                 response_language=response_language,
                 custom_instructions=self._custom_instructions,
+                query_params_context=params_context,
             )
             return result.formatted_answer  # type: ignore[no-any-return]
 
@@ -190,6 +237,7 @@ class APIResponseFormatterModule(dspy.Module):
         api_response: Union[str, Dict[str, Any], List[Any]],
         endpoint_description: str,
         detected_language: str = "en",
+        collected_params: Dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Stream formatted_answer tokens using DSPy native streaming.
         Yields individual token strings as they arrive from the LLM.
@@ -205,10 +253,13 @@ class APIResponseFormatterModule(dspy.Module):
             api_response: Raw API response (dict, list, or string).
             endpoint_description: Short description of what the endpoint does.
             detected_language: ISO code ('en', 'et', 'ru'). Defaults to 'en'.
+            collected_params: Dict of param names → values collected from the user.
+                Used to build a date-range acknowledgment prefix. Defaults to None.
 
         Yields:
             Token strings from the LLM ``formatted_answer`` field.
         """
+        collected_params = collected_params or {}
         safe_language = (
             detected_language
             if detected_language in _FORMATTER_ERROR_MESSAGES
@@ -220,6 +271,7 @@ class APIResponseFormatterModule(dspy.Module):
             normalized = self._annotate_empty(normalized)
             normalized = self._truncate_if_needed(normalized)
             response_language = _LANGUAGE_NAMES.get(detected_language, "English")
+            params_context = build_params_context(collected_params)
 
             stream_predictor = self._get_stream_predictor()
             output_stream = stream_predictor(
@@ -228,6 +280,7 @@ class APIResponseFormatterModule(dspy.Module):
                 endpoint_description=endpoint_description,
                 response_language=response_language,
                 custom_instructions=self._custom_instructions,
+                query_params_context=params_context,
             )
 
             stream_started = False
@@ -268,6 +321,7 @@ class APIResponseFormatterModule(dspy.Module):
                     api_response=api_response,
                     endpoint_description=endpoint_description,
                     detected_language=detected_language,
+                    collected_params=collected_params,
                 )
                 yield result
 
