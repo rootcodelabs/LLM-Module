@@ -171,7 +171,7 @@ class LLMManager:
             provider: Optional specific provider to configure DSPY with.
         """
         dspy_client = self.get_dspy_client(provider)
-        dspy.configure(lm=dspy_client)
+        dspy.configure(lm=dspy_client, track_usage=True)
 
     def ensure_global_config(self, provider: Optional[LLMProvider] = None) -> None:
         """Configure DSPy exactly once per process (thread-safe)."""
@@ -181,7 +181,7 @@ class LLMManager:
                 # Re-check inside the lock to prevent race condition
                 if not self._configured:
                     dspy_client = self.get_dspy_client(provider)
-                    dspy.configure(lm=dspy_client)
+                    dspy.configure(lm=dspy_client, track_usage=True)
                     self._configured = True
 
     @contextmanager

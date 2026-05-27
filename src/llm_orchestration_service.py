@@ -391,7 +391,7 @@ class LLMOrchestrationService:
             if components["guardrails_adapter"]:
                 start_time = time.time()
                 input_blocked_response = await self.handle_input_guardrails(
-                    components["guardrails_adapter"], request, {}
+                    components["guardrails_adapter"], request, costs_metric
                 )
                 time_metric["input_guardrails_check"] = time.time() - start_time
 
@@ -487,25 +487,7 @@ class LLMOrchestrationService:
                 langfuse = self.langfuse_config.langfuse_client
                 total_costs = calculate_total_costs(costs_metric)
 
-                total_input_tokens = sum(
-                    c.get("total_prompt_tokens", 0) for c in costs_metric.values()
-                )
-                total_output_tokens = sum(
-                    c.get("total_completion_tokens", 0) for c in costs_metric.values()
-                )
-
                 langfuse.update_current_generation(
-                    model=components["llm_manager"]
-                    .get_provider_info()
-                    .get("model", "unknown"),
-                    usage_details={
-                        "input": total_input_tokens,
-                        "output": total_output_tokens,
-                        "total": total_costs.get("total_tokens", 0),
-                    },
-                    cost_details={
-                        "total": total_costs.get("total_cost", 0.0),
-                    },
                     metadata={
                         "total_calls": total_costs.get("total_calls", 0),
                         "cost_breakdown": costs_metric,
@@ -542,7 +524,6 @@ class LLMOrchestrationService:
 
             return self._create_error_response(request)
 
-    @observe(name="streaming_generation", as_type="generation", capture_output=False)
     async def stream_orchestration_response(
         self, request: OrchestrationRequest
     ) -> AsyncIterator[str]:
@@ -1127,29 +1108,27 @@ class LLMOrchestrationService:
             # Langfuse tracking
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                total_costs = calculate_total_costs(costs_metric)
 
-                langfuse.update_current_generation(
-                    model=components["llm_manager"]
-                    .get_provider_info()
-                    .get("model", "unknown"),
-                    usage_details={
-                        "input": usage_info.get("total_prompt_tokens", 0),
-                        "output": usage_info.get("total_completion_tokens", 0),
-                        "total": usage_info.get("total_tokens", 0),
-                    },
-                    cost_details={"total": total_costs.get("total_cost", 0.0)},
-                    metadata={
-                        "streaming": True,
-                        "streaming_duration_seconds": streaming_duration,
-                        "chunks_streamed": chunk_count,
-                        "cost_breakdown": costs_metric,
-                        "chat_id": request.chatId,
-                        "environment": request.environment,
-                        "stream_id": stream_ctx.stream_id,
-                    },
-                )
-                langfuse.flush()
+                metadata_payload = {
+                    "streaming": True,
+                    "streaming_duration_seconds": streaming_duration,
+                    "chunks_streamed": chunk_count,
+                    "cost_breakdown": costs_metric,
+                    "chat_id": request.chatId,
+                    "environment": request.environment,
+                    "stream_id": stream_ctx.stream_id,
+                }
+
+                try:
+                    langfuse.update_current_generation(
+                        metadata=metadata_payload,
+                    )
+                    langfuse.flush()
+                except Exception as langfuse_error:
+                    logger.error(
+                        f"Langfuse streaming metadata update failed: {langfuse_error}",
+                        exc_info=True,
+                    )
 
             # Store inference data (for production and testing environments)
             if request.environment in [
@@ -1994,7 +1973,7 @@ class LLMOrchestrationService:
             costs_metric["input_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     input=user_message,
                     metadata={
                         "guardrail_type": "input",
@@ -2002,14 +1981,6 @@ class LLMOrchestrationService:
                         "verdict": result.verdict,
                         "blocked_reason": result.reason if not result.allowed else None,
                         "error": result.error if result.error else None,
-                    },
-                    usage_details={
-                        "input": result.usage.get("total_prompt_tokens", 0),
-                        "output": result.usage.get("total_completion_tokens", 0),
-                        "total": result.usage.get("total_tokens", 0),
-                    },  # type: ignore
-                    cost_details={
-                        "total": result.usage.get("total_cost", 0.0),
                     },
                 )
             logger.info(
@@ -2023,7 +1994,7 @@ class LLMOrchestrationService:
             logger.error(f"Input guardrails check failed: {str(e)}")
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     metadata={
                         "error": str(e),
                         "error_type": type(e).__name__,
@@ -2066,7 +2037,7 @@ class LLMOrchestrationService:
             costs_metric["input_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     input=user_message,
                     metadata={
                         "guardrail_type": "input",
@@ -2074,14 +2045,6 @@ class LLMOrchestrationService:
                         "verdict": result.verdict,
                         "blocked_reason": result.reason if not result.allowed else None,
                         "error": result.error if result.error else None,
-                    },
-                    usage_details={
-                        "input": result.usage.get("total_prompt_tokens", 0),
-                        "output": result.usage.get("total_completion_tokens", 0),
-                        "total": result.usage.get("total_tokens", 0),
-                    },  # type: ignore
-                    cost_details={
-                        "total": result.usage.get("total_cost", 0.0),
                     },
                 )
             logger.info(
@@ -2095,7 +2058,7 @@ class LLMOrchestrationService:
             logger.error(f"Input guardrails check failed: {str(e)}")
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     metadata={
                         "error": str(e),
                         "error_type": type(e).__name__,
@@ -2138,7 +2101,7 @@ class LLMOrchestrationService:
             costs_metric["output_guardrails"] = result.usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     input=assistant_message[:500],  # Truncate for readability
                     output=result.verdict,
                     metadata={
@@ -2148,14 +2111,6 @@ class LLMOrchestrationService:
                         "reason": result.reason if not result.allowed else None,
                         "error": result.error if result.error else None,
                         "response_length": len(assistant_message),
-                    },
-                    usage_details={
-                        "input": result.usage.get("total_prompt_tokens", 0),
-                        "output": result.usage.get("total_completion_tokens", 0),
-                        "total": result.usage.get("total_tokens", 0),
-                    },  # type: ignore
-                    cost_details={
-                        "total": result.usage.get("total_cost", 0.0),
                     },
                 )
             logger.info(
@@ -2169,7 +2124,7 @@ class LLMOrchestrationService:
             logger.error(f"Output guardrails check failed: {str(e)}")
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     metadata={
                         "error": str(e),
                         "error_type": type(e).__name__,
@@ -2347,7 +2302,7 @@ class LLMOrchestrationService:
             logger.error(f"Failed to initialize LLM Manager: {str(e)}")
             raise
 
-    @observe(name="refine_user_prompt", as_type="chain")
+    @observe(name="refine_user_prompt", as_type="generation")
     def _refine_user_prompt(
         self,
         llm_manager: LLMManager,
@@ -2641,7 +2596,7 @@ class LLMOrchestrationService:
 
         return references if references else None
 
-    @observe(name="generate_rag_response", as_type="generation")
+    @observe(name="generate_rag_response", as_type="span")
     def _generate_rag_response(
         self,
         llm_manager: LLMManager,
@@ -2719,17 +2674,11 @@ class LLMOrchestrationService:
             costs_metric["response_generator"] = generator_usage
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
-                    model=llm_manager.get_provider_info().get("model", "unknown"),
-                    usage_details={
-                        "input": generator_usage.get("total_prompt_tokens", 0),
-                        "output": generator_usage.get("total_completion_tokens", 0),
-                        "total": generator_usage.get("total_tokens", 0),
-                    },
-                    cost_details={
-                        "total": generator_usage.get("total_cost", 0.0),
-                    },
+                langfuse.update_current_span(
                     metadata={
+                        "model": llm_manager.get_provider_info().get(
+                            "model", "unknown"
+                        ),
                         "num_calls": generator_usage.get("num_calls", 0),
                         "question_out_of_scope": question_out_of_scope,
                         "num_chunks_used": len(relevant_chunks)
@@ -2814,7 +2763,7 @@ class LLMOrchestrationService:
             )
             if self.langfuse_config.langfuse_client:
                 langfuse = self.langfuse_config.langfuse_client
-                langfuse.update_current_generation(
+                langfuse.update_current_span(
                     metadata={
                         "error_id": error_id,
                         "error_type": type(e).__name__,

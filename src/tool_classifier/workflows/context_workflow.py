@@ -3,6 +3,7 @@
 from typing import Any, AsyncIterator, Dict, Optional, cast
 import time
 import dspy
+from langfuse import observe
 from loguru import logger
 
 from src.models.request_models import OrchestrationRequest, OrchestrationResponse
@@ -13,6 +14,7 @@ from src.guardrails.nemo_rails_adapter import NeMoRailsAdapter
 from src.llm_orchestrator_config.llm_manager import LLMManager
 from src.utils.cost_utils import get_lm_usage_since
 from src.utils.language_detector import detect_language
+from src.utils.observation_utils import update_observation_safe
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
@@ -253,6 +255,7 @@ class ContextWorkflowExecutor(BaseWorkflow):
             costs_metric=costs_metric,
         )
 
+    @observe(name="context_workflow_execute_async", as_type="span")
     async def execute_async(
         self,
         request: OrchestrationRequest,
@@ -298,6 +301,11 @@ class ContextWorkflowExecutor(BaseWorkflow):
                 request.message, history, time_metric, costs_metric
             )
             if _detected is None:
+                update_observation_safe(
+                    input_data={"chat_id": request.chatId, "query": request.message},
+                    output_data={"workflow_result": "fallback_to_rag"},
+                    metadata={"costs": costs_metric},
+                )
                 self._log_costs(costs_metric)
                 context["costs_dict"] = costs_metric
                 return None
@@ -316,6 +324,11 @@ class ContextWorkflowExecutor(BaseWorkflow):
             )
             self._log_costs(costs_metric)
             context["costs_dict"] = costs_metric
+            update_observation_safe(
+                input_data={"chat_id": request.chatId, "query": request.message},
+                output_data={"workflow_result": "greeting_response"},
+                metadata={"costs": costs_metric},
+            )
             return OrchestrationResponse(
                 chatId=request.chatId,
                 llmServiceActive=True,
@@ -329,6 +342,11 @@ class ContextWorkflowExecutor(BaseWorkflow):
             and detection_result.context_snippet
         ):
             context["costs_dict"] = costs_metric
+            update_observation_safe(
+                input_data={"chat_id": request.chatId, "query": request.message},
+                output_data={"workflow_result": "context_answer_generation"},
+                metadata={"costs": costs_metric},
+            )
             return await self._generate_response_async(
                 request, detection_result.context_snippet, time_metric, costs_metric
             )
@@ -336,10 +354,20 @@ class ContextWorkflowExecutor(BaseWorkflow):
         logger.warning(
             f"[{request.chatId}] Cannot answer from context — falling back to RAG"
         )
+        update_observation_safe(
+            input_data={"chat_id": request.chatId, "query": request.message},
+            output_data={"workflow_result": "fallback_to_rag"},
+            metadata={"costs": costs_metric},
+        )
         self._log_costs(costs_metric)
         context["costs_dict"] = costs_metric
         return None
 
+    @observe(
+        name="context_workflow_execute_streaming",
+        as_type="span",
+        capture_output=False,
+    )
     async def execute_streaming(
         self,
         request: OrchestrationRequest,
@@ -370,6 +398,11 @@ class ContextWorkflowExecutor(BaseWorkflow):
             request.message, history, time_metric, costs_metric
         )
         if detection_result is None:
+            update_observation_safe(
+                input_data={"chat_id": request.chatId, "query": request.message},
+                output_data={"workflow_result": "fallback_to_rag"},
+                metadata={"costs": costs_metric},
+            )
             self._log_costs(costs_metric)
             return None
 
@@ -395,18 +428,33 @@ class ContextWorkflowExecutor(BaseWorkflow):
                 yield orchestration_service.format_sse(chat_id, "END")
                 orchestration_service.log_costs(costs_metric)
 
+            update_observation_safe(
+                input_data={"chat_id": request.chatId, "query": request.message},
+                output_data={"workflow_result": "greeting_stream"},
+                metadata={"costs": costs_metric},
+            )
             return _stream_greeting()
 
         if (
             detection_result.can_answer_from_context
             and detection_result.context_snippet
         ):
+            update_observation_safe(
+                input_data={"chat_id": request.chatId, "query": request.message},
+                output_data={"workflow_result": "context_stream_generation"},
+                metadata={"costs": costs_metric},
+            )
             return await self._create_history_stream(
                 request, detection_result.context_snippet, costs_metric
             )
 
         logger.warning(
             f"[{request.chatId}] Cannot answer from context — falling back to RAG"
+        )
+        update_observation_safe(
+            input_data={"chat_id": request.chatId, "query": request.message},
+            output_data={"workflow_result": "fallback_to_rag"},
+            metadata={"costs": costs_metric},
         )
         self._log_costs(costs_metric)
         return None
