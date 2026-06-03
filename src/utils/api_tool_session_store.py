@@ -6,8 +6,8 @@ from fastapi import HTTPException, Request, status
 from loguru import logger
 from redis import WatchError
 
-from src.models.session_models import APIToolSession
-from src.utils.redis_client import get_redis_client
+from models.session_models import APIToolSession
+from utils.redis_client import get_redis_client
 
 _SESSION_KEY_PREFIX = "session:"
 _SESSION_TTL_SECONDS = 1800  # 30 minutes, sliding

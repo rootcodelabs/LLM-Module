@@ -12,6 +12,7 @@ from tool_classifier.constants import (
     CONTINUATION_QUESTION_RU,
     CONTINUATION_TURN,
 )
+from tool_classifier.continuation_utils import detect_continuation_response
 from tool_classifier.enums import AgenticLoopStatus
 from tool_classifier.models import AgenticLoopResult
 from tool_classifier.param_extractor import ParamExtractionModule
@@ -21,25 +22,6 @@ _CONTINUATION_QUESTIONS: dict[str, str] = {
     "et": CONTINUATION_QUESTION_ET,
     "ru": CONTINUATION_QUESTION_RU,
 }
-
-
-_YES_RESPONSES = frozenset(
-    {
-        "yes",
-        "y",
-        "jah",
-        "ja",
-        "да",
-        "ok",
-        "okay",
-        "sure",
-        "please",
-        "continue",
-        "jätka",
-        "продолжить",
-        "absolutely",
-    }
-)
 
 
 class AgenticLoop:
@@ -207,6 +189,7 @@ class AgenticLoop:
                 conversation_history,
                 collected_params,
                 session_language,
+                turn_count,
             )
         except Exception as exc:
             logger.error(
@@ -385,6 +368,7 @@ class AgenticLoop:
                 conversation_history=conversation_history,
                 already_collected=collected_params,
                 session_language=session_language,
+                turn_count=turn_count,
             )
         except Exception as exc:
             logger.error(
@@ -528,10 +512,7 @@ class AgenticLoop:
     def _detect_continuation_response(self, user_message: str) -> bool:
         """Detect whether the user's message indicates they want to continue.
 
-        Checks the normalised (lower-cased, stripped) message against a set of
-        known affirmative responses in Estonian, English, and Russian.
-        Any response that is not clearly affirmative is treated as a "no" so
-        the loop falls back to the RAG workflow.
+        Delegates to :func:`~continuation_utils.detect_continuation_response`.
 
         Args:
             user_message: The raw user message to inspect.
@@ -539,5 +520,4 @@ class AgenticLoop:
         Returns:
             True if the user wants to continue, False otherwise.
         """
-        normalised = user_message.strip().lower()
-        return normalised in _YES_RESPONSES
+        return detect_continuation_response(user_message)
