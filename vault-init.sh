@@ -130,7 +130,7 @@ path "auth/token/lookup-self" { capabilities = ["read"] }'
     
     # Create LLM Orchestration AppRole
     echo "Creating llm-orchestration-service AppRole..."
-    wget -q -O- --post-data='{"token_policies":["llm-orchestration-policy"],"token_no_default_policy":true,"token_ttl":"1h","token_max_ttl":"24h","secret_id_ttl":"24h","secret_id_num_uses":0,"bind_secret_id":true}' \
+    wget -q -O- --post-data='{"token_policies":["llm-orchestration-policy"],"token_no_default_policy":true,"token_ttl":"1h","token_max_ttl":"8h","secret_id_ttl":"24h","secret_id_num_uses":0,"bind_secret_id":true}' \
         --header="X-Vault-Token: $ROOT_TOKEN" \
         --header='Content-Type: application/json' \
         "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service" >/dev/null
