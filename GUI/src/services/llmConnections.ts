@@ -6,7 +6,7 @@ import { encryptLLMCredentials } from 'utils/encryption';
 
 export interface LLMConnection {
   id: number;
-  vault_uuid?: string;
+  vaultUuid?: string;
   connectionName: string;
   llmPlatform: string;
   llmModel: string;
@@ -127,7 +127,7 @@ export interface LLMConnectionFormData {
 }
 
 // Vault secret service functions
-async function createVaultSecret(connectionId: string, vaultUuid: string, connectionData: LLMConnectionFormData): Promise<void> {
+async function createVaultSecret(vaultUuid: string, connectionData: LLMConnectionFormData): Promise<void> {
 
   // Encrypt sensitive credentials before sending to vault
   const encryptedCredentials = await encryptLLMCredentials({
@@ -144,7 +144,6 @@ async function createVaultSecret(connectionId: string, vaultUuid: string, connec
   });
 
   const payload = {
-    connectionId,
     vaultUuid,
     llmPlatform: connectionData.llmPlatform,
     llmModel: connectionData.llmModel,
@@ -178,10 +177,9 @@ async function createVaultSecret(connectionId: string, vaultUuid: string, connec
   await apiDev.post(vaultEndpoints.CREATE_VAULT_SECRET(), payload);
 }
 
-async function deleteVaultSecret(connectionId: string, vaultUuid: string, connectionData: Partial<LLMConnectionFormData>): Promise<void> {
+async function deleteVaultSecret(vaultUuid: string, connectionData: Partial<LLMConnectionFormData>): Promise<void> {
 
   const payload = {
-    connectionId,
     vaultUuid,
     llmPlatform: connectionData.llmPlatform || '',
     llmModel: connectionData.llmModel || '',
@@ -268,8 +266,8 @@ export async function createLLMConnection(connectionData: LLMConnectionFormData)
   console.log('Created LLM Connection:', connection);
 
   // After successful database creation, store secrets in vault
-  if (connection && connection.id && connection.vault_uuid) {
-    await createVaultSecret(connection.id.toString(), connection.vault_uuid, connectionData);
+  if (connection && connection.id && connection.vaultUuid) {
+    await createVaultSecret(connection.vaultUuid, connectionData);
   }
 
   return connection;
@@ -317,9 +315,9 @@ export async function updateLLMConnection(
     || connectionData.embeddingSecretKey && !connectionData.embeddingSecretKey?.includes('*')
     || connectionData.embeddingAzureApiKey && !connectionData.embeddingAzureApiKey?.includes('*'))) {
     try {
-      const vaultUuid = connection.vault_uuid || (await getLLMConnection(id)).vault_uuid;
+      const vaultUuid = connection.vaultUuid || (await getLLMConnection(id)).vaultUuid;
       if (vaultUuid) {
-        await createVaultSecret(id.toString(), vaultUuid, connectionData);
+        await createVaultSecret(vaultUuid, connectionData);
       }
     } catch (vaultError) {
       console.error('Failed to update secrets in vault:', vaultError);
@@ -338,15 +336,11 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
     console.error('Failed to get connection data before deletion:', error);
   }
 
-  // Delete from database
-  await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
-    connection_id: id,
-  });
-
-  // After successful database deletion, delete secrets from vault
-  if (connectionToDelete && connectionToDelete.vault_uuid) {
+  // Delete secrets from vault BEFORE database deletion
+  // (delete.yml validates connection exists, so DB must not be soft-deleted yet)
+  if (connectionToDelete && connectionToDelete.vaultUuid) {
     try {
-      await deleteVaultSecret(id.toString(), connectionToDelete.vault_uuid, {
+      await deleteVaultSecret(connectionToDelete.vaultUuid, {
         llmPlatform: connectionToDelete.llmPlatform,
         llmModel: connectionToDelete.llmModel,
         embeddingModel: connectionToDelete.embeddingModel,
@@ -354,10 +348,14 @@ export async function deleteLLMConnection(id: string | number): Promise<void> {
       });
     } catch (vaultError) {
       console.error('Failed to delete secrets from vault:', vaultError);
-      // Note: We don't throw here as the database deletion has already succeeded
-      // This is logged for monitoring/debugging purposes
+      // Continue with database deletion even if vault deletion fails
     }
   }
+
+  // Delete from database (soft-delete sets connection_status = 'deleted')
+  await apiDev.post(llmConnectionsEndpoints.DELETE_LLM_CONNECTION(), {
+    connection_id: id,
+  });
 }
 
 export async function checkBudgetStatus(): Promise<BudgetStatus | null> {

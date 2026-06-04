@@ -164,7 +164,6 @@ setup_python_environment() {
 
 log "=== Starting Vault Secrets Storage ==="
 log "Received parameters:"
-log "  connectionId: $connectionId"
 log "  vaultUuid: $vaultUuid"
 log "  llmPlatform: $llmPlatform"
 log "  llmModel: $llmModel"
@@ -268,7 +267,7 @@ store_aws_llm_secrets() {
     
     # Build JSON payload using jq for proper escaping
     local json_payload=$(jq -n \
-        --arg conn_id "$connectionId" \
+        --arg conn_id "$vaultUuid" \
         --arg access_key "$decrypted_access_key" \
         --arg secret_key "$decrypted_secret_key" \
         --arg model "$model" \
@@ -327,7 +326,7 @@ store_azure_llm_secrets() {
     
     # Build JSON payload using jq for proper escaping
     local json_payload=$(jq -n \
-        --arg conn_id "$connectionId" \
+        --arg conn_id "$vaultUuid" \
         --arg endpoint "$targetUrl" \
         --arg api_key "$decrypted_api_key" \
         --arg deploy_name "$deploymentName" \
@@ -394,7 +393,7 @@ store_aws_embedding_secrets() {
     
     # Build JSON payload using jq for proper escaping
     local json_payload=$(jq -n \
-        --arg conn_id "$connectionId" \
+        --arg conn_id "$vaultUuid" \
         --arg access_key "$decrypted_embedding_access_key" \
         --arg secret_key "$decrypted_embedding_secret_key" \
         --arg model "$embeddingModel" \
@@ -452,7 +451,7 @@ store_azure_embedding_secrets() {
     
     # Build JSON payload using jq for proper escaping
     local json_payload=$(jq -n \
-        --arg conn_id "$connectionId" \
+        --arg conn_id "$vaultUuid" \
         --arg endpoint "$embeddingTargetUri" \
         --arg api_key "$decrypted_embedding_api_key" \
         --arg deploy_name "$embeddingDeploymentName" \

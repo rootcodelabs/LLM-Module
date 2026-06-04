@@ -177,7 +177,7 @@ assign_connection_response:
   assign:
     response: {
       id: "${connection_result.response.body[0].id}",
-      vault_uuid: "${connection_result.response.body[0].vaultUuid}",
+      vaultUuid: "${connection_result.response.body[0].vaultUuid}",
       status: 201,
       operationSuccess: true
     }

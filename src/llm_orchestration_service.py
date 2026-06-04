@@ -2996,9 +2996,15 @@ class LLMOrchestrationService:
             from src.llm_orchestrator_config.context_manager import (
                 ContextGenerationManager,
             )
+            from src.utils.connection_id_fetcher import get_connection_id_fetcher
 
-            # Use existing LLM manager or create new one for context generation
-            llm_manager = LLMManager()
+            # Resolve production vault_uuid from DB before creating LLM manager
+            fetcher = get_connection_id_fetcher()
+            connection_id = fetcher.fetch_vault_uuid_sync("production")
+
+            llm_manager = LLMManager(
+                environment="production", connection_id=connection_id
+            )
             self._context_manager = ContextGenerationManager(llm_manager)
             logger.debug("Lazy initialized ContextGenerationManager for vector indexer")
 

@@ -19,7 +19,6 @@ log "=== Starting Vault Secrets Deletion ==="
 
 # Debug: Print received parameters
 log "Received parameters:"
-log "  connectionId: $connectionId"
 log "  vaultUuid: $vaultUuid"
 log "  llmPlatform: $llmPlatform"
 log "  llmModel: $llmModel"
