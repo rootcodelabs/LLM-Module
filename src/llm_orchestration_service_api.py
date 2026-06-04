@@ -51,6 +51,7 @@ from models.request_models import (
     EmbeddingErrorResponse,
     DeepEvalTestOrchestrationResponse,
 )
+from src.utils.connection_id_fetcher import get_connection_id_fetcher
 
 
 @asynccontextmanager
@@ -249,6 +250,19 @@ async def pydantic_validation_exception_handler(
             "type": "validation_error",
         },
     )
+
+
+@app.post("/cache/clear")
+async def clear_connection_cache() -> dict[str, str]:
+    """Clear cached connection IDs and vault UUIDs."""
+    try:
+        fetcher = get_connection_id_fetcher()
+        fetcher.clear_cache()
+        logger.info("Connection cache cleared via /cache/clear endpoint")
+        return {"status": "ok", "message": "Connection cache cleared"}
+    except Exception as e:
+        logger.error(f"Failed to clear connection cache: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/health")

@@ -2324,15 +2324,31 @@ class LLMOrchestrationService:
         """
         Initialize LLM Manager with proper configuration.
 
+        For production environment, resolves vault_uuid from DB if not provided.
+        For testing environment, connection_id (vault_uuid) must be provided.
+
         Args:
-            environment: Environment context (production/testing/development)
-            connection_id: Optional connection identifier
+            environment: Environment context (production/testing)
+            connection_id: Vault UUID for the connection (required for testing, auto-resolved for production)
 
         Returns:
             LLMManager: Initialized LLM manager instance
         """
         try:
             logger.info(f"Initializing LLM Manager for environment: {environment}")
+
+            # Resolve vault_uuid for production if not provided
+            if environment == "production" and not connection_id:
+                from src.utils.connection_id_fetcher import get_connection_id_fetcher
+
+                fetcher = get_connection_id_fetcher()
+                connection_id = fetcher.fetch_vault_uuid_sync("production")
+                if not connection_id:
+                    raise ValueError(
+                        "No production connection found in database. "
+                        "Please create a production LLM connection first."
+                    )
+                logger.info(f"Resolved production vault_uuid from DB: {connection_id}")
 
             llm_manager = LLMManager(
                 environment=environment, connection_id=connection_id
