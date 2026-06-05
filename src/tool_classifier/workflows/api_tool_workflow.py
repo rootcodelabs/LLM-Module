@@ -238,13 +238,16 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         schema: List[Dict[str, Any]], collected: Dict[str, Any]
     ) -> List[str]:
         """Return names of required params from *schema* not yet present in *collected*."""
-        return [
-            p["name"]
-            for p in schema
-            if isinstance(p, dict)
-            and p.get("required", False)
-            and p["name"] not in collected
-        ]
+        missing: list[str] = []
+        for p in schema:
+            if not isinstance(p, dict) or not p.get("required", False):
+                continue
+            name = p.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            if name not in collected:
+                missing.append(name)
+        return missing
 
     async def _execute_api_and_format(
         self,
@@ -423,9 +426,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     _ctxs: list[LastCallContext] = []
                     for _state, _result in _pairs:
                         if _result.success and _state.endpoint.get("cacheable", True):
+                            _ttl_override = _state.endpoint.get("cache_ttl_seconds")
                             _ttl = (
-                                _state.endpoint.get("cache_ttl_seconds")
-                                or ATC_CACHE_DEFAULT_TTL_SECONDS
+                                _ttl_override
+                                if isinstance(_ttl_override, int) and _ttl_override > 0
+                                else ATC_CACHE_DEFAULT_TTL_SECONDS
                             )
                             await _cs.set_l1(
                                 chat_id,
@@ -533,9 +538,11 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                     _ctxs: list[LastCallContext] = []
                     for _state, _result in _pairs:
                         if _result.success and _state.endpoint.get("cacheable", True):
+                            _ttl_override = _state.endpoint.get("cache_ttl_seconds")
                             _ttl = (
-                                _state.endpoint.get("cache_ttl_seconds")
-                                or ATC_CACHE_DEFAULT_TTL_SECONDS
+                                _ttl_override
+                                if isinstance(_ttl_override, int) and _ttl_override > 0
+                                else ATC_CACHE_DEFAULT_TTL_SECONDS
                             )
                             await _cs.set_l1(
                                 chat_id,
