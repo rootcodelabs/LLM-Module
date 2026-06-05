@@ -51,6 +51,7 @@ from models.request_models import (
     EmbeddingErrorResponse,
     DeepEvalTestOrchestrationResponse,
 )
+from src.utils.connection_id_fetcher import get_connection_id_fetcher
 
 
 @asynccontextmanager
@@ -249,6 +250,22 @@ async def pydantic_validation_exception_handler(
             "type": "validation_error",
         },
     )
+
+
+@app.post("/cache/clear")
+async def clear_connection_cache() -> dict[str, str]:
+    """Clear cached connection IDs and vault UUIDs."""
+    try:
+        fetcher = get_connection_id_fetcher()
+        fetcher.clear_cache()
+        logger.info("Connection cache cleared via /cache/clear endpoint")
+        return {"status": "ok", "message": "Connection cache cleared"}
+    except Exception as e:
+        logger.error(f"Failed to clear connection cache: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to clear connection cache",
+        ) from e
 
 
 @app.get("/health")
@@ -518,7 +535,7 @@ async def stream_orchestrated_response(
 
         # Streaming is only for allowed environments
         if request.environment not in STREAMING_ALLOWED_ENVS:
-            error_msg = f"Streaming is only available for production environment. Current environment: {request.environment}. Please use /orchestrate endpoint for non-streaming environments."
+            error_msg = f"Streaming is only available for production and testing environments. Current environment: {request.environment}. Please use /orchestrate endpoint for non-streaming environments."
             logger.warning(error_msg)
 
             async def env_error_stream() -> AsyncGenerator[str, None]:
