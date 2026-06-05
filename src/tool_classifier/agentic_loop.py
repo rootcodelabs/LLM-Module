@@ -89,6 +89,7 @@ class AgenticLoop:
         continuation_turn: int = CONTINUATION_TURN,
         session_language: str = "en",
         continuation_language: Optional[str] = None,
+        seeded_params: Optional[Dict[str, Any]] = None,
     ) -> AgenticLoopResult:
         """Process one user turn of the parameter-collection loop.
 
@@ -139,6 +140,12 @@ class AgenticLoop:
             turn_count.
         """
         updated_turn_count = turn_count + 1
+
+        # Seed inherited params from L2 follow-up detection — turn 0 only.
+        # seeded_params take lower priority than anything already in collected_params
+        # (i.e. values explicitly set by the session take precedence).
+        if turn_count == 0 and seeded_params:
+            collected_params = {**seeded_params, **collected_params}
 
         # Step 0 — Continuation decision: user is responding to the yes/no prompt
         original_awaiting_continuation = awaiting_continuation
@@ -300,6 +307,7 @@ class AgenticLoop:
         continuation_turn: int = CONTINUATION_TURN,
         session_language: str = "en",
         continuation_language: Optional[str] = None,
+        seeded_params: Optional[Dict[str, Any]] = None,
     ) -> tuple[AgenticLoopResult, List[str]]:
         """Process one user turn like :meth:`run_turn` but stream clarifying_question tokens.
 
@@ -314,6 +322,10 @@ class AgenticLoop:
             clarifying question, or an empty list when no question is needed.
         """
         updated_turn_count = turn_count + 1
+
+        # Seed inherited params from L2 follow-up detection — turn 0 only.
+        if turn_count == 0 and seeded_params:
+            collected_params = {**seeded_params, **collected_params}
 
         # Step 0 — Continuation decision
         original_awaiting_continuation = awaiting_continuation
