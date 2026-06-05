@@ -222,12 +222,13 @@ class SecretResolver:
         Environment is not part of the path — swaps are DB-only.
 
         Path format: llm/connections/{provider}/{uuid}
-        Fallback (legacy): llm/connections/{provider}/{environment}/{model_name}
         """
-        if connection_id:
-            return f"llm/connections/{provider}/{connection_id}"
-        # Fallback for backward compatibility during migration
-        return f"llm/connections/{provider}/{environment}/{model_name}"
+        if not connection_id:
+            raise ValueError(
+                f"connection_id (vault_uuid) is required to build vault path "
+                f"for provider={provider}, environment={environment}"
+            )
+        return f"llm/connections/{provider}/{connection_id}"
 
     def _get_from_cache(
         self, vault_path: str
@@ -399,9 +400,10 @@ class SecretResolver:
         Environment is not part of the path — swaps are DB-only.
 
         Path format: embeddings/connections/{provider}/{uuid}
-        Fallback (legacy): embeddings/connections/{provider}/{environment}/{model_name}
         """
-        if connection_id:
-            return f"embeddings/connections/{provider}/{connection_id}"
-        # Fallback for backward compatibility during migration
-        return f"embeddings/connections/{provider}/{environment}/{model_name}"
+        if not connection_id:
+            raise ValueError(
+                f"connection_id (vault_uuid) is required to build embedding vault path "
+                f"for provider={provider}, environment={environment}"
+            )
+        return f"embeddings/connections/{provider}/{connection_id}"

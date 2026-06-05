@@ -696,6 +696,17 @@ class ConfigurationLoader:
             ConfigurationError: If configuration cannot be loaded or secrets not found
         """
         try:
+            # Auto-resolve vault_uuid from DB if not provided
+            if not connection_id:
+                from src.utils.connection_id_fetcher import get_connection_id_fetcher
+
+                fetcher = get_connection_id_fetcher()
+                connection_id = fetcher.fetch_vault_uuid_sync(environment)
+                if not connection_id:
+                    raise ConfigurationError(
+                        f"No {environment} connection found in database for embedding config"
+                    )
+
             # Load raw config
             with open(self.config_path, "r", encoding="utf-8") as file:
                 raw_config: Dict[str, Any] = yaml.safe_load(file)
