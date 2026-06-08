@@ -117,6 +117,7 @@ unfixable = []
 
 
 "src/utils/api_tool_session_store.py" = ["ANN401"]  # Dynamic Pydantic model field updates via **kwargs
+"src/utils/atc_cache_store.py" = ["ANN401"]  # raw_response / return type are parsed JSON (dict or list) — Any is the correct annotation
 "src/tool_classifier/workflows/api_tool_workflow.py" = ["ANN401", "N815"]  # Dynamic guardrails adapter + orchestration service Any types; camelCase _MinimalRequest field for API contract
 
 [tool.ruff.format]

@@ -60,6 +60,7 @@ from tool_classifier.workflows import (
     OODWorkflowExecutor,
 )
 from llm_orchestrator_config.feature_flags import FeatureFlags
+from utils.atc_cache_store import ATCCacheStore
 
 if TYPE_CHECKING:
     from llm_orchestration_service import LLMOrchestrationService
@@ -221,6 +222,11 @@ class ToolClassifier:
                                 f"— abandoning old session"
                             )
                             await session_store.delete(request.chatId)
+                            if FeatureFlags.ATC_RESPONSE_CACHE_ENABLED:
+                                await ATCCacheStore().invalidate_l2(request.chatId)
+                                logger.info(
+                                    f"[{request.chatId}] ATC cache: L2 invalidated on intent switch"
+                                )
                             return new_api_match
 
                         logger.info(
