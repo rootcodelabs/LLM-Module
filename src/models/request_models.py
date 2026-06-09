@@ -54,12 +54,19 @@ class OrchestrationRequest(BaseModel):
         ..., description="Previous conversation history"
     )
     url: str = Field(..., description="Source URL context")
-    environment: Literal["production", "testing", "development"] = Field(
-        ..., description="Environment context"
+    environment: Literal["production", "testing"] = Field(
+        "production", description="Environment context (defaults to production)"
     )
     connection_id: Optional[str] = Field(
-        None, description="Optional connection identifier"
+        None, description="Vault UUID for the connection (required for testing)"
     )
+
+    @model_validator(mode="after")
+    def validate_connection_id_for_testing(self) -> "OrchestrationRequest":
+        """Ensure connection_id is provided when environment is testing."""
+        if self.environment == "testing" and not self.connection_id:
+            raise ValueError("connection_id is required when environment is 'testing'")
+        return self
 
     @field_validator("message")
     @classmethod
@@ -259,7 +266,7 @@ class TestOrchestrationRequest(BaseModel):
     """Model for simplified test orchestration request."""
 
     message: str = Field(..., description="User's message/query")
-    environment: Literal["production", "testing", "development"] = Field(
+    environment: Literal["production", "testing"] = Field(
         ..., description="Environment context"
     )
     connectionId: Optional[int] = Field(
