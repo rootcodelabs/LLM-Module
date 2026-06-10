@@ -9,7 +9,11 @@ from typing import Any, Dict, List, Optional, TypedDict
 import dspy
 import dspy.streaming
 from dspy.streaming import StreamListener
+from langfuse import observe
+from src.utils.observation_utils import update_observation_safe
 from loguru import logger
+
+from src.utils.cost_utils import get_lm_usage_since
 
 _TRUTHY_STRINGS = {"true", "yes", "jah", "1", "on", "õige", "да"}
 _FALSY_STRINGS = {"false", "no", "ei", "0", "off", "vale", "нет"}
@@ -232,6 +236,7 @@ class ParamExtractionModule(dspy.Module):
         self.extractor = dspy.Predict(ParamExtractionSignature)
         self._custom_instructions = custom_instructions
 
+    @observe(name="api_param_extraction_llm", as_type="generation")
     def forward(
         self,
         user_message: str,
@@ -278,6 +283,16 @@ class ParamExtractionModule(dspy.Module):
         already_collected_json = json.dumps(already_collected, ensure_ascii=False)
         intent_groups_json = json.dumps(intent_groups or [], ensure_ascii=False)
 
+        history_length_before = 0
+        try:
+            lm = dspy.settings.lm
+            if lm and hasattr(lm, "history"):
+                history_length_before = len(lm.history)
+        except Exception as e:
+            logger.warning(
+                f"Failed to get LM history length for parameter extraction: {e}"
+            )
+
         result = None
         try:
             result = self.extractor(
@@ -290,7 +305,25 @@ class ParamExtractionModule(dspy.Module):
                 custom_instructions=self._custom_instructions,
                 intent_groups=intent_groups_json,
             )
-            return self._parse_prediction(result, params_schema, already_collected)
+            parsed = self._parse_prediction(result, params_schema, already_collected)
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(parsed["missing_required"]),
+                    "clarifying_question": parsed["clarifying_question"],
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "extracted_params_count": len(parsed["extracted_params"]),
+                    "streaming": False,
+                },
+            )
+            return parsed
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse param extraction JSON: {e}")
@@ -301,11 +334,47 @@ class ParamExtractionModule(dspy.Module):
                 logger.error(
                     f"Raw missing_required: {getattr(result, 'missing_required', None)}"
                 )
-            return self._safe_defaults(params_schema, already_collected)
+            fallback = self._safe_defaults(params_schema, already_collected)
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(fallback["missing_required"]),
+                    "clarifying_question": fallback["clarifying_question"],
+                    "error": f"JSON parse error: {e}",
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": False,
+                },
+            )
+            return fallback
 
         except Exception as e:
             logger.exception(f"Param extraction forward failed: {e}")
-            return self._safe_defaults(params_schema, already_collected)
+            fallback = self._safe_defaults(params_schema, already_collected)
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(fallback["missing_required"]),
+                    "clarifying_question": fallback["clarifying_question"],
+                    "error": str(e),
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": False,
+                },
+            )
+            return fallback
 
     def _get_stream_predictor(self) -> Any:
         """Return a fresh streamified predictor for each call.
@@ -321,6 +390,7 @@ class ParamExtractionModule(dspy.Module):
         listener = StreamListener(signature_field_name="clarifying_question")
         return dspy.streamify(self.extractor, stream_listeners=[listener])
 
+    @observe(name="api_param_extraction_streaming", as_type="generation")
     async def stream_forward(
         self,
         user_message: str,
@@ -376,6 +446,18 @@ class ParamExtractionModule(dspy.Module):
         intent_groups_json = json.dumps(intent_groups or [], ensure_ascii=False)
 
         output_stream = None
+
+        history_length_before = 0
+        try:
+            lm = dspy.settings.lm
+            if lm and hasattr(lm, "history"):
+                history_length_before = len(lm.history)
+        except Exception as e:
+            logger.warning(
+                "Failed to get LM history length for parameter extraction "
+                f"streaming: {e}"
+            )
+
         try:
             stream_predictor = self._get_stream_predictor()
             output_stream = stream_predictor(
@@ -433,17 +515,77 @@ class ParamExtractionModule(dspy.Module):
                     f"ParamExtractionModule.stream_forward: streamed {len(tokens)} tokens"
                 )
 
+            # Join all streamed token chunks into the complete assembled question for langfuse logging.
+            assembled_question = (
+                "".join(tokens) if tokens else result["clarifying_question"]
+            )
+
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(result["missing_required"]),
+                    "clarifying_question": assembled_question,
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "extracted_params_count": len(result["extracted_params"]),
+                    "streaming": True,
+                    "question_token_count": len(tokens),
+                },
+            )
+
             return tokens, result
 
         except json.JSONDecodeError as e:
             logger.error(
                 f"ParamExtractionModule.stream_forward failed to parse JSON: {e}"
             )
-            return [], self._safe_defaults(params_schema, already_collected)
+            fallback = self._safe_defaults(params_schema, already_collected)
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(fallback["missing_required"]),
+                    "clarifying_question": fallback["clarifying_question"],
+                    "error": f"JSON parse error: {e}",
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": True,
+                },
+            )
+            return [], fallback
 
         except Exception as e:
             logger.exception(f"ParamExtractionModule.stream_forward failed: {e}")
-            return [], self._safe_defaults(params_schema, already_collected)
+            fallback = self._safe_defaults(params_schema, already_collected)
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_message": user_message,
+                    "params_schema_count": len(params_schema),
+                },
+                output_data={
+                    "missing_required_count": len(fallback["missing_required"]),
+                    "clarifying_question": fallback["clarifying_question"],
+                    "error": str(e),
+                },
+                metadata={
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": True,
+                },
+            )
+            return [], fallback
 
         finally:
             if output_stream is not None:

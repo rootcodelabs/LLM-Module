@@ -36,6 +36,7 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.llm_orchestrator_config.exceptions import StreamTimeoutError
 from src.utils.stream_timeout import stream_timeout
+from src.utils.observation_utils import safe_observation_context
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.rate_limiter import RateLimiter
 from src.utils.prompt_config_loader import RefreshStatus
@@ -531,6 +532,7 @@ async def stream_orchestrated_response(
             f"chatId: {request.chatId}, "
             f"environment: {request.environment}, "
             f"message: {request.message[:100]}..."
+            f"connection_id: {request.connection_id}"
         )
 
         # Streaming is only for allowed environments
@@ -637,33 +639,46 @@ async def stream_orchestrated_response(
         # Wrap streaming response with timeout
         async def timeout_wrapped_stream() -> AsyncGenerator[str, None]:
             """Generator wrapper with timeout enforcement."""
-            try:
-                async with stream_timeout(StreamConfig.MAX_STREAM_DURATION_SECONDS):
-                    async for (
-                        chunk
-                    ) in orchestration_service.stream_orchestration_response(request):
-                        yield chunk
-            except StreamTimeoutError as timeout_exc:
-                # StreamTimeoutError already has error_id
-                log_error_with_context(
-                    logger,
-                    timeout_exc.error_id,
-                    "streaming_timeout",
-                    request.chatId,
-                    timeout_exc,
-                )
-                # Send timeout message to client
-                yield create_sse_error_stream(request.chatId, STREAM_TIMEOUT_MESSAGE)
-            except Exception as stream_error:
-                error_id = generate_error_id()
-                log_error_with_context(
-                    logger, error_id, "streaming_error", request.chatId, stream_error
-                )
-                # Send generic error message to client
-                yield create_sse_error_stream(
-                    request.chatId,
-                    "I apologize, but I encountered an issue while generating your response. Please try again.",
-                )
+            with safe_observation_context(
+                as_type="generation",
+                name="streaming_generation",
+                input={"message": request.message[:500], "chat_id": request.chatId},
+            ):
+                try:
+                    async with stream_timeout(StreamConfig.MAX_STREAM_DURATION_SECONDS):
+                        async for (
+                            chunk
+                        ) in orchestration_service.stream_orchestration_response(
+                            request
+                        ):
+                            yield chunk
+                except StreamTimeoutError as timeout_exc:
+                    # StreamTimeoutError already has error_id
+                    log_error_with_context(
+                        logger,
+                        timeout_exc.error_id,
+                        "streaming_timeout",
+                        request.chatId,
+                        timeout_exc,
+                    )
+                    # Send timeout message to client
+                    yield create_sse_error_stream(
+                        request.chatId, STREAM_TIMEOUT_MESSAGE
+                    )
+                except Exception as stream_error:
+                    error_id = generate_error_id()
+                    log_error_with_context(
+                        logger,
+                        error_id,
+                        "streaming_error",
+                        request.chatId,
+                        stream_error,
+                    )
+                    # Send generic error message to client
+                    yield create_sse_error_stream(
+                        request.chatId,
+                        "I apologize, but I encountered an issue while generating your response. Please try again.",
+                    )
 
         # Stream the response
         return StreamingResponse(
