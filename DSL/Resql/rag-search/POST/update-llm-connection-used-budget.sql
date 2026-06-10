@@ -1,9 +1,9 @@
 UPDATE rag_search.llm_connections 
 SET 
     used_budget = used_budget + :usage
-WHERE id = :connection_id
+WHERE vault_uuid = :vault_uuid::uuid
 RETURNING 
-    id,
+    vault_uuid,
     connection_name,
     monthly_budget,
     used_budget,

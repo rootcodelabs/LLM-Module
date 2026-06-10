@@ -5,14 +5,34 @@ from typing import Any, AsyncIterator, Dict, List, Tuple, Union
 import dspy
 import dspy.streaming
 from dspy.streaming import StreamListener
+from langfuse import observe
 from loguru import logger
 
 from llm_orchestrator_config.llm_ochestrator_constants import get_localized_message
+from src.utils.cost_utils import get_lm_usage_since
+from src.utils.observation_utils import (
+    safe_observation_context,
+    update_observation_safe,
+)
 from tool_classifier.api_response_formatter import (
     APIResponseFormatterModule,
     _LANGUAGE_NAMES,
     build_params_context,
 )
+
+
+def _get_current_model_name() -> str:
+    """Best-effort model name lookup from current DSPy LM."""
+    try:
+        lm = dspy.settings.lm
+        if lm and hasattr(lm, "model"):
+            model_name = lm.model
+            if isinstance(model_name, str) and model_name:
+                return model_name
+    except Exception:
+        pass
+    return "unknown"
+
 
 _MAX_TOTAL_RESPONSE_BYTES: int = 100_000
 
@@ -132,6 +152,7 @@ class MultiResponseFormatterModule(dspy.Module):
         self.formatter = dspy.Predict(MultiResponseFormatterSignature)
         self._custom_instructions = custom_instructions
 
+    @observe(name="multi_api_response_formatting_llm", as_type="generation")
     def forward(
         self,
         user_query: str,
@@ -156,6 +177,16 @@ class MultiResponseFormatterModule(dspy.Module):
         Returns:
             A clean, unified natural-language answer ready for display to the user.
         """
+        history_length_before = 0
+        try:
+            lm = dspy.settings.lm
+            if lm and hasattr(lm, "history"):
+                history_length_before = len(lm.history)
+        except Exception as e:
+            logger.warning(
+                f"Failed to get LM history length for multi response formatting: {e}"
+            )
+
         try:
             results_block = self._build_results_block(api_results)
             response_language = _LANGUAGE_NAMES.get(detected_language, "English")
@@ -167,11 +198,44 @@ class MultiResponseFormatterModule(dspy.Module):
                 custom_instructions=self._custom_instructions,
                 num_results=str(len(api_results)),
             )
-            return result.unified_answer  # type: ignore[no-any-return]
+            unified_answer = result.unified_answer
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_query": user_query,
+                    "num_results": len(api_results),
+                    "response_language": response_language,
+                },
+                output_data={
+                    "unified_answer_preview": str(unified_answer)[:500],
+                },
+                metadata={
+                    "model": _get_current_model_name(),
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": False,
+                },
+            )
+            return unified_answer  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(
                 f"MultiResponseFormatterModule.forward failed: {e}", exc_info=True
+            )
+            usage = get_lm_usage_since(history_length_before)
+            update_observation_safe(
+                input_data={
+                    "user_query": user_query,
+                    "num_results": len(api_results),
+                    "detected_language": detected_language,
+                },
+                output_data={"error": str(e)},
+                metadata={
+                    "model": _get_current_model_name(),
+                    "usage": usage,
+                    "num_calls": usage.get("num_calls", 0),
+                    "streaming": False,
+                },
             )
             safe_language = (
                 detected_language
@@ -219,82 +283,158 @@ class MultiResponseFormatterModule(dspy.Module):
             else "en"
         )
         output_stream = None
-        try:
-            results_block = self._build_results_block(api_results)
-            response_language = _LANGUAGE_NAMES.get(detected_language, "English")
 
-            # A fresh wrapper is created on every call because dspy.configure(lm=...)
-            # is called per request. A cached wrapper retains a stale LM reference and
-            # yields a bare dspy.Prediction instead of StreamResponse tokens.
-            logger.debug(
-                "MultiResponseFormatterModule: creating fresh streamify wrapper "
-                "for unified_answer field"
-            )
-            listener = StreamListener(signature_field_name="unified_answer")
-            stream_predictor: Any = dspy.streamify(
-                self.formatter, stream_listeners=[listener]
-            )
-            output_stream = stream_predictor(
-                user_query=user_query,
-                api_results_block=results_block,
-                response_language=response_language,
-                custom_instructions=self._custom_instructions,
-                num_results=str(len(api_results)),
-            )
-
-            stream_started = False
-            token_count = 0
-            async for chunk in output_stream:
-                if isinstance(chunk, dspy.streaming.StreamResponse):
-                    if chunk.signature_field_name == "unified_answer":
-                        stream_started = True
-                        token_count += 1
-                        yield chunk.chunk
-                elif isinstance(chunk, dspy.Prediction):
-                    # dspy.streamify did not stream individual tokens — yield the
-                    # full answer from the final Prediction as a single frame.
-                    if not stream_started:
-                        answer = getattr(chunk, "unified_answer", None)
-                        if answer:
-                            logger.info(
-                                "MultiResponseFormatterModule.stream_forward_multi: "
-                                "no StreamResponse tokens — yielding full Prediction answer"
-                            )
-                            stream_started = True
-                            yield answer
-
-            if stream_started and token_count > 0:
-                logger.debug(
-                    f"MultiResponseFormatterModule.stream_forward_multi: "
-                    f"streamed {token_count} tokens"
-                )
-
-            if not stream_started:
-                # Last-resort fallback: blocking forward() — covers cases where
-                # dspy.streamify yields neither StreamResponse nor Prediction.
+        with safe_observation_context(
+            as_type="generation",
+            name="multi_api_response_formatting_streaming",
+            input={
+                "user_query": user_query[:500],
+                "num_results": len(api_results),
+                "detected_language": detected_language,
+            },
+        ) as generation:
+            history_length_before = 0
+            try:
+                lm = dspy.settings.lm
+                if lm and hasattr(lm, "history"):
+                    history_length_before = len(lm.history)
+            except Exception as e:
                 logger.warning(
-                    "MultiResponseFormatterModule.stream_forward_multi: "
-                    "streamify produced no tokens and no Prediction — using blocking forward()"
+                    f"Failed to get LM history length for multi response streaming: {e}"
                 )
-                result = self.forward(
-                    user_query=user_query,
-                    api_results=api_results,
-                    detected_language=detected_language,
-                )
-                yield result
 
-        except Exception as e:
-            logger.error(
-                f"MultiResponseFormatterModule.stream_forward_multi failed: {e}",
-                exc_info=True,
-            )
-            yield get_localized_message(_MULTI_FORMATTER_ERROR_MESSAGES, safe_language)
-        finally:
-            if output_stream is not None:
+            try:
+                results_block = self._build_results_block(api_results)
+                response_language = _LANGUAGE_NAMES.get(detected_language, "English")
+
+                # A fresh wrapper is created on every call because dspy.configure(lm=...)
+                # is called per request. A cached wrapper retains a stale LM reference and
+                # yields a bare dspy.Prediction instead of StreamResponse tokens.
+                logger.debug(
+                    "MultiResponseFormatterModule: creating fresh streamify wrapper "
+                    "for unified_answer field"
+                )
+                listener = StreamListener(signature_field_name="unified_answer")
+                stream_predictor: Any = dspy.streamify(
+                    self.formatter, stream_listeners=[listener]
+                )
+                output_stream = stream_predictor(
+                    user_query=user_query,
+                    api_results_block=results_block,
+                    response_language=response_language,
+                    custom_instructions=self._custom_instructions,
+                    num_results=str(len(api_results)),
+                )
+
+                stream_started = False
+                token_count = 0
+                assembled_answer = ""
+                async for chunk in output_stream:
+                    if isinstance(chunk, dspy.streaming.StreamResponse):
+                        if chunk.signature_field_name == "unified_answer":
+                            stream_started = True
+                            token_count += 1
+                            assembled_answer += chunk.chunk
+                            yield chunk.chunk
+                    elif isinstance(chunk, dspy.Prediction):
+                        # dspy.streamify did not stream individual tokens — yield the
+                        # full answer from the final Prediction as a single frame.
+                        if not stream_started:
+                            answer = getattr(chunk, "unified_answer", None)
+                            if answer:
+                                logger.info(
+                                    "MultiResponseFormatterModule.stream_forward_multi: "
+                                    "no StreamResponse tokens — yielding full Prediction answer"
+                                )
+                                stream_started = True
+                                assembled_answer = answer
+                                yield answer
+
+                if stream_started and token_count > 0:
+                    logger.debug(
+                        f"MultiResponseFormatterModule.stream_forward_multi: "
+                        f"streamed {token_count} tokens"
+                    )
+
+                if not stream_started:
+                    # Last-resort fallback: blocking forward() — covers cases where
+                    # dspy.streamify yields neither StreamResponse nor Prediction.
+                    logger.warning(
+                        "MultiResponseFormatterModule.stream_forward_multi: "
+                        "streamify produced no tokens and no Prediction — using blocking forward()"
+                    )
+                    result = self.forward(
+                        user_query=user_query,
+                        api_results=api_results,
+                        detected_language=detected_language,
+                    )
+                    assembled_answer = result
+                    yield result
+
+                usage = get_lm_usage_since(history_length_before)
                 try:
-                    await output_stream.aclose()
-                except Exception as cleanup_error:
-                    logger.debug(f"Error during stream cleanup: {cleanup_error}")
+                    generation.update(
+                        input={
+                            "user_query": user_query,
+                            "num_results": len(api_results),
+                            "detected_language": detected_language,
+                        },
+                        output=assembled_answer,
+                        usage_details={
+                            "input": usage.get("total_prompt_tokens", 0),
+                            "output": usage.get("total_completion_tokens", 0),
+                            "total": usage.get("total_tokens", 0),
+                        },
+                        cost_details={
+                            "total": usage.get("total_cost", 0.0),
+                        },
+                        metadata={
+                            "stream_started": stream_started,
+                            "chunk_count": token_count,
+                        },
+                    )
+                except Exception as update_error:
+                    logger.debug(
+                        f"Langfuse generation update skipped for multi response streaming: {update_error}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"MultiResponseFormatterModule.stream_forward_multi failed: {e}",
+                    exc_info=True,
+                )
+                usage = get_lm_usage_since(history_length_before)
+                try:
+                    generation.update(
+                        input={
+                            "user_query": user_query,
+                            "num_results": len(api_results),
+                            "detected_language": detected_language,
+                        },
+                        output={"error": str(e)},
+                        usage_details={
+                            "input": usage.get("total_prompt_tokens", 0),
+                            "output": usage.get("total_completion_tokens", 0),
+                            "total": usage.get("total_tokens", 0),
+                        },
+                        cost_details={
+                            "total": usage.get("total_cost", 0.0),
+                        },
+                        metadata={"streaming": True},
+                    )
+                except Exception as update_error:
+                    logger.debug(
+                        f"Langfuse error update skipped for multi response streaming: {update_error}"
+                    )
+                yield get_localized_message(
+                    _MULTI_FORMATTER_ERROR_MESSAGES, safe_language
+                )
+            finally:
+                if output_stream is not None:
+                    try:
+                        await output_stream.aclose()
+                    except Exception as cleanup_error:
+                        logger.debug(f"Error during stream cleanup: {cleanup_error}")
 
     @staticmethod
     def _build_results_block(

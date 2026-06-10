@@ -65,6 +65,14 @@ class OrchestrationServiceProtocol(Protocol):
         """Check output guardrails and return (possibly replaced) response."""
         ...
 
+    async def store_streaming_inference(
+        self,
+        request: OrchestrationRequest,
+        final_answer: str,
+    ) -> None:
+        """Store streaming inference data for production/testing environments."""
+        ...
+
 
 @dataclass
 class _LoopStep:
@@ -595,6 +603,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         ]
 
         full_response = "".join(buffered_tokens)
+        final_answer = full_response  # Track what gets sent to user
 
         guardrails_passed = True
         if orchestration_service is not None:
@@ -621,12 +630,14 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                         f"parallel output blocked by guardrails"
                     )
                     yield orchestration_service.format_sse(chat_id, checked.content)
+                    final_answer = checked.content
                     guardrails_passed = False
 
         if guardrails_passed:
             for token in buffered_tokens:
                 yield orchestration_service.format_sse(chat_id, token)
 
+        await orchestration_service.store_streaming_inference(request, final_answer)
         yield orchestration_service.format_sse(chat_id, "END")
 
     # ------------------------------------------------------------------
@@ -1157,6 +1168,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         ]
 
         full_response = "".join(buffered_tokens)
+        final_answer = full_response  # Track what gets sent to user
 
         guardrails_passed = True
         if orchestration_service is not None:
@@ -1182,12 +1194,14 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                         f"[{chat_id}] ATC cache: streaming {cache_source} hit blocked by guardrails"
                     )
                     yield orchestration_service.format_sse(chat_id, checked.content)
+                    final_answer = checked.content
                     guardrails_passed = False
 
         if guardrails_passed:
             for token in buffered_tokens:
                 yield orchestration_service.format_sse(chat_id, token)
 
+        await orchestration_service.store_streaming_inference(request, final_answer)
         yield orchestration_service.format_sse(chat_id, "END")
 
     async def _run(
@@ -1416,6 +1430,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             ]
 
             full_response = "".join(buffered_tokens)
+            final_answer_to_store = full_response  # Track what gets sent to user
 
             # Run output guardrails on the complete response
             guardrails_passed = True
@@ -1445,6 +1460,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                             f"output blocked by guardrails"
                         )
                         yield orchestration_service.format_sse(chat_id, checked.content)
+                        final_answer_to_store = checked.content
                         guardrails_passed = False
 
             if guardrails_passed:
@@ -1455,8 +1471,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                 f"[{chat_id}] APIToolWorkflow (streaming): API call failed "
                 f"(status={api_result.status_code}, error={api_result.error!r})"
             )
+            final_answer_to_store = api_result.error or ""
             yield orchestration_service.format_sse(chat_id, api_result.error or "")
 
+        await orchestration_service.store_streaming_inference(
+            request, final_answer_to_store
+        )
         yield orchestration_service.format_sse(chat_id, "END")
 
     async def execute_streaming(
@@ -1489,8 +1509,14 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         if step.kind == "question":
 
             async def _stream_question() -> AsyncIterator[str]:
+                accumulated_question: list[str] = []
                 for token in step.question_tokens or [step.question]:
+                    accumulated_question.append(token)
                     yield orchestration_service.format_sse(step.chat_id, token)
+                full_question = "".join(accumulated_question)
+                await orchestration_service.store_streaming_inference(
+                    request, full_question
+                )
                 yield orchestration_service.format_sse(step.chat_id, "END")
 
             return _stream_question()
