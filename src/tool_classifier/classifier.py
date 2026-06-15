@@ -1129,7 +1129,9 @@ class ToolClassifier:
                     f"(Layer {layer_number})"
                 )
 
-                result = await next_workflow.execute_streaming(request, {}, time_metric)
+                result = await next_workflow.execute_streaming(
+                    request, context, time_metric
+                )
 
                 if result is not None:
                     logger.info(f"[{chat_id}] {next_name} streaming started")
@@ -1147,7 +1149,7 @@ class ToolClassifier:
             # Fallback to RAG on error
             logger.info(f"[{chat_id}] Falling back to RAG streaming due to error")
             streaming_result = await self.rag_workflow.execute_streaming(
-                request, {}, time_metric
+                request, context, time_metric
             )
             if streaming_result is not None:
                 async for chunk in streaming_result:
