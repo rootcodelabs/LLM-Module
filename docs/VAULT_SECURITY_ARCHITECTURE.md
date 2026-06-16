@@ -197,9 +197,12 @@ Day 0+: Automatic Token Renewal:
 Container Restart:
   vault-init: Check if Vault is sealed
              ↓
-  If unsealed: Regenerate secret_id only
+  If unsealed: Validate existing secret_ids
              ↓
-  vault-agent: Re-authenticate with new secret_id
+  If valid: Reuse existing secret_id (no churn)
+  If invalid: Mint new secret_id and write to disk
+             ↓
+  vault-agent: Re-authenticate with secret_id
              ↓
   New token issued and cached
 ```
@@ -413,8 +416,10 @@ Connected Services:
   - GUI (React Frontend)
 
 Token Lifecycle:
-  - Default Lease: 768h (32 days)
-  - Auto-renewal: Before expiration
+  - Token TTL: 15m
+  - Token Max TTL: 1h
+  - Auto-renewal: Every ~11 minutes (75% of TTL)
+  - Re-auth: When max_ttl reached (every ~1h)
 ```
 
 #### Agent 2: vault-agent-cron
@@ -429,8 +434,10 @@ Connected Services:
   - CronManager (Python worker)
 
 Token Lifecycle:
-  - Default Lease: 768h (32 days)
-  - Auto-renewal: Before expiration
+  - Token TTL: 30m
+  - Token Max TTL: 8h
+  - Auto-renewal: Every ~22 minutes (75% of TTL)
+  - Re-auth: When max_ttl reached (every ~8h)
 ```
 
 #### Agent 3: vault-agent-llm
@@ -445,8 +452,10 @@ Connected Services:
   - LLM Orchestration Service (FastAPI)
 
 Token Lifecycle:
-  - Default Lease: 1h (shorter for higher security)
-  - Auto-renewal: Every ~45 minutes
+  - Token TTL: 1h
+  - Token Max TTL: 8h
+  - Auto-renewal: Every ~45 minutes (75% of TTL)
+  - Re-auth: When max_ttl reached (every ~8h)
 ```
 
 ### Token Caching and Auto-Renewal
@@ -856,15 +865,16 @@ Step 12: Check Vault Seal Status
    └─► GET /v1/sys/seal-status
        └─► If unsealed: Skip unseal steps
 
-Step 13: Regenerate Secret IDs Only
-   └─► POST /v1/auth/approle/role/gui-service/secret-id
-   └─► POST /v1/auth/approle/role/cron-manager-service/secret-id
-   └─► POST /v1/auth/approle/role/llm-orchestration-service/secret-id
-   └─► Write new secret_ids to /agent/credentials/
+Step 13: Validate and Reconcile Secret IDs
+   └─► For each role (gui, cron-manager, llm-orchestration):
+       ├─► Test existing on-disk secret_id via AppRole login
+       ├─► If valid: Reuse (no change to credential file)
+       └─► If invalid/missing: Mint new secret_id and write to disk
 
 Note: role_ids remain unchanged (static identifiers)
 Note: Existing secrets and policies preserved
 Note: RSA keypair NOT regenerated (preserved)
+Note: Stable secret_ids across restarts reduce credential churn
 
 ═══════════════════════════════════════════════════════════════════
 COMPLETION
@@ -1128,13 +1138,14 @@ Startup Order:
 vault-init Behavior:
   - Detects Vault already initialized
   - Skips initialization steps
-  - Regenerates secret_ids only
-  - Updates credential files
+  - Validates existing secret_ids (reuses if still valid)
+  - Mints new secret_ids only if existing ones are invalid
 
 Result:
-   All services start with fresh credentials
+   All services start with validated credentials
    Existing secrets preserved
    No manual intervention needed
+   Stable secret_ids reduce unnecessary credential churn
 ```
 
 ### Token Regeneration Strategy
@@ -1143,21 +1154,22 @@ Result:
 Current Implementation:
 
 1. On Every Container Restart:
-   └─► vault-init regenerates secret_ids
-       └─► Vault agents get new tokens
-           └─► Old tokens remain valid until expiration
+   └─► vault-init validates existing secret_ids
+       ├─► If valid: Reuse (agents continue with same credentials)
+       └─► If invalid: Mint new secret_id, agents re-authenticate
 
 2. Token Lifecycle:
    └─► Issue: vault-agent authenticates
    └─► Use: Application makes requests
-   └─► Renew: vault-agent extends TTL
-   └─► Expire: Automatic renewal failed
-   └─► Re-issue: vault-agent re-authenticates
+   └─► Renew: vault-agent extends TTL (at ~75% of TTL)
+   └─► Max TTL reached: Renewal rejected by Vault
+   └─► Re-issue: vault-agent re-authenticates with secret_id
 
 3. Security Benefits:
-    Short-lived tokens (1 hour for LLM, 32 days for others)
-    Automatic rotation on agent restart
-    No manual token management
+    Short-lived tokens (1 hour for LLM, 30m for Cron, 15m for GUI)
+    Continuous renewal within max_ttl window
+    Automatic re-authentication when max_ttl reached
+    Stable secret_ids (no unnecessary churn on restart)
     Compromised tokens have limited lifetime
 ```
 
