@@ -11,4 +11,5 @@ RETURNING
     warn_budget_threshold,
     stop_budget_threshold,
     disconnect_on_budget_exceed,
-    connection_status;
+    connection_status,
+    (used_budget >= stop_budget_threshold) AS budget_exceeded;
