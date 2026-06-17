@@ -6,9 +6,9 @@
 set -e  # Exit on any error
 
 # Configuration
-# Use VAULT_AGENT_URL which points to vault-agent-cron proxy
+# Use vaultAgentUrl which points to vault-agent-cron proxy
 # The agent automatically injects the authentication token
-VAULT_ADDR="${VAULT_AGENT_URL:-http://vault-agent-cron:8203}"
+VAULT_ADDR="${vaultAgentUrl:-http://vault-agent-cron:8203}"
 
 # Decryption Configuration
 PRIVATE_KEY_CACHE=""

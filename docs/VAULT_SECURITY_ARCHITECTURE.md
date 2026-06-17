@@ -416,10 +416,9 @@ Connected Services:
   - GUI (React Frontend)
 
 Token Lifecycle:
-  - Token TTL: 15m
-  - Token Max TTL: 1h
-  - Auto-renewal: Every ~11 minutes (75% of TTL)
-  - Re-auth: When max_ttl reached (every ~1h)
+  - Token type: periodic (token_period 20m, no max-TTL)
+  - Auto-renewal: Every ~13 minutes (~2/3 of period)
+  - Re-auth: only on agent restart (never in steady state)
 ```
 
 #### Agent 2: vault-agent-cron
@@ -434,10 +433,9 @@ Connected Services:
   - CronManager (Python worker)
 
 Token Lifecycle:
-  - Token TTL: 30m
-  - Token Max TTL: 8h
-  - Auto-renewal: Every ~22 minutes (75% of TTL)
-  - Re-auth: When max_ttl reached (every ~8h)
+  - Token type: periodic (token_period 30m, no max-TTL)
+  - Auto-renewal: Every ~20 minutes (~2/3 of period)
+  - Re-auth: only on agent restart (never in steady state)
 ```
 
 #### Agent 3: vault-agent-llm
@@ -452,10 +450,9 @@ Connected Services:
   - LLM Orchestration Service (FastAPI)
 
 Token Lifecycle:
-  - Token TTL: 1h
-  - Token Max TTL: 8h
-  - Auto-renewal: Every ~45 minutes (75% of TTL)
-  - Re-auth: When max_ttl reached (every ~8h)
+  - Token type: periodic (token_period 1h, no max-TTL)
+  - Auto-renewal: Every ~40 minutes (~2/3 of period)
+  - Re-auth: only on agent restart (never in steady state)
 ```
 
 ### Token Caching and Auto-Renewal
@@ -473,29 +470,31 @@ T=0: Initial Authentication
         ├─► POST /v1/auth/approle/login
         │   Body: { role_id, secret_id }
         │
-        └─► Receives: { token, ttl: 3600s, renewable: true }
+        └─► Receives: { token, period: 3600s, renewable: true }   ← periodic token, no max-TTL
              │
              └─► Cache token in: /agent/llm-token/token
 
 
-T=45min: Proactive Renewal (75% of TTL)
+T≈40min: Proactive Renewal (~2/3 of period)
      vault-agent monitors expiration
         │
         ├─► POST /v1/auth/token/renew-self
         │   Header: X-Vault-Token: <current_token>
         │
-        └─► Receives: { token, ttl: 3600s } (same token, extended)
+        └─► Receives: { token, period: 3600s } (same token, period reset)
              │
              └─► Update cache: /agent/llm-token/token
+             │
+             └─► Repeats forever — a periodic token never hits a max-TTL,
+                 so steady-state operation never needs approle/login again.
 
 
-T=59min: Renewal Failed (fallback)
-     If renewal fails:
+On agent restart only:
+     vault-agent re-reads role_id + secret_id from disk
         │
-        ├─► Re-authenticate from scratch
-        │   POST /v1/auth/approle/login
+        ├─► POST /v1/auth/approle/login   (secret_id must still be valid)
         │
-        └─► New token issued and cached
+        └─► New periodic token issued and cached
 
 
 Application Request (anytime):
@@ -1159,18 +1158,18 @@ Current Implementation:
        └─► If invalid: Mint new secret_id, agents re-authenticate
 
 2. Token Lifecycle:
-   └─► Issue: vault-agent authenticates
+   └─► Issue: vault-agent authenticates (periodic token, token_period per role)
    └─► Use: Application makes requests
-   └─► Renew: vault-agent extends TTL (at ~75% of TTL)
-   └─► Max TTL reached: Renewal rejected by Vault
-   └─► Re-issue: vault-agent re-authenticates with secret_id
+   └─► Renew: vault-agent renews within the period (~2/3 of period)
+   └─► No max-TTL: renewal continues indefinitely
+   └─► Re-issue: only on agent restart, via secret_id login
 
 3. Security Benefits:
-    Short-lived tokens (1 hour for LLM, 30m for Cron, 15m for GUI)
-    Continuous renewal within max_ttl window
-    Automatic re-authentication when max_ttl reached
+    Periodic tokens (period 1h LLM, 30m Cron, 20m GUI), renewed continuously
+    Steady-state operation never re-runs approle/login (a stale secret_id
+      cannot strand a running agent)
     Stable secret_ids (no unnecessary churn on restart)
-    Compromised tokens have limited lifetime
+    Compromised tokens limited to one un-renewed period
 ```
 
 ### Audit Logging Capabilities

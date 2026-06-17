@@ -68,6 +68,27 @@ reconcile_secret_id() {
     fi
 }
 
+# Create or update an AppRole that issues a PERIODIC token (no max_ttl): the
+# agent renews it forever and never re-runs approle/login in steady state.
+# secret_id_ttl=0 + secret_id_num_uses=0 keep the secret_id valid across
+# restarts. Idempotent: does not invalidate existing secret_ids, safe per run.
+# Usage: upsert_approle <role-name> <policy-name> <token-period>
+upsert_approle() {
+    role="$1"; policy="$2"; period="$3"
+    wget -q -O- --post-data='{"token_policies":["'"$policy"'"],"token_period":"'"$period"'","token_num_uses":0,"secret_id_ttl":"0","secret_id_num_uses":0,"bind_secret_id":true}' \
+        --header="X-Vault-Token: $ROOT_TOKEN" \
+        --header='Content-Type: application/json' \
+        "$VAULT_ADDR/v1/auth/approle/role/$role" >/dev/null
+}
+
+# Apply the current AppRole definitions for all three services.
+ensure_approles() {
+    echo "Ensuring AppRole configs (periodic tokens)..."
+    upsert_approle "gui-service"               "gui-policy"                 "20m"
+    upsert_approle "cron-manager-service"      "cron-manager-policy"        "30m"
+    upsert_approle "llm-orchestration-service" "llm-orchestration-policy"   "1h"
+}
+
 # Wait for Vault to be ready
 echo "Waiting for Vault..."
 for i in $(seq 1 30); do
@@ -175,27 +196,9 @@ path "auth/token/lookup-self" { capabilities = ["read"] }'
         --header='Content-Type: application/json' \
         "$VAULT_ADDR/v1/sys/policies/acl/llm-orchestration-policy" >/dev/null
     
-    # Create GUI AppRole
-    echo "Creating gui-service AppRole..."
-    wget -q -O- --post-data='{"token_policies":["gui-policy"],"token_ttl":"15m","token_max_ttl":"1h","secret_id_ttl":"0","secret_id_num_uses":0,"bind_secret_id":true}' \
-        --header="X-Vault-Token: $ROOT_TOKEN" \
-        --header='Content-Type: application/json' \
-        "$VAULT_ADDR/v1/auth/approle/role/gui-service" >/dev/null
-    
-    # Create CronManager AppRole
-    echo "Creating cron-manager-service AppRole..."
-    wget -q -O- --post-data='{"token_policies":["cron-manager-policy"],"token_ttl":"30m","token_max_ttl":"8h","secret_id_ttl":"0","secret_id_num_uses":0,"bind_secret_id":true}' \
-        --header="X-Vault-Token: $ROOT_TOKEN" \
-        --header='Content-Type: application/json' \
-        "$VAULT_ADDR/v1/auth/approle/role/cron-manager-service" >/dev/null
-    
-    # Create LLM Orchestration AppRole
-    echo "Creating llm-orchestration-service AppRole..."
-    wget -q -O- --post-data='{"token_policies":["llm-orchestration-policy"],"token_ttl":"1h","token_max_ttl":"8h","secret_id_ttl":"0","secret_id_num_uses":0,"bind_secret_id":true}' \
-        --header="X-Vault-Token: $ROOT_TOKEN" \
-        --header='Content-Type: application/json' \
-        "$VAULT_ADDR/v1/auth/approle/role/llm-orchestration-service" >/dev/null
-    
+    # Create the three AppRoles (periodic tokens - see upsert_approle).
+    ensure_approles
+
     # Ensure credentials directory exists
     mkdir -p /agent/credentials
     
@@ -337,16 +340,19 @@ else
     # Get root token
     ROOT_TOKEN=$(grep -o '"root_token":"[^"]*"' "$UNSEAL_KEYS_FILE" | cut -d':' -f2 | tr -d '"')
     export VAULT_TOKEN="$ROOT_TOKEN"
-    
+
+    # Re-apply AppRole definitions so config changes (e.g. periodic tokens)
+    # take effect on redeploy without re-initializing Vault. Idempotent and
+    # does not invalidate existing secret_ids.
+    ensure_approles
+
     # Ensure credentials directory exists
     mkdir -p /agent/credentials
     
     # Reconcile secret_ids: reuse the existing one if it still authenticates,
-    # mint a new one only if it is invalid or missing. This keeps a single
-    # long-lived secret_id stable across normal restarts (secret_id_ttl=0,
-    # secret_id_num_uses=0), instead of rotating it every boot.
-    # ensure_role_id (called inside reconcile_secret_id) guarantees the role_id
-    # file exists before validation, since validation needs both.
+    # mint a new one only if invalid or missing - keeps one stable secret_id
+    # across restarts instead of rotating every boot. reconcile_secret_id also
+    # ensures the role_id file exists first (validation needs both).
     reconcile_secret_id "gui-service"                 /agent/credentials/gui_role_id  /agent/credentials/gui_secret_id
     reconcile_secret_id "cron-manager-service"        /agent/credentials/cron_role_id /agent/credentials/cron_secret_id
     reconcile_secret_id "llm-orchestration-service"   /agent/credentials/llm_role_id  /agent/credentials/llm_secret_id
