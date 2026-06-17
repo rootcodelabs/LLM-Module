@@ -44,13 +44,7 @@ const MainNavigation: FC = () => {
       label: t('menu.testLLM'),
       path: '/test-llm',
       icon: <MdSearch />
-    },
-    // {
-    //   id: 'testProductionLLM',
-    //   label: t('menu.testProductionLLM'),
-    //   path: '/test-production-llm',
-    //   icon: <MdSearch />
-    // }
+    }
   ];
 
   const filterItemsByRole = (role: string[], items: MenuItem[]) => {

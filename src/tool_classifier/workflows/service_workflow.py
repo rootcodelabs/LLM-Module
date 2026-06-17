@@ -253,7 +253,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
             logger.error(f"[{chat_id}] Service discovery failed: {e}", exc_info=True)
             return None
 
-    @observe(name="service_intent_detection_orchestration", as_type="span")
+    @observe(name="service_intent_detection_orchestration", as_type="generation")
     async def _detect_service_intent(
         self,
         user_query: str,
