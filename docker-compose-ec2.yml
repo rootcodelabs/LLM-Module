@@ -517,7 +517,10 @@ services:
       start_period: 10s
 
   vault-init:
-    image: hashicorp/vault:1.20.3
+    build:
+      context: .
+      dockerfile: Dockerfile.vault-init
+    image: rag-vault-init:1.20.3
     container_name: vault-init
     user: "0"
     depends_on:
@@ -539,7 +542,6 @@ services:
     command:
       - -c
       - |
-        apk add --no-cache curl jq uuidgen openssl
         # Create and set permissions for all agent directories
         mkdir -p /agent/credentials /agent/gui-token /agent/cron-token /agent/llm-token /agent/out
         chown -R vault:vault /agent/credentials /agent/gui-token /agent/cron-token /agent/llm-token /agent/out
