@@ -188,6 +188,8 @@ path "secret/metadata/llm/connections/*" { capabilities = ["read", "list"] }
 path "secret/data/embeddings/connections/*" { capabilities = ["read", "list"] }
 path "secret/metadata/embeddings/connections/*" { capabilities = ["read", "list"] }
 path "secret/data/encryption/*" { capabilities = ["deny"] }
+path "secret/data/langfuse/*" { capabilities = ["read"] }
+path "secret/metadata/langfuse/*" { capabilities = ["read", "list"] }
 path "auth/token/lookup-self" { capabilities = ["read"] }'
     
     LLM_POLICY_JSON=$(echo "$LLM_POLICY" | jq -Rs '{"policy":.}')
