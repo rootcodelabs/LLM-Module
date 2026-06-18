@@ -8,7 +8,7 @@ import { ChoiceButton } from 'services/inference';
 import './TestProductionLLM.scss';
 import MessageContent from 'components/MessageContent';
 import { llmConnectionsQueryKeys } from 'utils/queryKeys';
-import { fetchLLMConnectionsPaginated } from 'services/llmConnections';
+import { fetchAllLLMConnectionsPaginated } from 'services/llmConnections';
 
 
 interface Message {
@@ -45,7 +45,7 @@ const TestProductionLLM: FC = () => {
         pageSize: 100, // Get all connections for dropdown
         sorting: 'created_at desc',
       }),
-      queryFn: () => fetchLLMConnectionsPaginated({
+      queryFn: () => fetchAllLLMConnectionsPaginated({
         pageNumber: 1,
         pageSize: 100,
         sortBy: 'created_at desc',
