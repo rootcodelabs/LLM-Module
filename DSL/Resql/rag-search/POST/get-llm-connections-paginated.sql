@@ -24,7 +24,7 @@ SELECT
     END AS budget_status
 FROM rag_search.llm_connections
 WHERE connection_status <> 'deleted'
-    -- AND environment = 'testing'
+    AND environment = 'testing'
     AND (:llm_platform IS NULL OR :llm_platform = '' OR llm_platform = :llm_platform)
     AND (:llm_model IS NULL OR :llm_model = '' OR llm_model = :llm_model)
     AND (:environment IS NULL OR :environment = '' OR environment = :environment)
