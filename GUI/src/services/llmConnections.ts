@@ -378,3 +378,19 @@ export async function updateLLMConnectionStatus(
   });
   return data?.response;
 }
+
+export async function fetchAllLLMConnectionsPaginated(filters: LLMConnectionFilters): Promise<LLMConnection[]> {
+  const queryParams = new URLSearchParams();
+
+  if (filters.pageNumber) queryParams.append('pageNumber', filters.pageNumber.toString());
+  if (filters.pageSize) queryParams.append('pageSize', filters.pageSize.toString());
+  if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
+  if (filters.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
+  if (filters.llmPlatform) queryParams.append('llmPlatform', filters.llmPlatform);
+  if (filters.llmModel) queryParams.append('llmModel', filters.llmModel);
+  if (filters.environment) queryParams.append('environment', filters.environment);
+
+  const url = `${llmConnectionsEndpoints.FETCH_ALL_LLM_CONNECTIONS_PAGINATED()}?${queryParams.toString()}`;
+  const { data } = await apiDev.get(url);
+  return data?.response;
+}
