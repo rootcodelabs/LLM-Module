@@ -269,8 +269,9 @@ class TestOrchestrationRequest(BaseModel):
     environment: Literal["production", "testing"] = Field(
         ..., description="Environment context"
     )
-    connectionId: Optional[int] = Field(
-        None, description="Optional connection identifier"
+    connectionId: Optional[str] = Field(
+        None,
+        description="Connection identifier — the vault_uuid for the connection (required for testing)",
     )
 
 

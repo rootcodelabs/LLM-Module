@@ -72,7 +72,8 @@ class TestInference:
 
         logger.info(f"Testing inference with message: {test_case['question']}")
         logger.info(
-            f"Expected vault path: llm/connections/azure_openai/test/{connection_id}"
+            "Vault secret resolved via the connection's vault_uuid "
+            "(path: llm/connections/azure_openai/<vault_uuid>)"
         )
         logger.info(f"Using payload: {json.dumps(payload)}")
         logger.info(f"Ruuter base URL: {ruuter_private_client.base_url}")
