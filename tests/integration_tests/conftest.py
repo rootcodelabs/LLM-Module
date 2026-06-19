@@ -1182,6 +1182,10 @@ def postgres_client(rag_stack: RAGStackTestContainers):
                 database="rag-search",
                 user="postgres",
                 password="dbadmin",
+                # RAG tables were moved to the rag_search schema (Liquibase v7
+                # schema migration). Put it on the search_path so unqualified
+                # queries (e.g. FROM llm_connections) resolve.
+                options="-c search_path=rag_search,public",
             )
             logger.info("PostgreSQL connection established")
             yield conn
