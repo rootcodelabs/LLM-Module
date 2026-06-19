@@ -147,6 +147,9 @@ services:
     volumes:
       - ./test-vault/agents/llm:/agent/in
       - ./test-vault/agent-out:/agent/out
+      # agent.hcl writes the token/pidfile/dummy to /agent/llm-token; map it to the
+      # same host dir as /agent/out so the host and other services see the token.
+      - ./test-vault/agent-out:/agent/llm-token
     entrypoint: ["sh", "-c"]
     command:
       - |
