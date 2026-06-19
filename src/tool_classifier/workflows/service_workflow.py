@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Union
 import dspy
 import httpx
 from langfuse import observe
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from llm_orchestrator_config.llm_manager import LLMManager
 from src.guardrails.nemo_rails_adapter import NeMoRailsAdapter
@@ -39,6 +39,9 @@ from tool_classifier.constants import (
 )
 from tool_classifier.intent_detector import IntentDetectionModule
 import time
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="service-workflow")
 
 
 class LLMServiceProtocol(Protocol):
