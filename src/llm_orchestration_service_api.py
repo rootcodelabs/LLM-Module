@@ -9,7 +9,6 @@ from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
-from loguru import logger
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
@@ -53,6 +52,10 @@ from models.request_models import (
     DeepEvalTestOrchestrationResponse,
 )
 from src.utils.connection_id_fetcher import get_connection_id_fetcher
+from src.loki_logger import LokiLogger
+
+# Initialize Loki logger for centralized logging
+logger = LokiLogger(service_name="llm-orchestration-api")
 
 
 @asynccontextmanager

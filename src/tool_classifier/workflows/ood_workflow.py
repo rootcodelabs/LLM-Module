@@ -1,10 +1,13 @@
 """OOD workflow executor - Layer 4: Out-of-domain fallback."""
 
 from typing import Any, AsyncIterator, Dict, Optional
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from models.request_models import OrchestrationRequest, OrchestrationResponse
 from tool_classifier.base_workflow import BaseWorkflow
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="ood-workflow")
 
 
 class OODWorkflowExecutor(BaseWorkflow):

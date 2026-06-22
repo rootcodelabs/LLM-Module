@@ -4,10 +4,13 @@ import asyncio
 import httpx
 from typing import List, Optional
 from types import TracebackType
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from intent_data_enrichment.constants import EnrichmentConstants
 from intent_data_enrichment.models import ServiceData
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="intent-enrichment-api-client")
 
 
 class LLMAPIClient:
