@@ -6,8 +6,7 @@ import dspy
 import dspy.streaming
 from dspy.streaming import StreamListener
 from langfuse import observe
-from loguru import logger
-
+from src.loki_logger import LokiLogger
 from llm_orchestrator_config.llm_ochestrator_constants import get_localized_message
 from src.utils.cost_utils import get_lm_usage_since
 from src.utils.observation_utils import (
@@ -33,6 +32,8 @@ def _get_current_model_name() -> str:
         pass
     return "unknown"
 
+
+logger = LokiLogger(service_name="api-tool-calling")
 
 _MAX_TOTAL_RESPONSE_BYTES: int = 100_000
 

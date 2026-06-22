@@ -8,7 +8,10 @@ import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
-from loguru import logger
+from src.loki_logger import LokiLogger
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="extract-guardrails-prompts")
 
 # Constants
 FULL_TRACEBACK_MSG = "Full traceback:"
