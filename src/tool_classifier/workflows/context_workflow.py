@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator, Dict, Optional, cast
 import time
 import dspy
 from langfuse import observe
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from src.models.request_models import OrchestrationRequest, OrchestrationResponse
 from tool_classifier.base_workflow import BaseWorkflow
@@ -19,6 +19,9 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
     GUARDRAILS_BLOCKED_PHRASES,
     OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
 )
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="context-workflow")
 
 
 class ContextWorkflowExecutor(BaseWorkflow):

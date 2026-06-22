@@ -2,11 +2,13 @@
 
 from typing import Any, Dict, Optional
 
-from loguru import logger
-
+from src.loki_logger import LokiLogger
 from src.llm_orchestrator_config.llm_manager import LLMManager
 from src.models.request_models import ContextGenerationRequest
 from langfuse import observe
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="context-manager")
 
 
 class ContextGenerationManager:

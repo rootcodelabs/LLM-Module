@@ -12,11 +12,13 @@ from src.utils.observation_utils import (
     safe_observation_context,
     update_observation_safe,
 )
-from loguru import logger
+from src.loki_logger import LokiLogger
 from pydantic import BaseModel, Field
 
 from src.utils.cost_utils import get_lm_usage_since
 from tool_classifier.greeting_constants import get_greeting_response
+
+logger = LokiLogger(service_name="api-tool-calling")
 
 
 def _get_current_model_name() -> str:

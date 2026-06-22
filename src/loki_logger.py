@@ -2,6 +2,14 @@
 """
 Loki Logger for RAG Module
 Sends logs directly to Loki API for centralized logging
+
+[CANONICAL SOURCE]
+This is the single source of truth for LokiLogger.
+Two copies exist for environments where `src` is not a Python package:
+  - grafana-configs/loki_logger.py  — mounted into CronManager container at runtime
+  - src/vector_indexer/loki_logger.py — used when running vector_indexer scripts locally
+
+If you change the logger logic here, apply the same change to both copies.
 """
 
 import json
@@ -115,7 +123,7 @@ class LokiLogger:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {level: <8} | {message}")  # noqa: T201
 
-        # Queue for async Loki sending (non-blocking)
+        # Queue for async Loki sending (non-blocking, drops log if queue is full)
         try:
             self.log_queue.put_nowait((level, message))
         except Full:
