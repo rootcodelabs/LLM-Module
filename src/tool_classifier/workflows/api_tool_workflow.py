@@ -16,7 +16,7 @@ from typing import (
     cast,
 )
 
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from llm_orchestrator_config.feature_flags import FeatureFlags
 from models.request_models import (
@@ -38,6 +38,8 @@ from tool_classifier.follow_up_detector import FollowUpDetectorModule
 from tool_classifier.multi_agentic_loop import MultiEndpointAgenticLoop
 from tool_classifier.multi_api_caller import MultiAPICaller
 from tool_classifier.multi_response_formatter import MultiResponseFormatterModule
+
+logger = LokiLogger(service_name="api-tool-calling")
 
 if TYPE_CHECKING:
     from guardrails.nemo_rails_adapter import NeMoRailsAdapter

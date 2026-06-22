@@ -5,7 +5,7 @@ import os
 import time
 import asyncio
 import threading
-from loguru import logger
+from src.loki_logger import LokiLogger
 from langfuse import Langfuse, observe
 import dspy
 from datetime import datetime
@@ -71,6 +71,9 @@ from src.llm_orchestrator_config.feature_flags import FeatureFlags
 from src.tool_classifier import ToolClassifier
 from src.tool_classifier.constants import SERVICE_STEP_PREFIXES
 from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
+
+# Initialize Loki logger for orchestration service
+logger = LokiLogger(service_name="llm-orchestration-service")
 
 
 class LangfuseConfig:

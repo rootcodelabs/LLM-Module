@@ -1,8 +1,7 @@
 from typing import Any, Dict, Optional, AsyncIterator, cast, Type
 import asyncio
-from loguru import logger
+from src.loki_logger import LokiLogger
 from pydantic import BaseModel, Field
-
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
 from langchain_core.language_models.llms import BaseLLM
@@ -12,6 +11,9 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
 from src.utils.cost_utils import get_lm_usage_since
 import dspy
 import re
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="nemo-rails-adapter")
 
 
 class GuardrailCheckResult(BaseModel):

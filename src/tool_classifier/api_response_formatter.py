@@ -12,10 +12,11 @@ from src.utils.observation_utils import (
     safe_observation_context,
     update_observation_safe,
 )
-from loguru import logger
-
+from src.loki_logger import LokiLogger
 from llm_orchestrator_config.llm_ochestrator_constants import get_localized_message
 from src.utils.cost_utils import get_lm_usage_since
+
+logger = LokiLogger(service_name="api-tool-calling")
 
 _MAX_ITEMS: int = 500
 _MAX_RESPONSE_BYTES: int = 50_000

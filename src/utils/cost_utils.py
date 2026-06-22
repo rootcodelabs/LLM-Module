@@ -1,10 +1,11 @@
 """Cost calculation utilities for LLM usage tracking."""
 
 from typing import Dict, Any, List, Tuple
-import logging
+from src.loki_logger import LokiLogger
 import dspy
 
-logger = logging.getLogger(__name__)
+# Initialize Loki logger for cost tracking
+logger = LokiLogger(service_name="cost-utils")
 
 
 def _to_float(value: str | int | float | bytes | bytearray | None) -> float:

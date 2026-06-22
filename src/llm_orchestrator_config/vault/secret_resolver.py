@@ -4,7 +4,7 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Union, List
 from pydantic import BaseModel
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from llm_orchestrator_config.vault.vault_client import (
     VaultAgentClient,
@@ -16,6 +16,9 @@ from llm_orchestrator_config.vault.models import (
     get_secret_model,
 )
 from llm_orchestrator_config.vault.exceptions import VaultConnectionError
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="secret-resolver")
 
 
 class CachedSecret(BaseModel):

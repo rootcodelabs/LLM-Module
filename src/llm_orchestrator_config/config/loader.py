@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 import yaml
 from dotenv import load_dotenv
-from loguru import logger
+from src.loki_logger import LokiLogger
 
 from llm_orchestrator_config.config.schema import (
     LLMConfiguration,
@@ -26,6 +26,9 @@ from llm_orchestrator_config.exceptions import (
 
 # Constants
 DEFAULT_CONFIG_FILENAME = "llm_config.yaml"
+
+# Initialize Loki logger
+logger = LokiLogger(service_name="config-loader")
 
 # Type alias for configuration values that can be processed
 ConfigValue = Union[str, Dict[str, Any], List[Any], int, float, bool, None]
