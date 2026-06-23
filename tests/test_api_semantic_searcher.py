@@ -20,6 +20,7 @@ import pytest
 
 from tool_classifier.api_semantic_searcher import (
     APISemanticSearcher,
+    DisambiguationResult,
     EndpointDisambiguatorModule,
 )
 from tool_classifier.constants import (
@@ -160,7 +161,7 @@ class TestEndpointDisambiguatorModule:
             },
         ]
         result = module.forward("When is the next holiday?", candidates)
-        assert result == "ep-holidays"
+        assert result.winner_id == "ep-holidays"
 
     def test_returns_none_when_predictor_returns_none_string(self) -> None:
         module = self._make_module("none")
@@ -173,7 +174,7 @@ class TestEndpointDisambiguatorModule:
             },
         ]
         result = module.forward("Tell me a joke", candidates)
-        assert result is None
+        assert result.winner_id is None
 
     def test_returns_none_when_predictor_returns_none_uppercase(self) -> None:
         module = self._make_module("NONE")
@@ -186,7 +187,7 @@ class TestEndpointDisambiguatorModule:
             },
         ]
         result = module.forward("Tell me a joke", candidates)
-        assert result is None
+        assert result.winner_id is None
 
     def test_returns_none_on_dspy_exception(self) -> None:
         module = EndpointDisambiguatorModule()
@@ -200,7 +201,7 @@ class TestEndpointDisambiguatorModule:
             },
         ]
         result = module.forward("Which holidays?", candidates)
-        assert result is None
+        assert result.winner_id is None
 
     def test_strips_whitespace_from_endpoint_id(self) -> None:
         module = self._make_module("  ep-holidays  ")
@@ -213,7 +214,7 @@ class TestEndpointDisambiguatorModule:
             },
         ]
         result = module.forward("Holidays?", candidates)
-        assert result == "ep-holidays"
+        assert result.winner_id == "ep-holidays"
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +452,9 @@ class TestSearchMediumConfidence:
         # Inject our disambiguator — searcher calls self._disambiguator(query, candidates)
         # which in turn calls forward() via __call__
         async_disambiguator = MagicMock()
-        async_disambiguator.forward = MagicMock(return_value="ep-holidays")
+        async_disambiguator.forward = MagicMock(
+            return_value=DisambiguationResult(winner_id="ep-holidays")
+        )
 
         searcher = _make_searcher(client, disambiguator=async_disambiguator)
 
@@ -459,7 +462,7 @@ class TestSearchMediumConfidence:
         with patch(
             "tool_classifier.api_semantic_searcher.asyncio.to_thread",
             new_callable=AsyncMock,
-            return_value="ep-holidays",
+            return_value=DisambiguationResult(winner_id="ep-holidays"),
         ):
             results = await searcher.search("something ambiguous")
 
@@ -540,7 +543,9 @@ class TestSearchMediumConfidence:
             _call_count += 1
             if _call_count == 1:
                 return precomputed  # embedding call
-            return None  # disambiguator call → rejects all candidates
+            return DisambiguationResult(
+                winner_id=None
+            )  # disambiguator call → rejects all candidates
 
         with patch(
             "tool_classifier.api_semantic_searcher.asyncio.to_thread",

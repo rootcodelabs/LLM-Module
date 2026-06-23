@@ -32,6 +32,8 @@ from tool_classifier.base_workflow import BaseWorkflow
 from tool_classifier.enums import AgenticLoopStatus, ExecutionMode
 from tool_classifier.param_extractor import ParamExtractionModule
 from utils.api_tool_session_store import APIToolSessionStore
+from utils.conversation_history_helpers import get_conversation_history
+from utils.conversation_history_store import ConversationHistoryStore
 from utils.atc_cache_store import ATCCacheStore
 from tool_classifier.constants import ATC_CACHE_DEFAULT_TTL_SECONDS
 from tool_classifier.follow_up_detector import FollowUpDetectorModule
@@ -153,6 +155,12 @@ class APIToolWorkflowExecutor(BaseWorkflow):
         if self.orchestration_service is None:
             return None
         return getattr(self.orchestration_service, "session_store", None)
+
+    def _get_conversation_history_store(self) -> Optional[ConversationHistoryStore]:
+        """Return the conversation history store from the orchestration service, or None."""
+        if self.orchestration_service is None:
+            return None
+        return getattr(self.orchestration_service, "conversation_history_store", None)
 
     def _get_guardrails_adapter(
         self, environment: str, connection_id: Optional[str] = None
@@ -974,14 +982,34 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             or session.detected_language
         )
 
-        conversation_history_for_loop = (
-            []
-            if session.turn_count == 0
-            else [
+        _atc_conversation_summary: Optional[str] = None
+        conversation_history_for_loop: List[Dict[str, Any]]
+        if session.turn_count == 0:
+            # On the first ATC turn there is no prior ATC exchange to pass.
+            conversation_history_for_loop = []
+        else:
+            # On subsequent turns prefer Redis as the authoritative history source.
+            _redis_history, _atc_conversation_summary = await get_conversation_history(
+                chat_id=chat_id,
+                store=self._get_conversation_history_store(),
+                fallback=list(request.conversationHistory or []),
+            )
+            conversation_history_for_loop = [
                 {"authorRole": item.authorRole, "message": item.message}
-                for item in (request.conversationHistory or [])
+                for item in _redis_history
             ]
-        )
+
+        # Incorporate any Redis-supplied conversation summary into custom_instructions
+        # so the param extractor and response formatter have full conversational context.
+        if _atc_conversation_summary:
+            _summary_prefix = (
+                f"Summary of earlier conversation: {_atc_conversation_summary}"
+            )
+            custom_instructions = (
+                f"{_summary_prefix}\n\n{custom_instructions}".strip()
+                if custom_instructions
+                else _summary_prefix
+            )
 
         if session.execution_mode == ExecutionMode.PARALLEL.value:
             # Parallel path: MultiEndpointAgenticLoop operates on the full

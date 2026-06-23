@@ -127,6 +127,9 @@ class ToolClassifier:
         self.context_workflow = ContextWorkflowExecutor(
             llm_manager=llm_manager,
             orchestration_service=orchestration_service,
+            conversation_history_store=getattr(
+                orchestration_service, "conversation_history_store", None
+            ),
         )
         self.rag_workflow = RAGWorkflowExecutor(
             orchestration_service=orchestration_service,
