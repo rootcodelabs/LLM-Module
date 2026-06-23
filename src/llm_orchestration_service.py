@@ -60,6 +60,9 @@ from src.utils.production_store import get_production_store
 from src.utils.language_detector import detect_language, get_language_name
 from src.utils.prompt_config_loader import PromptConfigurationLoader
 from src.utils.query_validator import validate_query_basic
+from src.utils.sse_utils import extract_content_from_sse
+from src.utils.conversation_history_store import should_save_history, save_history_round
+from src.utils.conversation_history_helpers import get_conversation_history
 from src.guardrails import NeMoRailsAdapter, GuardrailCheckResult
 from src.contextual_retrieval import ContextualRetriever
 from src.contextual_retrieval.bm25_search import SmartBM25Search
@@ -68,12 +71,26 @@ from src.llm_orchestrator_config.exceptions import (
     ContextualRetrievalFailureError,
 )
 from src.llm_orchestrator_config.feature_flags import FeatureFlags
-from src.tool_classifier import ToolClassifier
+from src.tool_classifier import ToolClassifier, WorkflowType
 from src.tool_classifier.constants import SERVICE_STEP_PREFIXES
 from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
 
 # Initialize Loki logger for orchestration service
 logger = LokiLogger(service_name="llm-orchestration-service")
+
+# Set of content strings that must NOT be persisted in conversation history.
+# Covers all multilingual error / OOS / guardrail-violation messages so that
+# failed or blocked exchanges are never written to Redis.
+_HISTORY_EXCLUDED_MESSAGES: frozenset[str] = frozenset(
+    {
+        *OUT_OF_SCOPE_MESSAGES.values(),
+        *TECHNICAL_ISSUE_MESSAGES.values(),
+        *INPUT_GUARDRAIL_VIOLATION_MESSAGES.values(),
+        *OUTPUT_GUARDRAIL_VIOLATION_MESSAGES.values(),
+        *QUERY_VALIDATION_FAILED_MESSAGES.values(),
+        STREAM_TOKEN_LIMIT_MESSAGE,
+    }
+)
 
 
 class LangfuseConfig:
@@ -151,6 +168,11 @@ class LLMOrchestrationService:
         # Redis initialises (app.state.orchestration_service.session_store = ...).
         # Workflow executors access it via self.orchestration_service.session_store.
         self.session_store: Any = None
+
+        # Redis-backed conversation history store.
+        # Set to None here; the FastAPI lifespan injects the live store after
+        # Redis initialises (app.state.orchestration_service.conversation_history_store = ...).
+        self.conversation_history_store: Any = None
 
         # Shared BM25 search index pre-warmed at startup.
         # Populated by _prewarm_shared_bm25() which is called from the FastAPI
@@ -503,6 +525,18 @@ class LLMOrchestrationService:
                     },
                 )
                 langfuse.flush()
+
+            # Persist successful exchange to conversation history (non-streaming)
+            if should_save_history(
+                self.conversation_history_store, response, _HISTORY_EXCLUDED_MESSAGES
+            ):
+                await save_history_round(
+                    self.conversation_history_store,
+                    request.chatId,
+                    request.message,
+                    response.content,
+                )
+
             return response
 
         except Exception as e:
@@ -731,13 +765,50 @@ class LLMOrchestrationService:
                         )
                         time_metric["classifier.route"] = time.time() - start_time
 
+                        # Accumulate content for history only on non-RAG workflows;
+                        # RAG routes through _stream_rag_pipeline which has its own hook.
+                        _save_classifier_history = (
+                            self.conversation_history_store is not None
+                            and classification.workflow != WorkflowType.RAG
+                        )
+                        _classifier_accumulated: list[str] = []
+                        # Tracks whether an excluded marker (OOS / guardrail violation /
+                        # error) was observed at any point during the stream.  When True
+                        # the entire accumulated buffer is discarded so no partial content
+                        # from before the blocked marker is ever written to Redis.
+                        _history_blocked = False
+
                         async for sse_chunk in stream_result:
                             yield sse_chunk
+                            if _save_classifier_history and not _history_blocked:
+                                extracted = extract_content_from_sse(sse_chunk)
+                                if extracted is not None and extracted != "END":
+                                    if extracted in _HISTORY_EXCLUDED_MESSAGES:
+                                        # Excluded marker observed — discard any partial
+                                        # content accumulated before this point and stop
+                                        # accumulating for the rest of the stream.
+                                        _classifier_accumulated.clear()
+                                        _history_blocked = True
+                                    else:
+                                        _classifier_accumulated.append(extracted)
 
                         # Successfully completed streaming through classifier
                         logger.info(
                             f"[{request.chatId}] [{stream_ctx.stream_id}] Tool classifier streaming completed"
                         )
+
+                        # Persist conversation history (classifier streaming, non-RAG workflows)
+                        if (
+                            _save_classifier_history
+                            and not _history_blocked
+                            and _classifier_accumulated
+                        ):
+                            await save_history_round(
+                                self.conversation_history_store,
+                                request.chatId,
+                                request.message,
+                                "".join(_classifier_accumulated),
+                            )
 
                         # Log costs and timings
                         self.log_costs(costs_metric)
@@ -868,10 +939,16 @@ class LLMOrchestrationService:
         )
 
         start_time = time.time()
+        conversation_history, conversation_summary = await get_conversation_history(
+            chat_id=request.chatId,
+            store=self.conversation_history_store,
+            fallback=request.conversationHistory,
+        )
         refined_output, refiner_usage = self._refine_user_prompt(
             llm_manager=components["llm_manager"],
             original_message=request.message,
-            conversation_history=request.conversationHistory,
+            conversation_history=conversation_history,
+            conversation_summary=conversation_summary,
         )
         time_metric["prompt_refiner"] = time.time() - start_time
         costs_metric["prompt_refiner"] = refiner_usage
@@ -1173,6 +1250,17 @@ class LLMOrchestrationService:
                     f"Storage failed for chat_id: {request.chatId}, environment: {request.environment} - {str(storage_error)}"
                 )
 
+            # Persist conversation history (RAG streaming)
+            if self.conversation_history_store is not None:
+                _rag_bot_message = "".join(accumulated_response)
+                if _rag_bot_message not in _HISTORY_EXCLUDED_MESSAGES:
+                    await save_history_round(
+                        self.conversation_history_store,
+                        request.chatId,
+                        request.message,
+                        _rag_bot_message,
+                    )
+
             # Mark stream as completed successfully
             stream_ctx.mark_completed()
 
@@ -1422,10 +1510,16 @@ class LLMOrchestrationService:
 
         # Step 1: Refine user prompt
         start_time = time.time()
+        conversation_history, conversation_summary = await get_conversation_history(
+            chat_id=request.chatId,
+            store=self.conversation_history_store,
+            fallback=request.conversationHistory,
+        )
         refined_output, refiner_usage = self._refine_user_prompt(
             llm_manager=components["llm_manager"],
             original_message=request.message,
-            conversation_history=request.conversationHistory,
+            conversation_history=conversation_history,
+            conversation_summary=conversation_summary,
         )
         timing_key = f"{prefix}.prompt_refiner" if prefix else "prompt_refiner"
         time_metric[timing_key] = time.time() - start_time
@@ -2304,6 +2398,7 @@ class LLMOrchestrationService:
         llm_manager: LLMManager,
         original_message: str,
         conversation_history: List[ConversationItem],
+        conversation_summary: Optional[str] = None,
     ) -> tuple[PromptRefinerOutput, Dict[str, Any]]:
         """
         Refine user prompt using loaded LLM configuration and return usage info.
@@ -2312,6 +2407,10 @@ class LLMOrchestrationService:
             llm_manager: The LLM manager instance to use
             original_message: The original user message to refine
             conversation_history: Previous conversation context
+            conversation_summary: Optional summary of earlier conversation rounds
+                that were evicted from Redis.  When provided it is prepended to the
+                DSPy history as a ``system`` turn so the refiner can use it for
+                context without re-summarising via an LLM call.
 
         Returns:
             Tuple of (PromptRefinerOutput, usage_dict): The refined prompt output and usage info
@@ -2324,8 +2423,16 @@ class LLMOrchestrationService:
         logger.info("Starting prompt refinement process")
 
         try:
-            # Convert conversation history to DSPy format
+            # Convert conversation history to DSPy format, optionally prepending
+            # a pre-computed summary of earlier (evicted) conversation rounds.
             history: List[Dict[str, str]] = []
+            if conversation_summary:
+                history.append(
+                    {
+                        "role": "system",
+                        "content": f"Summary of earlier conversation: {conversation_summary}",
+                    }
+                )
             for item in conversation_history:
                 role = "assistant" if item.authorRole == "bot" else item.authorRole
                 history.append({"role": role, "content": item.message})

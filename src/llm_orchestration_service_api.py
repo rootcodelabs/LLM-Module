@@ -1,5 +1,6 @@
 """LLM Orchestration Service API - FastAPI application."""
 
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -12,12 +13,15 @@ from pydantic import ValidationError
 import uvicorn
 
 from llm_orchestration_service import LLMOrchestrationService
+from llm_orchestrator_config.llm_manager import LLMManager
 from src.utils.redis_client import (
     init_redis_client,
     close_redis_client,
     check_redis_health,
 )
 from src.utils.api_tool_session_store import APIToolSessionStore
+from src.utils.conversation_history_store import ConversationHistoryStore
+from src.utils.conversation_summary_generator import create_incremental_summarizer
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     STREAMING_ALLOWED_ENVS,
     STREAM_TIMEOUT_MESSAGE,
@@ -98,23 +102,50 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         await init_redis_client()
         app.state.session_store = APIToolSessionStore()
+
+        # Wire an incremental summarizer if the LLM manager singleton is available.
+        summarizer = None
+        try:
+            summarizer = create_incremental_summarizer(LLMManager())
+            logger.info("Incremental conversation summarizer initialized")
+        except Exception as e:
+            logger.warning(
+                f"Could not create incremental summarizer, continuing without it: {e}"
+            )
+
+        app.state.conversation_history_store = ConversationHistoryStore(
+            summarizer=summarizer
+        )
         logger.info("Redis session store initialized successfully")
     except Exception as e:
         logger.warning(f"Redis session store unavailable, continuing without it: {e}")
         app.state.session_store = None
+        app.state.conversation_history_store = None
 
-    # Expose session_store on the orchestration service so workflow executors
-    # (e.g. APIToolWorkflowExecutor) can reach it via self.orchestration_service.
+    # Expose session_store and conversation_history_store on the orchestration
+    # service so downstream components can reach them via self.orchestration_service.
     if (
         hasattr(app.state, "orchestration_service")
         and app.state.orchestration_service is not None
     ):
         app.state.orchestration_service.session_store = app.state.session_store
+        app.state.orchestration_service.conversation_history_store = (
+            app.state.conversation_history_store
+        )
 
     yield
 
     # Shutdown
     logger.info("Shutting down LLM Orchestration Service API")
+
+    # Await any in-flight incremental summary tasks to avoid lost work.
+    store = getattr(app.state, "conversation_history_store", None)
+    if store is not None and store._pending_tasks:
+        logger.info(
+            f"Waiting for {len(store._pending_tasks)} pending summary task(s) to complete..."
+        )
+        await asyncio.gather(*store._pending_tasks, return_exceptions=True)
+
     if (
         hasattr(app.state, "orchestration_service")
         and app.state.orchestration_service is not None
