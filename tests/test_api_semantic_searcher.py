@@ -448,13 +448,6 @@ class TestSearchMediumConfidence:
         client.get = AsyncMock(return_value=count_resp)
         client.post = AsyncMock(side_effect=[dense_resp, hybrid_resp])
 
-        mock_disambiguator = MagicMock()
-        mock_disambiguator.return_value = None  # "forward" returns string or None
-        # Wrap in a module-like object that has a forward() callable via __call__
-        mock_disambiguator_module = MagicMock()
-        mock_disambiguator_module.forward = MagicMock(return_value="ep-holidays")
-        mock_disambiguator_module.__call__ = MagicMock(return_value="ep-holidays")
-
         # Inject our disambiguator — searcher calls self._disambiguator(query, candidates)
         # which in turn calls forward() via __call__
         async_disambiguator = MagicMock()
@@ -506,6 +499,64 @@ class TestSearchMediumConfidence:
             results = await searcher.search("tell me a joke")
 
         assert results == []
+
+    @pytest.mark.asyncio
+    async def test_disambiguation_rejects_all_multi_candidates_returns_top_with_hint(
+        self,
+    ) -> None:
+        """Disambiguator returns None for >1 medium candidates → top candidate returned
+        with multi_intent_hint=True and llm_validated=False so IntentDecomposer gate
+        can run in the classifier."""
+        cos_a = API_TOOL_MIN_THRESHOLD + 0.08  # higher cosine → becomes 'top'
+        cos_b = API_TOOL_MIN_THRESHOLD + 0.02
+
+        dense_points = [
+            _point({**_EP_HOLIDAYS}, cos_a),
+            _point({**_EP_WEATHER}, cos_b),
+        ]
+        hybrid_points = [
+            _point({**_EP_HOLIDAYS}, 0.012),
+            _point({**_EP_WEATHER}, 0.009),
+        ]
+
+        dense_resp = _make_qdrant_dense_response(dense_points)
+        hybrid_resp = _make_qdrant_hybrid_response(hybrid_points)
+        count_resp = _make_count_response(10)
+
+        client = AsyncMock()
+        client.get = AsyncMock(return_value=count_resp)
+        client.post = AsyncMock(side_effect=[dense_resp, hybrid_resp])
+
+        searcher = _make_searcher(client)
+
+        # asyncio.to_thread is called twice:
+        #   1st call → _get_query_embedding → must return a valid embedding vector
+        #   2nd call → disambiguator.forward  → must return None ("none" response)
+        precomputed = [0.1] * 10
+        _call_count = 0
+
+        async def _to_thread_side_effect(fn: Any, *args: Any, **kwargs: Any) -> Any:
+            nonlocal _call_count
+            _call_count += 1
+            if _call_count == 1:
+                return precomputed  # embedding call
+            return None  # disambiguator call → rejects all candidates
+
+        with patch(
+            "tool_classifier.api_semantic_searcher.asyncio.to_thread",
+            side_effect=_to_thread_side_effect,
+        ):
+            results = await searcher.search("holidays AND weather")
+
+        # Must return exactly one result — the top cosine candidate
+        assert len(results) == 1
+        top = results[0]
+        # Top candidate by cosine score is ep-holidays
+        assert top.endpoint_id == "ep-holidays"
+        # NOT llm_validated — disambiguator explicitly rejected it
+        assert top.llm_validated is False
+        # multi_intent_hint signals the classifier to try IntentDecomposer
+        assert top.multi_intent_hint is True
 
 
 class TestSearchBelowThreshold:

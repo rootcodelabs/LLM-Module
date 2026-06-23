@@ -23,7 +23,7 @@ class ApiToolIndexerConstants:
     # LLM / Embedding API
     DEFAULT_API_BASE_URL = "http://llm-orchestration-service:8100"
     DEFAULT_ENVIRONMENT = "production"
-    DEFAULT_CONNECTION_ID = "gpt-4o-mini"
+    DEFAULT_CONNECTION_ID = ""
 
     # Retry Configuration
     MAX_RETRIES = 3
