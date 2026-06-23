@@ -291,6 +291,8 @@ const TestProductionLLM: FC = () => {
   const clearChat = () => {
     setMessages([]);
     stopStreaming();
+    setInputMessage('');
+    setIsLoading(false);
     toast.open({
       type: 'info',
       title: t('testProductionLLM.chatClearedTitle'),
