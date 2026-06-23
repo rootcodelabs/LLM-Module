@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.models.request_models import OrchestrationRequest
-from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
+from models.request_models import OrchestrationRequest
+from tool_classifier.workflows.service_workflow import ServiceWorkflowExecutor
 
 
 def _make_request(
