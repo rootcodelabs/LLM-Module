@@ -78,6 +78,8 @@ from src.tool_classifier.workflows.service_workflow import ServiceWorkflowExecut
 # Initialize Loki logger for orchestration service
 logger = LokiLogger(service_name="llm-orchestration-service")
 
+REFERENCES_SECTION_HEADER = "\n\n**References:**\n"
+
 # Set of content strings that must NOT be persisted in conversation history.
 # Covers all multilingual error / OOS / guardrail-violation messages so that
 # failed or blocked exchanges are never written to Redis.
@@ -456,7 +458,6 @@ class LLMOrchestrationService:
                     start_time = time.time()
                     classification = await self.tool_classifier.classify(
                         query=request.message,
-                        conversation_history=request.conversationHistory,
                         language=detected_language,
                         request=request,
                     )
@@ -738,7 +739,6 @@ class LLMOrchestrationService:
                         start_time = time.time()
                         classification = await self.tool_classifier.classify(
                             query=request.message,
-                            conversation_history=request.conversationHistory,
                             language=detected_language,
                             request=request,
                         )
@@ -1148,7 +1148,7 @@ class LLMOrchestrationService:
                 # Send document references before END token
                 doc_references = self._extract_document_references(relevant_chunks)
                 if doc_references:
-                    refs_text = "\n\n**References:**\n" + "\n".join(
+                    refs_text = REFERENCES_SECTION_HEADER + "\n".join(
                         f"{i + 1}. [{ref.document_url}]({ref.document_url})"
                         for i, ref in enumerate(doc_references)
                     )
@@ -1185,7 +1185,7 @@ class LLMOrchestrationService:
                 # Send document references before END token
                 doc_references = self._extract_document_references(relevant_chunks)
                 if doc_references:
-                    refs_text = "\n\n**References:**\n" + "\n".join(
+                    refs_text = REFERENCES_SECTION_HEADER + "\n".join(
                         f"{i + 1}. [{ref.document_url}]({ref.document_url})"
                         for i, ref in enumerate(doc_references)
                     )
@@ -2830,7 +2830,7 @@ class LLMOrchestrationService:
             doc_references = self._extract_document_references(relevant_chunks)
             content_with_refs = answer
             if doc_references:
-                refs_text = "\n\n**References:**\n" + "\n".join(
+                refs_text = REFERENCES_SECTION_HEADER + "\n".join(
                     f"{i + 1}. {ref.document_url}"
                     for i, ref in enumerate(doc_references)
                 )

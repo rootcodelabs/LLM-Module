@@ -495,7 +495,6 @@ class MultiResponseFormatterModule(dspy.Module):
                         truncated
                         + "\n[NOTE: Combined results truncated due to total size limit]"
                     )
-                    total_bytes = _MAX_TOTAL_RESPONSE_BYTES
                 break
 
             sections.append(section)
