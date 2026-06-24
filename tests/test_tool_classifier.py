@@ -283,7 +283,6 @@ class TestClassifySessionResumeShortcut:
         ):
             result = await classifier.classify(
                 query="EE",
-                conversation_history=[],
                 language="en",
                 request=request,
             )
@@ -308,7 +307,6 @@ class TestClassifySessionResumeShortcut:
         ):
             result = await classifier.classify(
                 query="some query",
-                conversation_history=[],
                 language="en",
                 request=request,
             )
@@ -345,7 +343,6 @@ class TestClassifyIntentSwitch:
         ):
             result = await classifier.classify(
                 query="What is the weather in Tallinn?",
-                conversation_history=[],
                 language="en",
                 request=request,
             )
@@ -381,7 +378,6 @@ class TestClassifyServiceWorkflowDisabled:
         ):
             result = await classifier.classify(
                 query="public holidays",
-                conversation_history=[],
                 language="en",
                 request=_make_request("public holidays"),
             )
@@ -409,7 +405,6 @@ class TestClassifyServiceWorkflowDisabled:
         ):
             result = await classifier.classify(
                 query="tell me a joke",
-                conversation_history=[],
                 language="en",
                 request=_make_request("tell me a joke"),
             )
@@ -436,7 +431,6 @@ class TestClassifyEmbeddingFailure:
         ):
             result = await classifier.classify(
                 query="public holidays",
-                conversation_history=[],
                 language="en",
             )
 
@@ -474,7 +468,6 @@ class TestClassifyQdrantTimeout:
             classifier.api_tool_searcher.search = AsyncMock(return_value=[])
             result = await classifier.classify(
                 query="public holidays",
-                conversation_history=[],
                 language="en",
             )
 

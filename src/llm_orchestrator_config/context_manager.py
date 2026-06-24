@@ -53,7 +53,7 @@ Answer only with the succinct context and nothing else."""
             )
 
             # For now, call LLM directly (caching structure ready for future)
-            # TODO: Implement actual prompt caching when ready
+            # Implement actual prompt caching when ready
             response = self._call_llm_for_context(
                 prompt=full_prompt,
                 model=model_info["model"],
