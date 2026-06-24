@@ -20,7 +20,7 @@ class LLMAPIClient:
         self,
         api_base_url: str = EnrichmentConstants.DEFAULT_API_BASE_URL,
         environment: str = EnrichmentConstants.DEFAULT_ENVIRONMENT,
-        connection_id: str = EnrichmentConstants.DEFAULT_CONNECTION_ID,
+        connection_id: Optional[str] = EnrichmentConstants.DEFAULT_CONNECTION_ID,
         max_retries: int = EnrichmentConstants.MAX_RETRIES,
         retry_delay_base: int = EnrichmentConstants.RETRY_DELAY_BASE,
         timeout: int = EnrichmentConstants.REQUEST_TIMEOUT,
