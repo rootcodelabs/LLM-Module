@@ -135,6 +135,7 @@ def _make_orchestration_service(session_store: Optional[AsyncMock] = None) -> Ma
         return f'data: {{"chatId":"{chat_id}","payload":{{"content":"{content}"}}}}\n\n'
 
     svc.format_sse = _format_sse
+    svc.store_streaming_inference = AsyncMock()
     svc.handle_output_guardrails = AsyncMock(
         side_effect=lambda _adapter, response, _req, _costs: response
     )

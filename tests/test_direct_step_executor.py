@@ -171,6 +171,7 @@ class TestExecuteDirectStepStreaming:
     async def test_yields_content_and_end(self) -> None:
         """Valid prefix → yields exactly 2 SSE chunks (content, END)."""
         mock_sse = MagicMock()
+        mock_sse.store_streaming_inference = AsyncMock()
         mock_sse.format_sse = MagicMock(side_effect=["sse_content", "sse_end"])
 
         executor = _make_executor(orchestration_service=mock_sse)
@@ -188,6 +189,7 @@ class TestExecuteDirectStepStreaming:
     async def test_format_sse_called_with_buttons(self) -> None:
         """format_sse receives content and buttons on first call, 'END' on second."""
         mock_sse = MagicMock()
+        mock_sse.store_streaming_inference = AsyncMock()
         mock_sse.format_sse = MagicMock(return_value="data: ...\n\n")
 
         executor = _make_executor(orchestration_service=mock_sse)

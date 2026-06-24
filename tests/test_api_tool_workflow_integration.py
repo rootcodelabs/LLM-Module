@@ -133,6 +133,7 @@ def mock_orchestration_service(mock_session_store: AsyncMock) -> MagicMock:
     svc.handle_output_guardrails = AsyncMock(
         side_effect=lambda _adapter, response, _req, _costs: response
     )
+    svc.store_streaming_inference = AsyncMock()
 
     async def _mock_rag_stream(**kwargs: Any) -> AsyncGenerator[str, None]:
         yield 'data: {"chatId":"test","payload":{"content":"RAG stream answer"}}\n\n'
