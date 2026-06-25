@@ -3,7 +3,7 @@ name: DeepEval RAG System Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: ["wip-eval"]
+    branches: ["deepeval-temp"]
     paths:
       - 'src/**'
       - 'tests/**'
