@@ -1,6 +1,23 @@
-# LLM Connections API Endpoints
+# API Reference
 
-## Base URL
+This document is the consolidated HTTP API reference for the LLM Module. It covers the **LLM
+Connections** management endpoints, the **Inference Results** storage/retrieval endpoints, and the
+chatbot **Inquiry** endpoint exposed to the LLM Orchestration Service.
+
+> Routing note: the public-facing paths below are served through the Ruuter API gateway
+> (`ruuter-private` / `ruuter-public`), which proxies to the LLM Orchestration Service. See
+> [ARCHITECTURE.md](./ARCHITECTURE.md) for how requests flow through the system.
+
+## Contents
+
+- [LLM Connections API](#llm-connections-api-endpoints)
+- [Inference Results API](#inference-results-api-endpoints)
+
+---
+
+## LLM Connections API Endpoints
+
+### Base URL
 ```
 /ruuter-private/llm/connections
 ```
