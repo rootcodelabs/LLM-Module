@@ -371,7 +371,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
             "endpoint": azure_endpoint,
             "api_key": azure_api_key,
             "deployment_name": azure_deployment or "gpt-4o-mini",
-            "environment": "testing",
+            "environment": "development",
             "model": "gpt-4o-mini",
             "model_type": "chat",
             "api_version": "2024-02-15-preview",
@@ -401,7 +401,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
             "endpoint": azure_endpoint,
             "api_key": azure_api_key,
             "deployment_name": azure_embedding_deployment,  # This is the embedding deployment
-            "environment": "testing",
+            "environment": "development",
             "model": "text-embedding-3-large",
             "model_type": "embedding",
             "api_version": "2024-02-15-preview",
@@ -434,7 +434,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         try:
             # Verify LLM path
             verify_llm = client.secrets.kv.v2.read_secret_version(
-                path="llm/connections/azure_openai/development/evalconnection-1",
+                path="llm/connections/azure_openai/evalconnection-1",
                 mount_point="secret",
             )
             llm_data = verify_llm["data"]["data"]
@@ -443,7 +443,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
 
             # Verify embeddings path
             verify_embedding = client.secrets.kv.v2.read_secret_version(
-                path="embeddings/connections/azure_openai/development/evalconnection-1",
+                path="embeddings/connections/azure_openai/evalconnection-1",
                 mount_point="secret",
             )
             embedding_data = verify_embedding["data"]["data"]
@@ -617,7 +617,7 @@ path "auth/token/renew-self" { capabilities = ["update"] }
         """Verify the token has correct permissions to read secrets"""
         try:
             client.secrets.kv.v2.read_secret_version(
-                path="llm/connections/azure_openai/development/evalconnection-1",
+                path="llm/connections/azure_openai/evalconnection-1",
                 mount_point="secret",
             )
             logger.info("Token has correct permissions to read secrets")
