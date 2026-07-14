@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
+    Coroutine,
     Dict,
     List,
     Literal,
@@ -144,11 +145,27 @@ class APIToolWorkflowExecutor(BaseWorkflow):
             if orchestration_service is not None
             else None
         )
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------
     # Internal helpers
 
     # ------------------------------------------------------------------
+
+    def _create_background_task(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Keep fire-and-forget tasks alive until they finish."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._discard_background_task)
+
+    def _discard_background_task(self, task: asyncio.Task[None]) -> None:
+        """Remove a completed background task and log any uncaught exception."""
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            logger.warning(f"APIToolWorkflow: background task failed: {exception}")
 
     def _get_session_store(self) -> Optional[APIToolSessionStore]:
         """Return the session store from the orchestration service, or None."""
@@ -361,7 +378,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                             f"[{chat_id}] ATC cache: background write failed: {_exc}"
                         )
 
-                asyncio.create_task(_write_l1_l2())
+                self._create_background_task(_write_l1_l2())
             formatter = APIResponseFormatterModule(
                 custom_instructions=custom_instructions
             )
@@ -474,7 +491,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                         f"[{chat_id}] ATC cache: background multi-write failed: {_exc}"
                     )
 
-            asyncio.create_task(_write_multi_cache())
+            self._create_background_task(_write_multi_cache())
 
         api_results = [
             (
@@ -586,7 +603,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                         f"[{chat_id}] ATC cache: background multi-write failed: {_exc}"
                     )
 
-            asyncio.create_task(_write_multi_cache())
+            self._create_background_task(_write_multi_cache())
 
         api_results = [
             (
@@ -1442,7 +1459,7 @@ class APIToolWorkflowExecutor(BaseWorkflow):
                             f"[{chat_id}] ATC cache: background write failed: {_exc}"
                         )
 
-                asyncio.create_task(_write_l1_l2())
+                self._create_background_task(_write_l1_l2())
             # Buffer all tokens first, then validate with output guardrails before
             # streaming to the client (validate-first approach).
             formatter = APIResponseFormatterModule(

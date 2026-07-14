@@ -45,6 +45,8 @@ import time
 # Initialize Loki logger
 logger = LokiLogger(service_name="service-workflow")
 
+SERVICE_INTENT_DETECTION_METRIC = "service.intent_detection"
+
 
 class LLMServiceProtocol(Protocol):
     """Protocol defining interface for LLM service embedding operations."""
@@ -823,7 +825,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-                time_metric["service.intent_detection"] = time.time() - start_time
+                time_metric[SERVICE_INTENT_DETECTION_METRIC] = time.time() - start_time
 
                 if not context.get("service_data"):
                     context["service_id"] = matched.get("service_id")
@@ -845,7 +847,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-            time_metric["service.intent_detection"] = time.time() - start_time
+            time_metric[SERVICE_INTENT_DETECTION_METRIC] = time.time() - start_time
 
         else:
             start_time = time.time()
@@ -1005,7 +1007,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-                time_metric["service.intent_detection"] = time.time() - start_time
+                time_metric[SERVICE_INTENT_DETECTION_METRIC] = time.time() - start_time
 
                 if not context.get("service_data"):
                     context["service_id"] = matched.get("service_id")
@@ -1027,7 +1029,7 @@ class ServiceWorkflowExecutor(BaseWorkflow):
                     context=context,
                     costs_metric=costs_metric,
                 )
-            time_metric["service.intent_detection"] = time.time() - start_time
+            time_metric[SERVICE_INTENT_DETECTION_METRIC] = time.time() - start_time
 
         else:
             start_time = time.time()
