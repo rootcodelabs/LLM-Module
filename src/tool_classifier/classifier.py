@@ -18,7 +18,6 @@ import asyncio
 from src.loki_logger import LokiLogger
 from llm_orchestrator_config.llm_manager import LLMManager
 from models.request_models import (
-    ConversationItem,
     OrchestrationRequest,
     OrchestrationResponse,
     TestOrchestrationResponse,
@@ -161,7 +160,6 @@ class ToolClassifier:
     async def classify(
         self,
         query: str,
-        conversation_history: List[ConversationItem],
         language: str,
         request: Optional[OrchestrationRequest] = None,
     ) -> ClassificationResult:
@@ -179,7 +177,6 @@ class ToolClassifier:
 
         Args:
             query: User's query string
-            conversation_history: List of previous conversation messages
             language: Detected language code (e.g., 'en', 'et')
             request: Original orchestration request (needed for ATC search
                 which requires environment and connection_id for embedding).
