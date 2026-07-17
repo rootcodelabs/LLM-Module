@@ -12,17 +12,17 @@ loop collects all required parameters from the user before the API call is made.
 
 | Component | What it does | Status |
 |---|---|---|
-| **Indexing pipeline** | Takes an endpoint definition → enriches it with LLM context → stores hybrid vectors in Qdrant | ✅ Complete |
-| **Tool classifier** | At query time, routes to the best matching endpoint via hybrid search + LLM disambiguation | ✅ Complete |
-| **Multi-intent detection** | Score-band gate triggers `IntentDecomposer` (DSPy) to decompose a multi-intent query into focused sub-queries; each sub-query is matched in parallel via `asyncio.gather` | ✅ Phase 1 & 2 Complete |
-| **Agentic loop** | Multi-turn parameter collection with session persistence, language-aware clarifying questions, param correction, continuation prompt, and intent-switch detection | ✅ Complete |
-| **API caller** | Execute collected params against the real API endpoint, with circuit-breaker protection and localized error handling | ✅ Complete |
-| **Response formatter** | Convert raw API JSON into a natural-language answer via DSPy, streamed token-by-token to the GUI | ✅ Complete |
-| **Multi-endpoint loop** | Merges param schemas for all parallel endpoints; collects params across turns with a single deduplicated clarifying question per turn; distributes values back per endpoint | ✅ Phase 3 Complete |
-| **Parallel API caller** | Fires all completed endpoint calls concurrently via `asyncio.gather` with batch timeout and partial-failure handling | ✅ Phase 4 Complete |
-| **Multi-response formatter** | DSPy module that synthesises N API results into a single coherent natural-language answer; supports streaming and blocking execution | ✅ Phase 5 Complete |
-| **Full wiring** | `APIToolWorkflowExecutor` routes parallel sessions through `MultiEndpointAgenticLoop` → `MultiAPICaller` → `MultiResponseFormatterModule` with output guardrails | ✅ Phase 6 Complete |
-| **ATC Response Cache** | Two-tier Redis cache (L1 exact-match + L2 follow-up context) that eliminates redundant API calls and enables intelligent follow-up handling without re-running the agentic loop | ✅ Complete |
+| **Indexing pipeline** | Takes an endpoint definition → enriches it with LLM context → stores hybrid vectors in Qdrant |  Complete |
+| **Tool classifier** | At query time, routes to the best matching endpoint via hybrid search + LLM disambiguation |  Complete |
+| **Multi-intent detection** | Score-band gate triggers `IntentDecomposer` (DSPy) to decompose a multi-intent query into focused sub-queries; each sub-query is matched in parallel via `asyncio.gather` |  Phase 1 & 2 Complete |
+| **Agentic loop** | Multi-turn parameter collection with session persistence, language-aware clarifying questions, param correction, continuation prompt, and intent-switch detection |  Complete |
+| **API caller** | Execute collected params against the real API endpoint, with circuit-breaker protection and localized error handling |  Complete |
+| **Response formatter** | Convert raw API JSON into a natural-language answer via DSPy, streamed token-by-token to the GUI |  Complete |
+| **Multi-endpoint loop** | Merges param schemas for all parallel endpoints; collects params across turns with a single deduplicated clarifying question per turn; distributes values back per endpoint |  Phase 3 Complete |
+| **Parallel API caller** | Fires all completed endpoint calls concurrently via `asyncio.gather` with batch timeout and partial-failure handling |  Phase 4 Complete |
+| **Multi-response formatter** | DSPy module that synthesises N API results into a single coherent natural-language answer; supports streaming and blocking execution |  Phase 5 Complete |
+| **Full wiring** | `APIToolWorkflowExecutor` routes parallel sessions through `MultiEndpointAgenticLoop` → `MultiAPICaller` → `MultiResponseFormatterModule` with output guardrails |  Phase 6 Complete |
+| **ATC Response Cache** | Two-tier Redis cache (L1 exact-match + L2 follow-up context) that eliminates redundant API calls and enables intelligent follow-up handling without re-running the agentic loop |  Complete |
 
 ---
 
