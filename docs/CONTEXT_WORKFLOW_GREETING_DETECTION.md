@@ -223,17 +223,17 @@ In **Phase 2**, `ContextWorkflowExecutor` calls `get_greeting_response(greeting_
 
 ```python
 GREETINGS_ET = {
-    "hello":   "Tere! Kuidas ma saan sind aidata?",
+    "hello": "Tere! Kuidas ma saan sind aidata?",
     "goodbye": "Nägemist! Head päeva!",
-    "thanks":  "Palun! Kui on veel küsimusi, küsi julgelt.",
-    "casual":  "Tere! Mida ma saan sinu jaoks teha?",
+    "thanks": "Palun! Kui on veel küsimusi, küsi julgelt.",
+    "casual": "Tere! Mida ma saan sinu jaoks teha?",
 }
 
 GREETINGS_EN = {
-    "hello":   "Hello! How can I help you?",
+    "hello": "Hello! How can I help you?",
     "goodbye": "Goodbye! Have a great day!",
-    "thanks":  "You're welcome! Feel free to ask if you have more questions.",
-    "casual":  "Hey! What can I do for you?",
+    "thanks": "You're welcome! Feel free to ask if you have more questions.",
+    "casual": "Hey! What can I do for you?",
 }
 ```
 
@@ -358,29 +358,31 @@ Key log entries emitted during a request:
 
 ```python
 class ConversationRound(BaseModel):
-    user_message: str   # The user's message text
-    bot_message: str    # The bot's response text
-    timestamp: float    # Unix timestamp of the round
+    user_message: str  # The user's message text
+    bot_message: str  # The bot's response text
+    timestamp: float  # Unix timestamp of the round
 ```
 
 ### `ConversationHistoryState` (Redis fetch result)
 
 ```python
 class ConversationHistoryState(BaseModel):
-    chat_id: str                        # Unique conversation identifier
-    rounds: list[ConversationRound]     # Ordered rounds (newest last), capped at 10
-    summary: Optional[str]              # Incremental summary of evicted older rounds
+    chat_id: str  # Unique conversation identifier
+    rounds: list[ConversationRound]  # Ordered rounds (newest last), capped at 10
+    summary: Optional[str]  # Incremental summary of evicted older rounds
 ```
 
 ### `ContextDetectionResult` (Phase 1 output)
 
 ```python
 class ContextDetectionResult(BaseModel):
-    is_greeting: bool               # True if query is a greeting
-    greeting_type: str              # "hello" | "goodbye" | "thanks" | "casual"
-    can_answer_from_context: bool   # True if query can be answered from history or summary
-    reasoning: str                  # LLM's brief explanation
-    answered_from_summary: bool     # True when answer derived from summary path
+    is_greeting: bool  # True if query is a greeting
+    greeting_type: str  # "hello" | "goodbye" | "thanks" | "casual"
+    can_answer_from_context: (
+        bool  # True if query can be answered from history or summary
+    )
+    reasoning: str  # LLM's brief explanation
+    answered_from_summary: bool  # True when answer derived from summary path
     context_snippet: Optional[str]  # Relevant excerpt for Phase 2 generation, or None
 ```
 
