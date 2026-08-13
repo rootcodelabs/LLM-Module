@@ -3,7 +3,7 @@
 import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Union, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from src.loki_logger import LokiLogger
 
 from llm_orchestrator_config.vault.vault_client import (
@@ -122,6 +122,16 @@ class SecretResolver:
         except VaultConnectionError:
             logger.warning(f"Vault unavailable, trying fallback for {vault_path}")
             return self._get_fallback(vault_path)
+        except ValidationError as e:
+            # The secret exists but does not match the provider's schema. A
+            # last-known-good fallback would mask a stored-data problem that no
+            # retry can fix, so report it as a misconfiguration and stop here.
+            logger.error(
+                f"Malformed secret at {vault_path} for provider {provider} - the "
+                f"stored value does not match {get_secret_model(provider).__name__} "
+                f"and must be rewritten: {e}"
+            )
+            return None
         except Exception as e:
             logger.error(f"Error resolving secret for {vault_path}: {e}")
             return self._get_fallback(vault_path)
@@ -357,6 +367,15 @@ class SecretResolver:
                 f"Vault unavailable, trying fallback for embedding {vault_path}"
             )
             return self._get_fallback(vault_path)
+        except ValidationError as e:
+            # See get_secret_for_model: a schema mismatch is a stored-data
+            # problem, not a transient one, so do not serve a stale fallback.
+            logger.error(
+                f"Malformed embedding secret at {vault_path} for provider {provider} - "
+                f"the stored value does not match "
+                f"{get_secret_model(provider).__name__} and must be rewritten: {e}"
+            )
+            return None
         except Exception as e:
             logger.error(f"Error resolving embedding secret for {vault_path}: {e}")
             return self._get_fallback(vault_path)
