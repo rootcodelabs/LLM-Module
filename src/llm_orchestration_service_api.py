@@ -38,6 +38,11 @@ from src.llm_orchestrator_config.llm_ochestrator_constants import (
 )
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.llm_orchestrator_config.exceptions import StreamTimeoutError
+
+# NOTE: imported via the bare package path, not "src.llm_orchestrator_config".
+# Both spellings resolve to separate module objects at runtime, so the class
+# imported here must match the one the config loader raises or `except` misses.
+from llm_orchestrator_config.exceptions import ConfigurationError
 from src.utils.stream_timeout import stream_timeout
 from src.utils.observation_utils import safe_observation_context
 from src.utils.error_utils import generate_error_id, log_error_with_context
@@ -813,6 +818,13 @@ async def generate_context_with_caching(
 
         return ContextGenerationResponse(**result)
 
+    except ConfigurationError as e:
+        # No usable LLM connection for this environment. This is an operator
+        # action, not a transient fault - 503 with the reason so callers (e.g.
+        # the vector indexer) can stop retrying and surface something useful.
+        error_id = generate_error_id()
+        log_error_with_context(logger, error_id, "context_generation_endpoint", None, e)
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         error_id = generate_error_id()
         log_error_with_context(logger, error_id, "context_generation_endpoint", None, e)
