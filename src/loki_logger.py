@@ -13,6 +13,7 @@ If you change the logger logic here, apply the same change to both copies.
 """
 
 import json
+import sys
 import time
 from datetime import datetime
 from threading import Thread
@@ -119,9 +120,12 @@ class LokiLogger:
 
     def _log(self, level: str, message: str) -> None:
         """Queue log entry for async processing (non-blocking)"""
-        # Print to console immediately for real-time feedback
+        # Print to console immediately for real-time feedback. Written to
+        # stderr (not stdout) so callers that capture a subprocess's stdout
+        # for its return value (e.g. decrypt_vault_secrets.py) never pick up
+        # log lines mixed in with the actual output.
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] {level: <8} | {message}")  # noqa: T201
+        print(f"[{timestamp}] {level: <8} | {message}", file=sys.stderr)  # noqa: T201
 
         # Queue for async Loki sending (non-blocking, drops log if queue is full)
         try:
