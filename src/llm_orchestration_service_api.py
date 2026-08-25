@@ -43,7 +43,7 @@ from src.llm_orchestrator_config.exceptions import StreamTimeoutError
 # Both spellings resolve to separate module objects at runtime, so the class
 # imported here must match the one the config loader raises or `except` misses.
 from llm_orchestrator_config.exceptions import ConfigurationError
-from src.utils.stream_timeout import stream_timeout
+from src.utils.stream_timeout import stream_timeout, with_heartbeat
 from src.utils.observation_utils import safe_observation_context
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.rate_limiter import RateLimiter
@@ -554,16 +554,27 @@ async def stream_orchestrated_response(
     from datetime import datetime
 
     def create_sse_error_stream(chat_id: str, error_message: str) -> str:
-        """Create SSE format error response."""
+        """Create an SSE error response, terminated by the END marker.
+
+        The END frame is what the notification server translates into the
+        browser's ``stream_end``. Without it an error frame is indistinguishable
+        from ordinary content, so the client keeps waiting on a stream that has
+        already finished - which is how an upstream timeout turned into a chat
+        that hung indefinitely. Every caller is a terminal error path, so
+        closing the stream here is always correct.
+        """
         from typing import Dict, Any
 
-        error_payload: Dict[str, Any] = {
-            "chatId": chat_id,
-            "payload": {"content": error_message},
-            "timestamp": str(int(datetime.now().timestamp() * 1000)),
-            "sentTo": [],
-        }
-        return f"data: {json_module.dumps(error_payload)}\n\n"
+        def frame(content: str) -> str:
+            payload: Dict[str, Any] = {
+                "chatId": chat_id,
+                "payload": {"content": content},
+                "timestamp": str(int(datetime.now().timestamp() * 1000)),
+                "sentTo": [],
+            }
+            return f"data: {json_module.dumps(payload)}\n\n"
+
+        return frame(error_message) + frame("END")
 
     try:
         logger.info(
@@ -685,10 +696,15 @@ async def stream_orchestrated_response(
             ):
                 try:
                     async with stream_timeout(StreamConfig.MAX_STREAM_DURATION_SECONDS):
-                        async for (
-                            chunk
-                        ) in orchestration_service.stream_orchestration_response(
-                            request
+                        # Heartbeat frames keep proxies from closing a slow stream,
+                        # and the idle budget fails fast on one that has truly
+                        # stalled rather than waiting out the total-duration cap.
+                        async for chunk in with_heartbeat(
+                            orchestration_service.stream_orchestration_response(
+                                request
+                            ),
+                            heartbeat_interval=StreamConfig.HEARTBEAT_INTERVAL_SECONDS,
+                            idle_timeout=StreamConfig.IDLE_TIMEOUT_SECONDS,
                         ):
                             yield chunk
                 except StreamTimeoutError as timeout_exc:
