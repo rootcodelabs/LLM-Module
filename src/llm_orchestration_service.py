@@ -46,7 +46,11 @@ from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.vector_indexer.constants import ResponseGenerationConstants
 from src.utils.error_utils import generate_error_id, log_error_with_context
 from src.utils.stream_manager import stream_manager, StreamContext
-from src.utils.cost_utils import calculate_total_costs, get_lm_usage_since
+from src.utils.cost_utils import (
+    calculate_total_costs,
+    get_lm_usage_since,
+    get_lm_usage_since_split,
+)
 
 if TYPE_CHECKING:
     from src.llm_orchestrator_config.embedding_manager import EmbeddingManager
@@ -1193,9 +1197,15 @@ class LLMOrchestrationService:
 
                 yield self.format_sse(request.chatId, "END")
 
-            # Extract usage information after streaming completes
-            usage_info = get_lm_usage_since(history_length_before)
+            # Extract usage after streaming completes. Output-rail validation runs
+            # interleaved with generation in the same history window, so split the
+            # two - folding them together hid a 100x guardrail cost regression.
+            usage_info, guardrails_usage = get_lm_usage_since_split(
+                history_length_before
+            )
             costs_metric["streaming_generation"] = usage_info
+            if guardrails_usage.get("num_calls", 0) > 0:
+                costs_metric["output_guardrails"] = guardrails_usage
 
             # Record timings
             time_metric["streaming_generation"] = time.time() - streaming_step_start
