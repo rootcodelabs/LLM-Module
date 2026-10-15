@@ -120,7 +120,8 @@ The orchestration service lives under `src/`. The main packages:
 
 | Component | Responsibility | Path |
 | --- | --- | --- |
-| Orchestration service & API | FastAPI app coordinating the pipeline | `src/llm_orchestration_service_api.py`, `src/llm_orchestration_service.py` |
+| Orchestration service & API | FastAPI app and the `LLMOrchestrationService` facade that coordinates the pipeline | `src/llm_orchestration_service_api.py`, `src/llm_orchestration_service.py` |
+| Orchestration pipeline modules | Components the facade delegates to: RAG pipeline, request preamble (validation/connection/budget checks), guardrails coordinator, component factory, cost & budget tracking, prompt refinement, inference storage, response builders | `src/orchestration/` |
 | Tool classifier & workflows | Intent detection and per-workflow execution (Service / Context / RAG / API-Tool / OOD) | `src/tool_classifier/` |
 | Contextual retrieval | Hybrid semantic + BM25 search with RRF fusion | `src/contextual_retrieval/` |
 | Vector indexer | Document ingestion and embedding into Qdrant | `src/vector_indexer/` |

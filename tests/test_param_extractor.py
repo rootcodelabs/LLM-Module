@@ -616,15 +616,21 @@ class TestErrorHandling:
         assert result["extracted_params"] == {}
         assert "city" in result["missing_required"]
 
-    def test_safe_defaults_clarifying_question_empty_when_params_missing(self) -> None:
-        """On LLM failure with missing required params, clarifying_question is '' (caller generates question)."""
+    def test_safe_defaults_clarifying_question_names_missing_params(self) -> None:
+        """On LLM failure with missing required params, a deterministic question naming them is returned.
+
+        Never blank — the caller shows this verbatim, so an empty string would
+        render as an empty reply and burn turns until MAX_TURNS.
+        """
         schema = _make_schema(("city", "string", True, "City name"))
         module = ParamExtractionModule()
 
         with patch.object(module, "extractor", side_effect=RuntimeError("LLM down")):
             result = module.forward(user_message="Hello", params_schema=schema)
 
-        assert result["clarifying_question"] == ""
+        assert (
+            result["clarifying_question"] == "Please provide the following: City name"
+        )
 
     def test_safe_defaults_clarifying_question_none_when_nothing_missing(self) -> None:
         """On LLM failure when all params already collected, clarifying_question is 'none'."""

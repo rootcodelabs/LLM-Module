@@ -45,7 +45,7 @@ Layer 5: OOD              → Out-of-domain fallback
 | `ConversationHistoryStore` | `src/utils/conversation_history_store.py` | Redis CRUD store for per-session rounds and incremental summary |
 | `conversation_summary_generator` | `src/utils/conversation_summary_generator.py` | Factory for the incremental summarizer callable injected into the store |
 | `redis_client` | `src/utils/redis_client.py` | Singleton async Redis client (db=1, TLS-capable) |
-| `greeting_constants.py` | `src/tool_classifier/greeting_constants.py` | Static greeting response templates for Estonian and English |
+| `greeting_constants.py` | `src/tool_classifier/greeting_constants.py` | Static greeting response templates for Estonian, English, and Russian |
 
 ---
 
@@ -233,15 +233,16 @@ Calls `stream_context_response(query, context_snippet, custom_instructions)` whi
 |----------|------|
 | Estonian | `et` |
 | English | `en` |
+| Russian | `ru` |
 
 ### Supported Greeting Types
 
-| Type | Estonian Examples | English Examples |
-|------|-------------------|-----------------|
-| `hello` | Tere, Hei, Tervist, Moi | Hello, Hi, Hey, Good morning |
-| `goodbye` | Nägemist, Tšau | Bye, Goodbye, See you, Good night |
-| `thanks` | Tänan, Aitäh, Tänud | Thank you, Thanks |
-| `casual` | Tere, Tervist | Hey |
+| Type | Estonian Examples | English Examples | Russian Examples |
+|------|-------------------|-----------------|------------------|
+| `hello` | Tere, Hei, Tervist, Moi | Hello, Hi, Hey, Good morning | Здравствуйте, Добрый день |
+| `goodbye` | Nägemist, Tšau | Bye, Goodbye, See you, Good night | До свидания, Пока |
+| `thanks` | Tänan, Aitäh, Tänud | Thank you, Thanks | Спасибо, Благодарю |
+| `casual` | Tere, Tervist | Hey | Привет |
 
 ### Greeting Response Generation
 
@@ -264,6 +265,13 @@ GREETINGS_EN = {
     "goodbye": "Goodbye! Have a great day!",
     "thanks": "You're welcome! Feel free to ask if you have more questions.",
     "casual": "Hey! What can I do for you?",
+}
+
+GREETINGS_RU = {
+    "hello": "Здравствуйте! Чем я могу вам помочь?",
+    "goodbye": "До свидания! Хорошего дня!",
+    "thanks": "Пожалуйста! Если есть ещё вопросы, спрашивайте.",
+    "casual": "Привет! Что я могу для вас сделать?",
 }
 ```
 
