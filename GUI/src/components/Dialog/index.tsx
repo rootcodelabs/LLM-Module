@@ -5,6 +5,7 @@ import clsx from 'clsx';
 import './Dialog.scss';
 import Icon from 'components/Icon';
 import Track from 'components/Track';
+import { useTranslation } from 'react-i18next';
 
 type DialogProps = {
   title?: string | null;
@@ -15,6 +16,7 @@ type DialogProps = {
 }
 
 const Dialog: FC<PropsWithChildren<DialogProps>> = ({ title, footer, onClose, size = 'default', children,isOpen }) => {
+  const { t } = useTranslation();
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onClose}>
       <RadixDialog.Portal>
@@ -24,7 +26,7 @@ const Dialog: FC<PropsWithChildren<DialogProps>> = ({ title, footer, onClose, si
             title && <div className='dialog__header'>
               <RadixDialog.Title className='h3 dialog__title'>{title}</RadixDialog.Title>
               <RadixDialog.Close asChild>
-                <button className='dialog__close'>
+                <button className='dialog__close' aria-label={t('global.close') ?? ''}>
                   <Icon icon={<MdOutlineClose />} size='medium' />
                 </button>
               </RadixDialog.Close>

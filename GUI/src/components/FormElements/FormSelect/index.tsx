@@ -115,7 +115,7 @@ const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
           >
             {selectedItem?.label ?? placeholderValue}
             <Icon
-              label="Dropdown icon"
+              label={t('global.dropdownIcon') ?? ''}
               size="medium"
               icon={<MdArrowDropDown color="#5D6071" />}
             />

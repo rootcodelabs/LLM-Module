@@ -8,6 +8,7 @@ import {
   MdErrorOutline,
 } from 'react-icons/md';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from 'components';
 import type { ToastType } from 'context/ToastContext';
@@ -26,6 +27,7 @@ const toastIcons = {
 };
 
 const Toast: FC<ToastProps> = ({ toast, close }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
 
   const toastClasses = clsx('toast', `toast--${toast.type}`);
@@ -44,7 +46,11 @@ const Toast: FC<ToastProps> = ({ toast, close }) => {
       <RadixToast.Description className="toast__content">
         {toast.message}
       </RadixToast.Description>
-      <RadixToast.Close onClick={close} className="toast__close">
+      <RadixToast.Close
+        onClick={close}
+        className="toast__close"
+        aria-label={t('global.close') ?? ''}
+      >
         <Icon icon={<MdOutlineClose />} size="medium" />
       </RadixToast.Close>
     </RadixToast.Root>

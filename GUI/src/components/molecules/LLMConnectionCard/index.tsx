@@ -85,7 +85,11 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
       toast.open({
         type: ToastTypes.SUCCESS,
         title: t('toast.success.title'),
-        message: `Connection ${variables.status === 'active' ? 'activated' : 'deactivated'} successfully`,
+        message: t(
+          variables.status === 'active'
+            ? 'dataModels.connectionActivated'
+            : 'dataModels.connectionDeactivated'
+        ),
       });
       
       // Call the parent callback to update the list immediately
@@ -98,7 +102,7 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
       toast.open({
         type: ToastTypes.ERROR,
         title: t('toast.error.title'),
-        message: 'Failed to update connection status',
+        message: t('dataModels.statusUpdateFailed'),
       });
     },
   });
@@ -170,13 +174,13 @@ const LLMConnectionCard: FC<PropsWithChildren<LLMConnectionCardProps>> = ({
             <span className="label-title">
               {t('dataModels.filters.platform')}:
             </span>
-            <span className="label-value">{platform ?? 'N/A'}</span>
+            <span className="label-value">{platform ?? t('global.notAvailable')}</span>
           </div>
           <div className="label-row">
             <span className="label-title">
               {t('dataModels.filters.model')}:
             </span>
-            <span className="label-value">{model ?? 'N/A'}</span>
+            <span className="label-value">{model ?? t('global.notAvailable')}</span>
           </div>
           {(usedBudget !== undefined || monthlyBudget !== undefined) && (
             <div className="label-row">

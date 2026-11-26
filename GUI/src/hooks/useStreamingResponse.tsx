@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import { useTranslation } from 'react-i18next';
 import { ChoiceButton } from 'services/inference';
 
 const getNotificationNodeUrl = (): string => {
@@ -72,6 +73,7 @@ interface UseStreamingResponseReturn {
 }
 
 export const useStreamingResponse = (channelId: string): UseStreamingResponseReturn => {
+  const { t } = useTranslation();
   const [isStreaming, setIsStreaming] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -243,7 +245,9 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
               setIsStreaming(false);
               eventSource.close();
               eventSourceRef.current = null;
-              onError(data.error || 'Stream error occurred');
+              // The backend error text is English-only, so it is logged above
+              // and the user sees a translated message instead.
+              onError(t('testProductionLLM.streamError'));
             }
           } catch (e) {
             console.error('[SSE] Failed to parse message:', e);
@@ -259,7 +263,7 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
           setIsStreaming(false);
           eventSource.close();
           eventSourceRef.current = null;
-          onError('Connection error');
+          onError(t('testProductionLLM.connectionError'));
         };
 
         // Step 2: Wait a moment for SSE connection to establish, then trigger the stream
@@ -288,8 +292,9 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
             postErr
           );
 
-          const postErrMessage =
-            postErr instanceof Error ? postErr.message : 'Failed to start streaming';
+          // postErr.message is axios text (e.g. "Network Error"), already
+          // logged above; show the user a translated message instead.
+          const postErrMessage = t('testProductionLLM.startStreamingError');
 
           if (!eventSourceRef.current) {
             // SSE already gone - nothing left to wait for.
@@ -322,10 +327,10 @@ export const useStreamingResponse = (channelId: string): UseStreamingResponseRet
       } catch (err) {
         console.error('[SSE] Error starting stream:', err);
         stopStreaming();
-        onError(err instanceof Error ? err.message : 'Failed to start streaming');
+        onError(t('testProductionLLM.startStreamingError'));
       }
     },
-    [channelId, stopStreaming, startDrain, discardQueue, clearTriggerFallback]
+    [channelId, stopStreaming, startDrain, discardQueue, clearTriggerFallback, t]
   );
 
   return {

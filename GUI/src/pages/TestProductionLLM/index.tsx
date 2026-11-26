@@ -359,7 +359,7 @@ const TestProductionLLM: FC = () => {
                     <div className="test-production-llm__message-error">
                       <span className="test-production-llm__message-error-icon">⚠️</span>
                       <span className="test-production-llm__message-error-text">
-                        {t('testProductionLLM.incompleteMessageError', { defaultValue: 'This message is incomplete due to an error' })}
+                        {t('testProductionLLM.incompleteMessageError')}
                         {msg.errorMessage && `: ${msg.errorMessage}`}
                       </span>
                     </div>

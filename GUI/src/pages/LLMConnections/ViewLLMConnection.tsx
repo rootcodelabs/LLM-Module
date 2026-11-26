@@ -49,7 +49,7 @@ const ViewLLMConnection = () => {
       console.error('Error deleting LLM connection:', error);
       openDialog({
         title: t('llmConnectionForm.viewConnection.deleteErrorTitle') || 'Error',
-        content: <p>{error?.message || t('llmConnectionForm.viewConnection.deleteErrorMessage') || 'Failed to delete LLM connection. Please try again.'}</p>,
+        content: <p>{t('llmConnectionForm.viewConnection.deleteErrorMessage')}</p>,
         footer: (
           <Button
             appearance={ButtonAppearanceTypes.PRIMARY}

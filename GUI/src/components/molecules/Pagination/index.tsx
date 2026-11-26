@@ -2,6 +2,7 @@ import React from 'react';
 import { MdOutlineWest, MdOutlineEast } from 'react-icons/md';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 interface PaginationProps {
   pageCount: number;
@@ -20,6 +21,7 @@ const Pagination: React.FC<PaginationProps> = ({
   onPageChange,
   id,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="data-table__pagination-wrapper">
       {pageCount > 1 && (
@@ -31,7 +33,7 @@ const Pagination: React.FC<PaginationProps> = ({
           >
             <MdOutlineWest />
           </button>
-          <nav role="navigation" aria-label="Pagination Navigation">
+          <nav role="navigation" aria-label={t('global.paginationNavigation') ?? ''}>
             <ul className="links">
               {[...Array(pageCount)].map((_, index) => (
                 <li
@@ -41,7 +43,7 @@ const Pagination: React.FC<PaginationProps> = ({
                   <Link
                     to={''}
                     onClick={() => onPageChange(index + 1)}
-                    aria-label={`Go to page ${index + 1}`}
+                    aria-label={t('global.goToPageNumber', { page: index + 1 }) ?? ''}
                     aria-current={pageIndex === index + 1 ? 'page' : undefined}
                   >
                     {index + 1}

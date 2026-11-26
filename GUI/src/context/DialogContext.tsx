@@ -12,6 +12,7 @@ import clsx from 'clsx';
 import '../components/Dialog/Dialog.scss';
 import Icon from 'components/Icon';
 import Track from 'components/Track';
+import { useTranslation } from 'react-i18next';
 
 type DialogProps = {
   title?: string | null;
@@ -28,6 +29,7 @@ type DialogContextType = {
 export const DialogContext = createContext<DialogContextType>(null!);
 
 export const DialogProvider: FC<PropsWithChildren<{}>> = ({ children }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [dialogProps, setDialogProps] = useState<DialogProps | null>(null);
 
@@ -62,7 +64,10 @@ export const DialogProvider: FC<PropsWithChildren<{}>> = ({ children }) => {
                     {dialogProps.title}
                   </RadixDialog.Title>
                   <RadixDialog.Close asChild>
-                    <button className="dialog__close">
+                    <button
+                      className="dialog__close"
+                      aria-label={t('global.close') ?? ''}
+                    >
                       <Icon icon={<MdOutlineClose />} size="medium" />
                     </button>
                   </RadixDialog.Close>

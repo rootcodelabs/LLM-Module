@@ -26,6 +26,9 @@
     "resultCount": "Result count",
     "paginationNavigation": "Pagination navigation",
     "gotoPage": "Goto page",
+    "goToPageNumber": "Go to page {{page}}",
+    "dropdownIcon": "Dropdown icon",
+    "notAvailable": "N/A",
     "name": "Name",
     "idCode": "ID code",
     "status": "Status",
@@ -143,6 +146,9 @@
       "production": "Production"
     },
     "budgetUsage": "Budget usage",
+    "connectionActivated": "Connection activated successfully",
+    "connectionDeactivated": "Connection deactivated successfully",
+    "statusUpdateFailed": "Failed to update connection status",
     "budgetStatus": {
       "withinBudget": "Within budget",
       "overBudget": "Over budget",
@@ -361,6 +367,7 @@
       "confirmEnvironmentChangeTitle": "Confirm production environment change",
       "confirmEnvironmentChangeMessage": "You are about to change a production connection to testing environment.",
       "confirmTestingToProductionEnvironmentChangeMessage": "You are about to change a testing connection to production environment.",
+      "confirmEnvironmentChangeWarning": "This will affect the current production setup. Are you sure you want to proceed?",
       "cancelButton": "Cancel",
       "confirmChangeButton": "Yes, change environment",
       "cannotDeleteProductionTitle": "Cannot delete production connection",
@@ -412,6 +419,10 @@
     "warningTitle": "Warning",
     "emptyMessageWarning": "Please enter a message",
     "streamingErrorTitle": "Streaming Error",
+    "streamError": "Something went wrong while generating the response. Please try again.",
+    "connectionError": "The connection to the server was lost. Please try again.",
+    "startStreamingError": "The response could not be started. Please try again.",
+    "incompleteMessageError": "This message is incomplete due to an error",
     "chatClearedTitle": "Chat Cleared",
     "chatClearedMessage": "All messages have been cleared."
   },
