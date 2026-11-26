@@ -84,8 +84,8 @@ const LLMConnections: FC = () => {
     if (error) {
       toast.open({
         type: ToastTypes.ERROR,
-        title: t('toast.error.title') || 'Error',
-        message: t('dataModels.errorLoadingConnections') || 'Error loading LLM connections',
+        title: t('toast.error.title'),
+        message: t('dataModels.errorLoadingConnections'),
       });
     }
   }, [error, toast, t]);
@@ -181,7 +181,7 @@ const LLMConnections: FC = () => {
                   <FormSelect
                     label=""
                     name="llmPlatform"
-                    placeholder={t('dataModels.filters.platform') ?? 'Platform'}
+                    placeholder={t('dataModels.filters.platform')}
                     options={platformOptions}
                     onSelectionChange={(selection) =>
                       handleFilterChange('llmPlatform', selection?.value === 'all' ? '' : selection?.value)
@@ -191,7 +191,7 @@ const LLMConnections: FC = () => {
                   <FormSelect
                     label=""
                     name="llmModel"
-                    placeholder={t('dataModels.filters.model') ?? 'Model'}
+                    placeholder={t('dataModels.filters.model')}
                     options={llmModelOptions}
                     onSelectionChange={(selection) =>
                       handleFilterChange('llmModel', selection?.value === 'all' ? '' : selection?.value)
@@ -201,7 +201,7 @@ const LLMConnections: FC = () => {
                   <FormSelect
                     label=""
                     name="environment"
-                    placeholder={t('dataModels.filters.environment') ?? 'Environment'}
+                    placeholder={t('dataModels.filters.environment')}
                     options={environmentOptions}
                     onSelectionChange={(selection) =>
                       handleFilterChange('environment', selection?.value === 'all' ? '' : selection?.value)
@@ -212,7 +212,7 @@ const LLMConnections: FC = () => {
                   <FormSelect
                     label=""
                     name="sorting"
-                    placeholder={t('dataModels.filters.sortBy') ?? 'Sort By'}
+                    placeholder={t('dataModels.filters.sortBy')}
                     options={sortOptions}
                     onSelectionChange={(selection) =>
                       handleFilterChange('sorting', selection?.value)
@@ -225,7 +225,7 @@ const LLMConnections: FC = () => {
                       onClick={resetLLMConnectionFilters}
                       appearance={ButtonAppearanceTypes.SECONDARY}
                     >
-                      {t('global.reset') ?? 'Reset'}
+                      {t('global.reset')}
                     </Button>
                   </div>
                 </div>
@@ -278,7 +278,7 @@ const LLMConnections: FC = () => {
                   </div>
                 </div>
               ) : !productionConnection ? (
-                <NoDataView text={t('dataModels.noModels') ?? 'No LLM connections found'} />
+                <NoDataView text={t('dataModels.noModels')} />
               ) : null}
               
             </div>

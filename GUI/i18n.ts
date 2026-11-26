@@ -28,6 +28,8 @@ i18n
       },
     },
     defaultNS: 'common',
+    // Keep t() typed and behaving as string-only (see src/types/i18next.d.ts).
+    returnNull: false,
   });
 
 export default i18n;

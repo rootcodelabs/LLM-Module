@@ -185,8 +185,8 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
   };
 
   const deploymentEnvironments = [
-    { label: t('llmConnectionForm.environments.testing') || 'Testing', value: 'testing' },
-    { label: t('llmConnectionForm.environments.production') || 'Production', value: 'production' },
+    { label: t('llmConnectionForm.environments.testing'), value: 'testing' },
+    { label: t('llmConnectionForm.environments.production'), value: 'production' },
   ];
 
   const renderPlatformSpecificFields = () => {
@@ -195,23 +195,23 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         return (
           <>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.aws.accessKey.label') || 'Access Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.aws.accessKey.description') || 'AWS Access Key for Bedrock service'}</p>
+              <p className='form-label'>{t('llmConnectionForm.aws.accessKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.aws.accessKey.description')}</p>
               <Controller
                 name="accessKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.accessKeyRequiredAws') || 'Access Key is required for AWS Bedrock',
+                  required: t('llmConnectionForm.validationMessages.accessKeyRequiredAws'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidAccessKey') || 'Access Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidAccessKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.aws.accessKey.placeholder') || "Enter AWS Access Key"}
+                    placeholder={t('llmConnectionForm.aws.accessKey.placeholder')}
                     error={errors.accessKey?.message}
                     readOnly={accessKeyReplaceMode}
                     showEndButton={accessKeyReplaceMode}
@@ -219,30 +219,30 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setAccessKeyReplaceMode(false);
                       setValue('accessKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.aws.secretKey.label') || 'Secret Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.aws.secretKey.description') || 'AWS Secret Key for Bedrock service'}</p>
+              <p className='form-label'>{t('llmConnectionForm.aws.secretKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.aws.secretKey.description')}</p>
               <Controller
                 name="secretKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.secretKeyRequiredAws') || 'Secret Key is required for AWS Bedrock',
+                  required: t('llmConnectionForm.validationMessages.secretKeyRequiredAws'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidSecretKey') || 'Secret Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidSecretKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.aws.secretKey.placeholder') || "Enter AWS Secret Key"}
+                    placeholder={t('llmConnectionForm.aws.secretKey.placeholder')}
                     error={errors.secretKey?.message}
                     readOnly={secretKeyReplaceMode}
                     showEndButton={secretKeyReplaceMode}
@@ -250,7 +250,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setSecretKeyReplaceMode(false);
                       setValue('secretKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
@@ -262,16 +262,16 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         return (
           <>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.deploymentName.label') || 'Deployment Name'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.deploymentName.description') || 'Azure OpenAI deployment name'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.deploymentName.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.deploymentName.description')}</p>
               <Controller
                 name="deploymentName"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.deploymentNameRequiredAzure') || 'Deployment Name is required for Azure OpenAI' }}
+                rules={{ required: t('llmConnectionForm.validationMessages.deploymentNameRequiredAzure') }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    placeholder={t('llmConnectionForm.azure.deploymentName.placeholder') || "Enter deployment name"}
+                    placeholder={t('llmConnectionForm.azure.deploymentName.placeholder')}
                     error={errors.deploymentName?.message}
                     {...field}
                   />
@@ -279,22 +279,22 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.targetUri.label') || 'Endpoint / Target URI'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.targetUri.description') || 'Azure OpenAI service endpoint URL'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.targetUri.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.targetUri.description')}</p>
               <Controller
                 name="targetUri"
                 control={control}
                 rules={{
-                  required: t('llmConnectionForm.validationMessages.endpointRequiredAzure') || 'Endpoint is required for Azure OpenAI',
+                  required: t('llmConnectionForm.validationMessages.endpointRequiredAzure'),
                   pattern: {
                     value: /^https?:\/\/.+/,
-                    message: t('llmConnectionForm.validationMessages.invalidUrl') || 'Please enter a valid URL starting with http:// or https://'
+                    message: t('llmConnectionForm.validationMessages.invalidUrl')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    placeholder={t('llmConnectionForm.azure.targetUri.placeholder') || "https://your-resource.openai.azure.com/"}
+                    placeholder={t('llmConnectionForm.azure.targetUri.placeholder')}
                     error={errors.targetUri?.message}
                     {...field}
                   />
@@ -302,24 +302,24 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.apiKey.label') || 'API Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.apiKey.description') || 'Azure OpenAI API key'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.apiKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.apiKey.description')}</p>
 
               <Controller
                 name="apiKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.apiKeyRequiredAzure') || 'API Key is required for Azure OpenAI',
+                  required: t('llmConnectionForm.validationMessages.apiKeyRequiredAzure'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidApiKey') || 'API Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidApiKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.azure.apiKey.placeholder') || "Enter Azure OpenAI API key"}
+                    placeholder={t('llmConnectionForm.azure.apiKey.placeholder')}
                     error={errors.apiKey?.message}
                     readOnly={apiKeyReplaceMode}
                     showEndButton={apiKeyReplaceMode}
@@ -327,7 +327,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setApiKeyReplaceMode(false);
                       setValue('apiKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
@@ -347,23 +347,23 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         return (
           <>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.aws.embeddingAccessKey.label') || 'Embedding Access Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.aws.embeddingAccessKey.description') || 'AWS Access Key for Bedrock embedding service'}</p>
+              <p className='form-label'>{t('llmConnectionForm.aws.embeddingAccessKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.aws.embeddingAccessKey.description')}</p>
               <Controller
                 name="embeddingAccessKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.embeddingAccessKeyRequiredAws') || 'Embedding Access Key is required for AWS Bedrock',
+                  required: t('llmConnectionForm.validationMessages.embeddingAccessKeyRequiredAws'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingAccessKey') || 'Embedding Access Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingAccessKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.aws.embeddingAccessKey.placeholder') || "Enter AWS Access Key for embeddings"}
+                    placeholder={t('llmConnectionForm.aws.embeddingAccessKey.placeholder')}
                     error={errors.embeddingAccessKey?.message}
                     readOnly={embeddingAccessKeyReplaceMode}
                     showEndButton={embeddingAccessKeyReplaceMode}
@@ -371,30 +371,30 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setEmbeddingAccessKeyReplaceMode(false);
                       setValue('embeddingAccessKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.aws.embeddingSecretKey.label') || 'Embedding Secret Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.aws.embeddingSecretKey.description') || 'AWS Secret Key for Bedrock embedding service'}</p>
+              <p className='form-label'>{t('llmConnectionForm.aws.embeddingSecretKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.aws.embeddingSecretKey.description')}</p>
               <Controller
                 name="embeddingSecretKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.embeddingSecretKeyRequiredAws') || 'Embedding Secret Key is required for AWS Bedrock',
+                  required: t('llmConnectionForm.validationMessages.embeddingSecretKeyRequiredAws'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingSecretKey') || 'Embedding Secret Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingSecretKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.aws.embeddingSecretKey.placeholder') || "Enter AWS Secret Key for embeddings"}
+                    placeholder={t('llmConnectionForm.aws.embeddingSecretKey.placeholder')}
                     error={errors.embeddingSecretKey?.message}
                     readOnly={embeddingSecretKeyReplaceMode}
                     showEndButton={embeddingSecretKeyReplaceMode}
@@ -402,7 +402,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setEmbeddingSecretKeyReplaceMode(false);
                       setValue('embeddingSecretKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
@@ -414,16 +414,16 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         return (
           <>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.embeddingDeploymentName.label') || 'Embedding Deployment Name'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.embeddingDeploymentName.description') || 'Azure OpenAI embedding deployment name'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.embeddingDeploymentName.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.embeddingDeploymentName.description')}</p>
               <Controller
                 name="embeddingDeploymentName"
                 control={control}
-                rules={{ required: t('llmConnectionForm.validationMessages.embeddingDeploymentNameRequiredAzure') || 'Embedding Deployment Name is required for Azure OpenAI' }}
+                rules={{ required: t('llmConnectionForm.validationMessages.embeddingDeploymentNameRequiredAzure') }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    placeholder={t('llmConnectionForm.azure.embeddingDeploymentName.placeholder') || "Enter embedding deployment name"}
+                    placeholder={t('llmConnectionForm.azure.embeddingDeploymentName.placeholder')}
                     error={errors.embeddingDeploymentName?.message}
                     {...field}
                   />
@@ -431,22 +431,22 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.embeddingTargetUri.label') || 'Embedding Endpoint / Target URI'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.embeddingTargetUri.description') || 'Azure OpenAI embedding service endpoint URL'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.embeddingTargetUri.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.embeddingTargetUri.description')}</p>
               <Controller
                 name="embeddingTargetUri"
                 control={control}
                 rules={{
-                  required: t('llmConnectionForm.validationMessages.embeddingEndpointRequiredAzure') || 'Embedding Endpoint is required for Azure OpenAI',
+                  required: t('llmConnectionForm.validationMessages.embeddingEndpointRequiredAzure'),
                   pattern: {
                     value: /^https?:\/\/.+/,
-                    message: t('llmConnectionForm.validationMessages.invalidUrl') || 'Please enter a valid URL starting with http:// or https://'
+                    message: t('llmConnectionForm.validationMessages.invalidUrl')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    placeholder={t('llmConnectionForm.azure.targetUri.placeholder') || "https://your-resource.openai.azure.com/"}
+                    placeholder={t('llmConnectionForm.azure.targetUri.placeholder')}
                     error={errors.embeddingTargetUri?.message}
                     {...field}
                   />
@@ -454,23 +454,23 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               />
             </div>
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.azure.embeddingApiKey.label') || 'Embedding API Key'}</p>
-              <p className='form-description'>{t('llmConnectionForm.azure.embeddingApiKey.description') || 'Azure OpenAI embedding API key'}</p>
+              <p className='form-label'>{t('llmConnectionForm.azure.embeddingApiKey.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.azure.embeddingApiKey.description')}</p>
               <Controller
                 name="embeddingAzureApiKey"
                 control={control}
                 rules={{ 
-                  required: t('llmConnectionForm.validationMessages.embeddingApiKeyRequiredAzure') || 'Embedding API Key is required for Azure OpenAI',
+                  required: t('llmConnectionForm.validationMessages.embeddingApiKeyRequiredAzure'),
                   pattern: {
                     value: /^\S+$/,
-                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingApiKey') || 'Embedding API Key cannot contain spaces'
+                    message: t('llmConnectionForm.validationMessages.invalidEmbeddingApiKey')
                   }
                 }}
                 render={({ field }) => (
                   <FormInput
                     label=""
                     type={isEditing ? 'text' : 'password'}
-                    placeholder={t('llmConnectionForm.azure.embeddingApiKey.placeholder') || "Enter Azure OpenAI embedding API key"}
+                    placeholder={t('llmConnectionForm.azure.embeddingApiKey.placeholder')}
                     error={errors.embeddingAzureApiKey?.message}
                     readOnly={embeddingAzureApiKeyReplaceMode}
                     showEndButton={embeddingAzureApiKeyReplaceMode}
@@ -478,7 +478,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                       setEmbeddingAzureApiKeyReplaceMode(false);
                       setValue('embeddingAzureApiKey', '');
                     }}
-                    endButtonText={t('global.change') || "Change"}
+                    endButtonText={t('global.change')}
                     {...field}
                   />
                 )}
@@ -506,25 +506,25 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
     <div className="llm-connection-form">
       <form onSubmit={handleSubmit(handleFormSubmit)}>
         <div className="form-section">
-          <h3 className="form-section-title">{t('llmConnectionForm.sections.llmConfiguration') || 'LLM Configuration'}</h3>
+          <h3 className="form-section-title">{t('llmConnectionForm.sections.llmConfiguration')}</h3>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.connectionName.label') || 'Connection Name'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.connectionName.description') || 'A unique name to identify this LLM connection'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.connectionName.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.connectionName.description')}</p>
             <Controller
               name="connectionName"
               control={control}
               rules={{ 
-                required: t('llmConnectionForm.validationMessages.connectionNameRequired') || 'Connection Name is required',
+                required: t('llmConnectionForm.validationMessages.connectionNameRequired'),
                 maxLength: {
                   value: 100,
-                  message: t('llmConnectionForm.validationMessages.connectionNameMaxLength') || 'Connection Name must not exceed 100 characters'
+                  message: t('llmConnectionForm.validationMessages.connectionNameMaxLength')
                 }
               }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  placeholder={t('llmConnectionForm.fields.connectionName.placeholder') || "Enter connection name (e.g., Azure GPT-4 Production)"}
+                  placeholder={t('llmConnectionForm.fields.connectionName.placeholder')}
                   error={errors.connectionName?.message}
                   disabled={readOnly}
                   //maxLength={100}
@@ -535,24 +535,24 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
           </div>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.llmPlatform.label') || 'LLM Platform'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.llmPlatform.description') || 'Cloud / local platform in which your model is hosted'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.llmPlatform.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.llmPlatform.description')}</p>
             <Controller
               name="llmPlatform"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.llmPlatformRequired') || 'LLM Platform is required' }}
+              rules={{ required: t('llmConnectionForm.validationMessages.llmPlatformRequired') }}
               render={({ field }) => (
                 <FormSelect
                   label=""
                   options={llmPlatformOptions || []}
                   placeholder={
                     llmPlatformsLoading
-                      ? t('llmConnectionForm.placeholders.loadingPlatforms') || "Loading platforms..."
+                      ? t('llmConnectionForm.placeholders.loadingPlatforms')
                       : llmPlatformsError
-                        ? t('llmConnectionForm.placeholders.errorLoadingPlatforms') || "Error loading platforms"
-                        : t('llmConnectionForm.fields.llmPlatform.placeholder') || "Select LLM Platform"
+                        ? t('llmConnectionForm.placeholders.errorLoadingPlatforms')
+                        : t('llmConnectionForm.fields.llmPlatform.placeholder')
                   }
-                  error={errors.llmPlatform?.message || (llmPlatformsError ? t('llmConnectionForm.validationMessages.failedToLoadPlatforms') || "Failed to load platforms" : undefined)}
+                  error={errors.llmPlatform?.message || (llmPlatformsError ? t('llmConnectionForm.validationMessages.failedToLoadPlatforms') : undefined)}
                   disabled={readOnly || llmPlatformsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
@@ -566,27 +566,27 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
           </div>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.llmModel.label') || 'LLM Model'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.llmModel.description') || 'The LLM model that you want to use'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.llmModel.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.llmModel.description')}</p>
 
             <Controller
               name="llmModel"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.llmModelRequired') || 'LLM Model is required' }}
+              rules={{ required: t('llmConnectionForm.validationMessages.llmModelRequired') }}
               render={({ field }) => (
                 <FormSelect
                   label=""
                   options={getLLMModelOptions() || []}
                   placeholder={
                     llmModelsLoading
-                      ? t('llmConnectionForm.placeholders.loadingModels') || "Loading models..."
+                      ? t('llmConnectionForm.placeholders.loadingModels')
                       : llmModelsError
-                        ? t('llmConnectionForm.placeholders.errorLoadingModels') || "Error loading models"
+                        ? t('llmConnectionForm.placeholders.errorLoadingModels')
                         : !selectedLLMPlatform
-                          ? t('llmConnectionForm.placeholders.selectPlatformFirst') || "Select a platform first"
-                          : t('llmConnectionForm.fields.llmModel.placeholder') || "Select LLM Model"
+                          ? t('llmConnectionForm.placeholders.selectPlatformFirst')
+                          : t('llmConnectionForm.fields.llmModel.placeholder')
                   }
-                  error={errors.llmModel?.message || (llmModelsError ? t('llmConnectionForm.validationMessages.failedToLoadModels') || "Failed to load models" : undefined)}
+                  error={errors.llmModel?.message || (llmModelsError ? t('llmConnectionForm.validationMessages.failedToLoadModels') : undefined)}
                   disabled={!selectedLLMPlatform || readOnly || llmModelsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
@@ -603,28 +603,28 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         </div>
 
         <div className="form-section">
-          <h3 className="form-section-title">{t('llmConnectionForm.sections.embeddingConfiguration') || 'Embedding Model Configuration'}</h3>
+          <h3 className="form-section-title">{t('llmConnectionForm.sections.embeddingConfiguration')}</h3>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.embeddingPlatform.label') || 'Embedding Model Platform'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.embeddingPlatform.description') || 'This is the cloud / local platform in which your embedding model is hosted'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.embeddingPlatform.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.embeddingPlatform.description')}</p>
 
             <Controller
               name="embeddingModelPlatform"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.embeddingPlatformRequired') || 'Embedding Model Platform is required' }}
+              rules={{ required: t('llmConnectionForm.validationMessages.embeddingPlatformRequired') }}
               render={({ field }) => (
                 <FormSelect
                   label=""
                   options={embeddingPlatformOptions || []}
                   placeholder={
                     embeddingPlatformsLoading
-                      ? t('llmConnectionForm.placeholders.loadingPlatforms') || "Loading platforms..."
+                      ? t('llmConnectionForm.placeholders.loadingPlatforms')
                       : embeddingPlatformsError
-                        ? t('llmConnectionForm.placeholders.errorLoadingPlatforms') || "Error loading platforms"
-                        : t('llmConnectionForm.fields.embeddingPlatform.placeholder') || "Select Embedding Platform"
+                        ? t('llmConnectionForm.placeholders.errorLoadingPlatforms')
+                        : t('llmConnectionForm.fields.embeddingPlatform.placeholder')
                   }
-                  error={errors.embeddingModelPlatform?.message || (embeddingPlatformsError ? t('llmConnectionForm.validationMessages.failedToLoadPlatforms') || "Failed to load platforms" : undefined)}
+                  error={errors.embeddingModelPlatform?.message || (embeddingPlatformsError ? t('llmConnectionForm.validationMessages.failedToLoadPlatforms') : undefined)}
                   disabled={embeddingPlatformsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
@@ -638,27 +638,27 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
           </div>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.embeddingModel.label') || 'Embedding Model'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.embeddingModel.description') || 'The embedding model that will be used for searching your knowledge base'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.embeddingModel.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.embeddingModel.description')}</p>
 
             <Controller
               name="embeddingModel"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.embeddingModelRequired') || 'Embedding Model is required' }}
+              rules={{ required: t('llmConnectionForm.validationMessages.embeddingModelRequired') }}
               render={({ field }) => (
                 <FormSelect
                   label=""
                   options={getEmbeddingModelOptions() || []}
                   placeholder={
                     embeddingModelsLoading
-                      ? t('llmConnectionForm.placeholders.loadingModels') || "Loading models..."
+                      ? t('llmConnectionForm.placeholders.loadingModels')
                       : embeddingModelsError
-                        ? t('llmConnectionForm.placeholders.errorLoadingModels') || "Error loading models"
+                        ? t('llmConnectionForm.placeholders.errorLoadingModels')
                         : !selectedEmbeddingPlatform
-                          ? t('llmConnectionForm.placeholders.selectPlatformFirst') || "Select a platform first"
-                          : t('llmConnectionForm.fields.embeddingModel.placeholder') || "Select Embedding Model"
+                          ? t('llmConnectionForm.placeholders.selectPlatformFirst')
+                          : t('llmConnectionForm.fields.embeddingModel.placeholder')
                   }
-                  error={errors.embeddingModel?.message || (embeddingModelsError ? t('llmConnectionForm.validationMessages.failedToLoadModels') || "Failed to load models" : undefined)}
+                  error={errors.embeddingModel?.message || (embeddingModelsError ? t('llmConnectionForm.validationMessages.failedToLoadModels') : undefined)}
                   disabled={!selectedEmbeddingPlatform || embeddingModelsLoading}
                   onSelectionChange={(selected) => {
                     field.onChange(selected?.value || '');
@@ -675,30 +675,30 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
         </div>
 
         <div className="form-section">
-          <h3 className="form-section-title">{t('llmConnectionForm.sections.budgetDeployment') || 'Budget & Deployment'}</h3>
+          <h3 className="form-section-title">{t('llmConnectionForm.sections.budgetDeployment')}</h3>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.monthlyBudget.label') || 'Monthly Budget'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.monthlyBudget.description') || 'Total monthly budget including embedding model and LLM model. If the LLM integration usage cost exceeds the below budget, the LLM will respond with an "inactive" status'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.monthlyBudget.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.monthlyBudget.description')}</p>
 
             <Controller
               name="monthlyBudget"
               control={control}
               rules={{
-                required: t('llmConnectionForm.validationMessages.monthlyBudgetRequired') || 'Monthly Budget is required',
+                required: t('llmConnectionForm.validationMessages.monthlyBudgetRequired'),
                 pattern: {
                   value: /^[\d,]+(\.\d{1,2})?$/,
-                  message: t('llmConnectionForm.validationMessages.monthlyBudgetInvalid') || 'Please enter a valid budget amount'
+                  message: t('llmConnectionForm.validationMessages.monthlyBudgetInvalid')
                 },
                 validate: value => {
                   const numericValue = value.replace(/,/g, '');
-                  return Number(numericValue) > 0 || t('llmConnectionForm.validationMessages.monthlyBudgetPositive') || 'Monthly Budget must be a positive number';
+                  return Number(numericValue) > 0 || t('llmConnectionForm.validationMessages.monthlyBudgetPositive');
                 }
               }}
               render={({ field }) => (
                 <FormInput
                   label=""
-                  placeholder={t('llmConnectionForm.fields.monthlyBudget.placeholder') || "Enter monthly budget"}
+                  placeholder={t('llmConnectionForm.fields.monthlyBudget.placeholder')}
                   error={errors.monthlyBudget?.message}
                   {...field}
                   prefix='€'
@@ -718,7 +718,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                   label=""
                   name="disconnectOnBudgetExceed"
                   item={{
-                    label: t('llmConnectionForm.fields.disconnectOnBudgetExceed.label') || "Automatically disconnect LLM connection when stop budget threshold is exceeded",
+                    label: t('llmConnectionForm.fields.disconnectOnBudgetExceed.label'),
                     value: "true",
                     checked: field.value
                   }}
@@ -731,23 +731,23 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
           </div>
 
           <div className="form-row">
-            <p className='form-label'>{t('llmConnectionForm.fields.warnBudget.label') || 'Warn Budget Threshold'}</p>
-            <p className='form-description'>{t('llmConnectionForm.fields.warnBudget.description') || 'You will get a notification when your usage reaches this percentage of your allocated monthly budget.'}</p>
+            <p className='form-label'>{t('llmConnectionForm.fields.warnBudget.label')}</p>
+            <p className='form-description'>{t('llmConnectionForm.fields.warnBudget.description')}</p>
 
             <Controller
               name="warnBudget"
               control={control}
               rules={{
-                required: t('llmConnectionForm.validationMessages.warnBudgetRequired') || 'Warn Budget Threshold is required',
+                required: t('llmConnectionForm.validationMessages.warnBudgetRequired'),
                 pattern: {
                   value: /^\d+$/,
-                  message: t('llmConnectionForm.validationMessages.numbersOnly') || 'Please enter numbers only'
+                  message: t('llmConnectionForm.validationMessages.numbersOnly')
                 },
                 validate: (value, formValues) => {
                   const numericValue = Number(value.replace('%', ''));
 
                   if (numericValue < 1 || numericValue > 100) {
-                    return t('llmConnectionForm.validationMessages.warnBudgetRange') || 'Warn Budget Threshold must be between 1-100%';
+                    return t('llmConnectionForm.validationMessages.warnBudgetRange');
                   }
                   return true;
                 }
@@ -755,7 +755,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
               render={({ field }) => (
                 <FormInput
                   label=""
-                  placeholder={t('llmConnectionForm.fields.warnBudget.placeholder') || "Enter warn budget threshold"}
+                  placeholder={t('llmConnectionForm.fields.warnBudget.placeholder')}
                   error={errors.warnBudget?.message}
                   value={field.value ? `${field.value}%` : ''}
                   onChange={(e) => {
@@ -771,17 +771,17 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
 
           {disconnectOnBudgetExceed && (
             <div className="form-row">
-              <p className='form-label'>{t('llmConnectionForm.fields.stopBudget.label') || 'Disconnect Budget Threshold'}</p>
-              <p className='form-description'>{t('llmConnectionForm.fields.stopBudget.description') || 'Your LLM connection will be automatically disconnected and all further requests will be stopped when your usage reaches this percentage of your monthly budget.'}</p>
+              <p className='form-label'>{t('llmConnectionForm.fields.stopBudget.label')}</p>
+              <p className='form-description'>{t('llmConnectionForm.fields.stopBudget.description')}</p>
 
               <Controller
                 name="stopBudget"
                 control={control}
                 rules={{
-                  required: disconnectOnBudgetExceed ? t('llmConnectionForm.validationMessages.stopBudgetRequired') || 'Stop Budget Threshold is required' : false,
+                  required: disconnectOnBudgetExceed ? t('llmConnectionForm.validationMessages.stopBudgetRequired') : false,
                   pattern: {
                     value: /^\d+$/,
-                    message: t('llmConnectionForm.validationMessages.numbersOnly') || 'Please enter numbers only'
+                    message: t('llmConnectionForm.validationMessages.numbersOnly')
                   },
                   validate: (value, formValues) => {
                     if (!disconnectOnBudgetExceed) return true;
@@ -790,11 +790,11 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                     const warnValue = Number(formValues.warnBudget?.replace('%', '') || 0);
 
                     if (numericValue < 1 || numericValue > 200) {
-                      return t('llmConnectionForm.validationMessages.stopBudgetRange') || 'Stop Budget Threshold must be between 1-200%';
+                      return t('llmConnectionForm.validationMessages.stopBudgetRange');
                     }
 
                     if (warnValue > 0 && numericValue <= warnValue) {
-                      return t('llmConnectionForm.validationMessages.stopBudgetGreater') || 'Stop Budget Threshold must be greater than Warn Budget Threshold';
+                      return t('llmConnectionForm.validationMessages.stopBudgetGreater');
                     }
 
                     return true;
@@ -803,7 +803,7 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                 render={({ field }) => (
                   <FormInput
                     label=""
-                    placeholder={t('llmConnectionForm.fields.stopBudget.placeholder') || "Enter stop budget threshold"}
+                    placeholder={t('llmConnectionForm.fields.stopBudget.placeholder')}
                     error={errors.stopBudget?.message}
                     value={field.value ? `${field.value}%` : ''}
                     onChange={(e) => {
@@ -822,10 +822,10 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
             <Controller
               name="deploymentEnvironment"
               control={control}
-              rules={{ required: t('llmConnectionForm.validationMessages.deploymentEnvironmentRequired') || 'Deployment Environment is required' }}
+              rules={{ required: t('llmConnectionForm.validationMessages.deploymentEnvironmentRequired') }}
               render={({ field }) => (
                 <div className="radio-group">
-                  <label className="radio-group-label">{t('llmConnectionForm.fields.deploymentEnvironment.label') || 'Deployment Environment'}</label>
+                  <label className="radio-group-label">{t('llmConnectionForm.fields.deploymentEnvironment.label')}</label>
                   <div className="radio-options">
                     {deploymentEnvironments?.map((env) => (
                       <label key={env.value} className="radio-option">
@@ -854,21 +854,21 @@ const embeddingModelOptions = toOptions(embeddingModelsData);
                 onClick={onCancel}
                 type="button"
               >
-                {t('global.cancel') || 'Cancel'}
+                {t('global.cancel')}
               </Button>
               {isEditing && (<Button
                 appearance="error"
                 onClick={onDelete}
                 type='button'
               >
-                {t('llmConnectionForm.buttons.deleteConnection') || 'Delete Connection'}
+                {t('llmConnectionForm.buttons.deleteConnection')}
               </Button>)}
               <Button
                 type="submit"
                 disabled={!isDirty || !isValid}
                 appearance="primary"
               >
-                {isEditing ? (t('llmConnectionForm.buttons.updateConnection') || 'Update Connection') : (t('llmConnectionForm.buttons.createConnection') || 'Create Connection')}
+                {isEditing ? (t('llmConnectionForm.buttons.updateConnection')) : (t('llmConnectionForm.buttons.createConnection'))}
               </Button>
             </div>
           </Track>

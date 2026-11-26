@@ -266,7 +266,7 @@ const DataTable: FC<DataTableProps> = (
           {showPageSizeSelector && (
             <div className='data-table__page-size-selector'>
               <span className='page-size-label'>
-                {t('global.showEntries') || 'Show'}
+                {t('global.showEntries')}
               </span>
               <select
                 className='page-size-select'
@@ -280,7 +280,7 @@ const DataTable: FC<DataTableProps> = (
                 ))}
               </select>
               <span className='page-size-label'>
-                {t('global.entries') || 'entries'}
+                {t('global.entries')}
               </span>
             </div>
           )}

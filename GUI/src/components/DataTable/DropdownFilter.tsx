@@ -39,7 +39,7 @@ const DropdownFilter: FC<DropdownFilterProps> = ({ column, table, options, onSel
       {filterOpen && (
         <div className="data-table__dropdown_filter">
           <select value={selectedValue} onChange={handleSelect}>
-            <option value="">{t('global.select') || 'Select option'}</option>
+            <option value="">{t('global.select')}</option>
             {options.map(opt => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}

@@ -305,13 +305,13 @@ const TestProductionLLM: FC = () => {
           </Button>
         </div>
            <div className="llm-connection-section">
-            <p>{t('testModels.llmConnectionLabel') || 'LLM Connection'}</p>
+            <p>{t('testModels.llmConnectionLabel')}</p>
             <div className="llm-connection-controls">
               <FormSelect
                 label=""
                 name="connectionId"
                 options={connectionOptions}
-                placeholder={t('testModels.selectConnectionPlaceholder') || 'Select LLM Connection'}
+                placeholder={t('testModels.selectConnectionPlaceholder')}
                 onSelectionChange={(selection) => {
                   handleConnectionChange(selection?.value as string);
                 }}

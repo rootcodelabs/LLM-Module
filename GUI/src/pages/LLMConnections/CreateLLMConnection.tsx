@@ -29,8 +29,8 @@ const CreateLLMConnection = () => {
         });
         
         openDialog({
-          title: t('llmConnectionForm.createConnection.successDialogTitle') || 'Connection Succeeded',
-          content: <p>{t('llmConnectionForm.createConnection.successDialogMessage') || 'The provided LLM configuration is successfully configured'}</p>,
+          title: t('llmConnectionForm.createConnection.successDialogTitle'),
+          content: <p>{t('llmConnectionForm.createConnection.successDialogMessage')}</p>,
           footer: (
             <Button
               appearance={ButtonAppearanceTypes.PRIMARY}
@@ -39,7 +39,7 @@ const CreateLLMConnection = () => {
                 navigate('/llm-connections');
               }}
             >
-              {t('llmConnectionForm.createConnection.viewConnectionsButton') || 'View LLM Connections'}
+              {t('llmConnectionForm.createConnection.viewConnectionsButton')}
             </Button>
           ),
         });
@@ -58,7 +58,7 @@ const CreateLLMConnection = () => {
         openDialog({
           title: stage === 'promote'
             ? t('llmConnectionForm.createConnection.errors.promoteTitle')
-            : t('llmConnectionForm.createConnection.errorDialogTitle') || 'Connection Failed',
+            : t('llmConnectionForm.createConnection.errorDialogTitle'),
           content: (
             <div>
               <p>{t(`llmConnectionForm.createConnection.errors.${stage}`)}</p>
@@ -79,8 +79,8 @@ const CreateLLMConnection = () => {
               }}
             >
               {stage === 'promote'
-                ? t('llmConnectionForm.createConnection.viewConnectionsButton') || 'View LLM Connections'
-                : t('llmConnectionForm.createConnection.goBackButton') || 'Go Back'}
+                ? t('llmConnectionForm.createConnection.viewConnectionsButton')
+                : t('llmConnectionForm.createConnection.goBackButton')}
             </Button>
           ),
         });
@@ -93,11 +93,11 @@ const CreateLLMConnection = () => {
       
       if (isCreatingProductionConnection && hasExistingProductionConnection) {
         openDialog({
-          title: t('llmConnectionForm.createConnection.replaceProductionDialogTitle') || 'Replace Production Connection',
+          title: t('llmConnectionForm.createConnection.replaceProductionDialogTitle'),
           content: (
             <div>
-              <p>{t('llmConnectionForm.createConnection.replaceProductionDialogMessage', { connectionName: existingProductionConnection.connectionName }) || `A production connection "${existingProductionConnection.connectionName}" already exists.`}</p>
-              <p>{t('llmConnectionForm.createConnection.replaceProductionDialogWarning') || 'Creating this new production connection will replace the current one. Are you sure you want to proceed?'}</p>
+              <p>{t('llmConnectionForm.createConnection.replaceProductionDialogMessage', { connectionName: existingProductionConnection.connectionName })}</p>
+              <p>{t('llmConnectionForm.createConnection.replaceProductionDialogWarning')}</p>
             </div>
           ),
           footer: (
@@ -106,7 +106,7 @@ const CreateLLMConnection = () => {
                 appearance={ButtonAppearanceTypes.SECONDARY}
                 onClick={closeDialog}
               >
-                {t('llmConnectionForm.createConnection.cancelButton') || 'Cancel'}
+                {t('llmConnectionForm.createConnection.cancelButton')}
               </Button>
               <Button
                 appearance={ButtonAppearanceTypes.PRIMARY}
@@ -115,7 +115,7 @@ const CreateLLMConnection = () => {
                 }}
                 showLoadingIcon={createConnectionMutation.isLoading}
               >
-                {t('llmConnectionForm.createConnection.confirmReplaceButton') || 'Yes, Replace Production Connection'}
+                {t('llmConnectionForm.createConnection.confirmReplaceButton')}
               </Button>
             </div>
           ),
@@ -136,7 +136,7 @@ const CreateLLMConnection = () => {
             <Link to={'/llm-connections'}>
               <BackArrowButton />
             </Link>
-            <div className="title">{t('llmConnectionForm.createConnection.title') || 'Create LLM Connection'}</div>
+            <div className="title">{t('llmConnectionForm.createConnection.title')}</div>
           </div>
         </div>
         <LLMConnectionForm
