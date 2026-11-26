@@ -65,7 +65,9 @@
     "clearFilters": "Clear filters",
     "showEntries": "Show",
     "entries": "records",
-    "deleteSelected": "Delete selection"
+    "deleteSelected": "Delete selection",
+    "selectAll": "Select all",
+    "chosen": "Chosen"
   },
   "chat": {
     "unanswered": "Unanswered",
@@ -91,13 +93,47 @@
 
   "roles": {
     "ROLE_ADMINISTRATOR": "Administrator",
-    "ROLE_MODEL_TRAINER": "Trainer"
+    "ROLE_MODEL_TRAINER": "Trainer",
+    "ROLE_SERVICE_MANAGER": "Service manager",
+    "ROLE_CUSTOMER_SUPPORT_AGENT": "Customer support",
+    "ROLE_CHATBOT_TRAINER": "Chatbot trainer",
+    "ROLE_ANALYST": "Analyst"
+  },
+  "settings": {
+    "users": {
+      "displayName": "Display Name",
+      "userRoles": "User role(s)",
+      "userTitle": "User title",
+      "email": "E-mail",
+      "autoCorrector": "Auto corrector",
+      "useAutocorrect": "Text auto corrector",
+      "emailNotifications": "Notifications to e-mail",
+      "soundNotifications": "Sound notifications",
+      "popupNotifications": "Popup notifications",
+      "newForwardedChat": "New forwarded chat",
+      "newUnansweredChat": "New unanswered chat",
+      "newForwardedChatTitle": "Forwarded chat",
+      "newForwardedChatMessage": "You have new forwarded chat!",
+      "newValidationMessage": "New message to validate",
+      "statusCommentUpdated": "Status clarification updated"
+    }
+  },
+  "notification": {
+    "title": "Bürokratt",
+    "newMessage": "New message."
+  },
+  "multiDomains": {
+    "selectDomains": "Select Domains",
+    "chooseDomain": "Select domain:",
+    "allDomains": "All",
+    "noDomains": "No domains available. Please contact your system administrator."
   },
   "toast": {
     "success": {
       "title": "Success",
       "updateSuccess": "Updated successfully",
-      "copied": "Copied"
+      "copied": "Copied",
+      "userUpdated": "User updated"
     },
     "error": {
       "title": "Error"

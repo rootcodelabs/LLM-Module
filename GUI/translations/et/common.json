@@ -65,7 +65,9 @@
     "clearFilters": "Puhasta filtrid",
     "showEntries": "Näita",
     "entries": "kirjeid",
-    "deleteSelected": "Kustuta valik"
+    "deleteSelected": "Kustuta valik",
+    "selectAll": "Vali kõik",
+    "chosen": "Valitud"
   },
   "chat": {
     "unanswered": "Vastamata",
@@ -91,13 +93,47 @@
 
   "roles": {
     "ROLE_ADMINISTRATOR": "Administraator",
-    "ROLE_MODEL_TRAINER": "Treener"
+    "ROLE_MODEL_TRAINER": "Treener",
+    "ROLE_SERVICE_MANAGER": "Teenuse haldur",
+    "ROLE_CUSTOMER_SUPPORT_AGENT": "Nõustaja",
+    "ROLE_CHATBOT_TRAINER": "Vestlusroboti treener",
+    "ROLE_ANALYST": "Analüütik"
+  },
+  "settings": {
+    "users": {
+      "displayName": "Kuvatav nimi",
+      "userRoles": "Kasutaja roll(id)",
+      "userTitle": "Tiitel",
+      "email": "E-post",
+      "autoCorrector": "Autokorrektor",
+      "useAutocorrect": "Teksti autokorrektor",
+      "emailNotifications": "Märguanded e-postile",
+      "soundNotifications": "Häälmärguanded",
+      "popupNotifications": "Pop-up märguanded",
+      "newForwardedChat": "Uus suunatud vestlus",
+      "newUnansweredChat": "Uus vastamata vestlus",
+      "newForwardedChatTitle": "Suunatud vestlus",
+      "newForwardedChatMessage": "Sulle suunati uus vestlus!",
+      "newValidationMessage": "Uus teade kinnitamiseks",
+      "statusCommentUpdated": "Staatuse täpsustus uuendatud"
+    }
+  },
+  "notification": {
+    "title": "Bürokratt",
+    "newMessage": "Uus sõnum."
+  },
+  "multiDomains": {
+    "selectDomains": "Vali Domeenid",
+    "chooseDomain": "Vali domeen:",
+    "allDomains": "Kõik",
+    "noDomains": "Domeene ei ole saadaval. Palun võtke ühendust süsteemiadministraatoriga."
   },
   "toast": {
     "success": {
       "title": "Edu",
       "updateSuccess": "Uuendamine õnnestus",
-      "copied": "Kopeeritud"
+      "copied": "Kopeeritud",
+      "userUpdated": "Kasutaja uuendatud"
     },
     "error": {
       "title": "Viga"
