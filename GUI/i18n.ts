@@ -5,6 +5,13 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import commonEN from './translations/en/common.json';
 import commonET from './translations/et/common.json';
 
+// Keep <html lang> in sync with the active language so screen readers and
+// browser translation treat the page as the language actually shown.
+// Registered before init() so it also runs for the initially detected language.
+i18n.on('languageChanged', () => {
+  document.documentElement.lang = i18n.resolvedLanguage ?? 'et';
+});
+
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
