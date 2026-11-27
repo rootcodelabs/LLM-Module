@@ -35,11 +35,10 @@ from src.llm_orchestrator_config.exceptions import (
 from llm_orchestrator_config.llm_manager import LLMManager
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     OUT_OF_SCOPE_MESSAGES,
-    OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    OUTPUT_GUARDRAIL_VIOLATION_MESSAGES,
     OUTPUT_GUARDRAIL_VIOLATION_PARTIAL_MESSAGES,
     PRODUCTION_DEPLOYMENT_ENVIRONMENT,
-    STREAM_TOKEN_LIMIT_MESSAGE,
-    TECHNICAL_ISSUE_MESSAGE,
+    STREAM_TOKEN_LIMIT_MESSAGES,
     TECHNICAL_ISSUE_MESSAGES,
     TEST_DEPLOYMENT_ENVIRONMENT,
     get_localized_message,
@@ -276,7 +275,10 @@ class RagPipeline:
                                 f"{stream_ctx.token_count} > {StreamConfig.MAX_TOKENS_PER_STREAM}"
                             )
                             yield service.format_sse(
-                                chat_id, STREAM_TOKEN_LIMIT_MESSAGE
+                                chat_id,
+                                get_localized_message(
+                                    STREAM_TOKEN_LIMIT_MESSAGES, detected_language
+                                ),
                             )
                             yield service.format_sse(chat_id, "END")
 
@@ -298,7 +300,10 @@ class RagPipeline:
                                     detected_language,
                                 )
                             else:
-                                violation_message = OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
+                                violation_message = get_localized_message(
+                                    OUTPUT_GUARDRAIL_VIOLATION_MESSAGES,
+                                    detected_language,
+                                )
                             yield service.format_sse(chat_id, violation_message)
                             yield service.format_sse(chat_id, "END")
 
@@ -344,7 +349,12 @@ class RagPipeline:
                         logger.error(
                             f"[{chat_id}] [{stream_id}] Token limit exceeded (no guardrails)"
                         )
-                        yield service.format_sse(chat_id, STREAM_TOKEN_LIMIT_MESSAGE)
+                        yield service.format_sse(
+                            chat_id,
+                            get_localized_message(
+                                STREAM_TOKEN_LIMIT_MESSAGES, detected_language
+                            ),
+                        )
                         yield service.format_sse(chat_id, "END")
                         stream_ctx.mark_completed()
                         return
@@ -437,7 +447,10 @@ class RagPipeline:
             log_error_with_context(
                 logger, error_id, "streaming_generation", chat_id, stream_error
             )
-            yield service.format_sse(chat_id, TECHNICAL_ISSUE_MESSAGE)
+            yield service.format_sse(
+                chat_id,
+                get_localized_message(TECHNICAL_ISSUE_MESSAGES, detected_language),
+            )
             yield service.format_sse(chat_id, "END")
 
             record_streaming_usage()
@@ -636,15 +649,12 @@ class RagPipeline:
                     content=localized_msg,
                     chunks=None,  # No chunks for technical failures
                 )
-            # NOTE: pre-existing asymmetry — the non-test branch returns the
-            # non-localized constant while the test branch returns the
-            # localized message.
             return OrchestrationResponse(
                 chatId=request.chatId,
                 llmServiceActive=False,
                 questionOutOfLLMScope=False,
                 inputGuardFailed=False,
-                content=TECHNICAL_ISSUE_MESSAGE,
+                content=localized_msg,
             )
 
         # If response generator is unavailable -> standardized technical issue

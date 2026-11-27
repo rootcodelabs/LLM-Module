@@ -19,8 +19,9 @@ from models.request_models import (
 )
 from src.response_generator.response_generate import ResponseGeneratorAgent
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
-    TECHNICAL_ISSUE_MESSAGE,
-    INPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    TECHNICAL_ISSUE_MESSAGES,
+    INPUT_GUARDRAIL_VIOLATION_MESSAGES,
+    get_localized_message,
     PRODUCTION_DEPLOYMENT_ENVIRONMENT,
     RUUTER_PROMPT_CONFIG_ENDPOINT,
     PROMPT_CONFIG_CACHE_TTL,
@@ -581,10 +582,11 @@ class LLMOrchestrationService:
         Content Types:
             - Regular token: "Python", " is", " awesome"
             - Stream complete: "END"
-            - Input blocked: INPUT_GUARDRAIL_VIOLATION_MESSAGE
-            - Out of scope: OUT_OF_SCOPE_MESSAGE
-            - Guardrail failed: OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
-            - Technical error: TECHNICAL_ISSUE_MESSAGE
+            - Input blocked: INPUT_GUARDRAIL_VIOLATION_MESSAGES
+            - Out of scope: OUT_OF_SCOPE_MESSAGES
+            - Guardrail failed: OUTPUT_GUARDRAIL_VIOLATION_MESSAGES
+            - Technical error: TECHNICAL_ISSUE_MESSAGES
+            (all localized to the detected language)
         """
 
         # Track costs after streaming completes
@@ -674,7 +676,10 @@ class LLMOrchestrationService:
                             f"saved expensive service discovery. Reason: {input_check_result.reason}"
                         )
                         yield self.format_sse(
-                            request.chatId, INPUT_GUARDRAIL_VIOLATION_MESSAGE
+                            request.chatId,
+                            get_localized_message(
+                                INPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_language
+                            ),
                         )
                         yield self.format_sse(request.chatId, "END")
                         self.log_costs(costs_metric)
@@ -846,7 +851,10 @@ class LLMOrchestrationService:
                     logger, error_id, "streaming_orchestration", request.chatId, e
                 )
 
-                yield self.format_sse(request.chatId, TECHNICAL_ISSUE_MESSAGE)
+                yield self.format_sse(
+                    request.chatId,
+                    get_localized_message(TECHNICAL_ISSUE_MESSAGES, detected_language),
+                )
                 yield self.format_sse(request.chatId, "END")
 
                 self.log_costs(costs_metric)

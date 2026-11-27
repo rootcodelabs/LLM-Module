@@ -175,66 +175,118 @@ STREAMING_ALLOWED_ENVS = {"production", "testing"}
 TEST_DEPLOYMENT_ENVIRONMENT = "testing"
 PRODUCTION_DEPLOYMENT_ENVIRONMENT = "production"
 
-# Stream limit error messages
-STREAM_TIMEOUT_MESSAGE = (
-    "I apologize, but generating your response is taking longer than expected. "
-    "Please try asking your question in a simpler way or break it into smaller parts."
-)
+# ---------------------------------------------------------------------------
+# API-level error messages (streaming endpoint, rate limiting, request validation)
+#
+# These are produced before or outside the orchestration pipeline, so callers
+# detect the language from the user's message themselves (see
+# llm_orchestration_service_api.py). Register every dict here in
+# _HISTORY_EXCLUDED_MESSAGES (src/orchestration/constants.py).
+# ---------------------------------------------------------------------------
 
-STREAM_TOKEN_LIMIT_MESSAGE = (
-    "I apologize, but I've reached the maximum response length for this question. "
-    "The answer provided above covers the main points, but some details may have been abbreviated. "
-    "Please feel free to ask follow-up questions for more information."
-)
+# The stream exceeded its total or idle time budget.
+STREAM_TIMEOUT_MESSAGES = {
+    "et": "Vabandust, kuid vastuse koostamine võtab oodatust kauem aega. Palun proovige küsimus lihtsamalt sõnastada või jagage see väiksemateks osadeks.",
+    "ru": "Извините, но подготовка ответа занимает больше времени, чем ожидалось. Пожалуйста, попробуйте сформулировать вопрос проще или разбейте его на несколько частей.",
+    "en": "I apologize, but generating your response is taking longer than expected. Please try asking your question in a simpler way or break it into smaller parts.",
+}
 
-STREAM_SIZE_LIMIT_MESSAGE = (
-    "I apologize, but your request is too large to process. "
-    "Please shorten your message or reduce the conversation history and try again."
-)
+# The streamed answer hit the maximum token count and was cut short.
+STREAM_TOKEN_LIMIT_MESSAGES = {
+    "et": "Vabandust, kuid vastus jõudis selle küsimuse puhul maksimaalse pikkuseni. Ülaltoodud vastus hõlmab peamisi punkte, kuid mõned üksikasjad võivad olla lühendatud. Lisateabe saamiseks esitage julgelt täpsustavaid küsimusi.",
+    "ru": "Извините, но ответ на этот вопрос достиг максимальной длины. Приведённый выше ответ охватывает основные моменты, но некоторые детали могли быть сокращены. Задавайте уточняющие вопросы, чтобы получить больше информации.",
+    "en": "I apologize, but I've reached the maximum response length for this question. The answer provided above covers the main points, but some details may have been abbreviated. Please feel free to ask follow-up questions for more information.",
+}
 
-STREAM_CAPACITY_EXCEEDED_MESSAGE = (
-    "I apologize, but our service is currently at capacity. "
-    "Please wait a moment and try again. Thank you for your patience."
-)
+# Too many requests from the same author within the rate-limit window.
+RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGES = {
+    "et": "Vabandust, kuid olete lühikese aja jooksul saatnud liiga palju päringuid. Palun oodake hetk ja proovige uuesti.",
+    "ru": "Извините, но вы отправили слишком много запросов за короткое время. Пожалуйста, подождите немного и попробуйте снова.",
+    "en": "I apologize, but you've made too many requests in a short time. Please wait a moment before trying again.",
+}
 
-STREAM_USER_LIMIT_EXCEEDED_MESSAGE = (
-    "I apologize, but you have reached the maximum number of concurrent conversations. "
-    "Please wait for your existing conversations to complete before starting a new one."
-)
+# Too many tokens from the same author within the rate-limit window.
+RATE_LIMIT_TOKENS_EXCEEDED_MESSAGES = {
+    "et": "Vabandust, kuid saadate päringuid liiga kiiresti. Palun oodake mõni sekund ja proovige uuesti.",
+    "ru": "Извините, но вы отправляете запросы слишком быстро. Пожалуйста, подождите несколько секунд и попробуйте снова.",
+    "en": "I apologize, but you're sending requests too quickly. Please slow down and try again in a few seconds.",
+}
 
-# Rate limiting error messages
-RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE = (
-    "I apologize, but you've made too many requests in a short time. "
-    "Please wait a moment before trying again."
-)
+# The orchestration service is not initialised or not available.
+ORCHESTRATION_SERVICE_UNAVAILABLE_MESSAGES = {
+    "et": "Vabandust, kuid teenus ei ole hetkel saadaval. Palun proovige hiljem uuesti.",
+    "ru": "Извините, но сервис в данный момент недоступен. Пожалуйста, попробуйте позже.",
+    "en": "I apologize, but the service is not available at the moment. Please try again later.",
+}
 
-RATE_LIMIT_TOKENS_EXCEEDED_MESSAGE = (
-    "I apologize, but you're sending requests too quickly. "
-    "Please slow down and try again in a few seconds."
-)
+# Streaming failed with an unexpected error while generating the answer.
+STREAM_GENERATION_ERROR_MESSAGES = {
+    "et": "Vabandust, kuid vastuse koostamisel tekkis probleem. Palun proovige uuesti.",
+    "ru": "Извините, но при подготовке ответа возникла проблема. Пожалуйста, попробуйте снова.",
+    "en": "I apologize, but I encountered an issue while generating your response. Please try again.",
+}
 
-# Validation error messages
-VALIDATION_MESSAGE_TOO_SHORT = "Please provide a message with at least a few characters so I can understand your request."
+# Any other unexpected error in the streaming endpoint.
+UNEXPECTED_ERROR_MESSAGES = {
+    "et": "Vabandust, kuid tekkis ootamatu probleem. Palun proovige uuesti.",
+    "ru": "Извините, но возникла непредвиденная проблема. Пожалуйста, попробуйте снова.",
+    "en": "I apologize, but I encountered an unexpected issue. Please try again.",
+}
 
-VALIDATION_MESSAGE_TOO_LONG = (
-    "Your message is too long. Please shorten it and try again."
-)
+# Request validation messages (shown when the request body fails validation)
+VALIDATION_TOO_SHORT_MESSAGES = {
+    "et": "Palun kirjutage vähemalt paar tähemärki, et ma saaksin teie päringust aru.",
+    "ru": "Пожалуйста, напишите хотя бы несколько символов, чтобы я мог понять ваш запрос.",
+    "en": "Please provide a message with at least a few characters so I can understand your request.",
+}
 
-VALIDATION_MESSAGE_INVALID_FORMAT = (
-    "Please provide a valid message without special formatting."
-)
+VALIDATION_TOO_LONG_MESSAGES = {
+    "et": "Teie sõnum on liiga pikk. Palun lühendage seda ja proovige uuesti.",
+    "ru": "Ваше сообщение слишком длинное. Пожалуйста, сократите его и попробуйте снова.",
+    "en": "Your message is too long. Please shorten it and try again.",
+}
 
-VALIDATION_MESSAGE_GENERIC = "Please provide a valid message for your request."
+VALIDATION_INVALID_FORMAT_MESSAGES = {
+    "et": "Palun sisestage kehtiv sõnum ilma erivorminduseta.",
+    "ru": "Пожалуйста, введите корректное сообщение без специального форматирования.",
+    "en": "Please provide a valid message without special formatting.",
+}
 
-VALIDATION_CONVERSATION_HISTORY_ERROR = (
-    "There was an issue with the conversation history format. Please try again."
-)
+VALIDATION_INVALID_INPUT_MESSAGES = {
+    "et": "Palun sisestage oma päringu jaoks kehtiv sõnum.",
+    "ru": "Пожалуйста, введите корректное сообщение для вашего запроса.",
+    "en": "Please provide a valid message for your request.",
+}
 
-VALIDATION_REQUEST_TOO_LARGE = "Your request is too large. Please reduce the message size or conversation history and try again."
+VALIDATION_CONVERSATION_HISTORY_ERROR_MESSAGES = {
+    "et": "Vestluse ajaloo vorminguga tekkis probleem. Palun proovige uuesti.",
+    "ru": "Возникла проблема с форматом истории разговора. Пожалуйста, попробуйте снова.",
+    "en": "There was an issue with the conversation history format. Please try again.",
+}
 
-VALIDATION_REQUIRED_FIELDS_MISSING = "Required information is missing from your request. Please ensure all required fields are provided."
+VALIDATION_REQUEST_TOO_LARGE_MESSAGES = {
+    "et": "Teie päring on liiga suur. Palun lühendage sõnumit või vestluse ajalugu ja proovige uuesti.",
+    "ru": "Ваш запрос слишком большой. Пожалуйста, сократите сообщение или историю разговора и попробуйте снова.",
+    "en": "Your request is too large. Please reduce the message size or conversation history and try again.",
+}
 
-VALIDATION_GENERIC_ERROR = "I apologize, but I couldn't process your request. Please check your input and try again."
+VALIDATION_REQUIRED_FIELDS_MISSING_MESSAGES = {
+    "et": "Päringust puudub vajalik teave. Palun veenduge, et kõik nõutud väljad on täidetud.",
+    "ru": "В запросе отсутствует необходимая информация. Пожалуйста, убедитесь, что все обязательные поля заполнены.",
+    "en": "Required information is missing from your request. Please ensure all required fields are provided.",
+}
+
+VALIDATION_GENERIC_ERROR_MESSAGES = {
+    "et": "Vabandust, kuid ma ei saanud teie päringut töödelda. Palun kontrollige sisestatud andmeid ja proovige uuesti.",
+    "ru": "Извините, но я не смог обработать ваш запрос. Пожалуйста, проверьте введённые данные и попробуйте снова.",
+    "en": "I apologize, but I couldn't process your request. Please check your input and try again.",
+}
+
+VALIDATION_INVALID_DATA_FORMAT_MESSAGES = {
+    "et": "Vabandust, kuid ma ei saanud teie päringut vigase andmevormingu tõttu töödelda. Palun kontrollige sisestatud andmeid ja proovige uuesti.",
+    "ru": "Извините, но я не смог обработать ваш запрос из-за неверного формата данных. Пожалуйста, проверьте введённые данные и попробуйте снова.",
+    "en": "I apologize, but I couldn't process your request due to invalid data format. Please check your input and try again.",
+}
 
 # Connection status / budget enforcement messages
 CONNECTION_INACTIVE_MESSAGES = {

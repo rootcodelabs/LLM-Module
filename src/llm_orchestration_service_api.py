@@ -23,18 +23,24 @@ from src.utils.conversation_history_store import ConversationHistoryStore
 from src.utils.conversation_summary_generator import create_incremental_summarizer
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     STREAMING_ALLOWED_ENVS,
-    STREAM_TIMEOUT_MESSAGE,
-    RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE,
-    RATE_LIMIT_TOKENS_EXCEEDED_MESSAGE,
-    VALIDATION_MESSAGE_TOO_SHORT,
-    VALIDATION_MESSAGE_TOO_LONG,
-    VALIDATION_MESSAGE_INVALID_FORMAT,
-    VALIDATION_MESSAGE_GENERIC,
-    VALIDATION_CONVERSATION_HISTORY_ERROR,
-    VALIDATION_REQUEST_TOO_LARGE,
-    VALIDATION_REQUIRED_FIELDS_MISSING,
-    VALIDATION_GENERIC_ERROR,
+    STREAM_TIMEOUT_MESSAGES,
+    RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGES,
+    RATE_LIMIT_TOKENS_EXCEEDED_MESSAGES,
+    ORCHESTRATION_SERVICE_UNAVAILABLE_MESSAGES,
+    STREAM_GENERATION_ERROR_MESSAGES,
+    UNEXPECTED_ERROR_MESSAGES,
+    VALIDATION_TOO_SHORT_MESSAGES,
+    VALIDATION_TOO_LONG_MESSAGES,
+    VALIDATION_INVALID_FORMAT_MESSAGES,
+    VALIDATION_INVALID_INPUT_MESSAGES,
+    VALIDATION_CONVERSATION_HISTORY_ERROR_MESSAGES,
+    VALIDATION_REQUEST_TOO_LARGE_MESSAGES,
+    VALIDATION_REQUIRED_FIELDS_MISSING_MESSAGES,
+    VALIDATION_GENERIC_ERROR_MESSAGES,
+    VALIDATION_INVALID_DATA_FORMAT_MESSAGES,
+    get_localized_message,
 )
+from src.utils.language_detector import detect_language
 from src.llm_orchestrator_config.stream_config import StreamConfig
 from src.llm_orchestrator_config.exceptions import StreamTimeoutError
 from src.llm_orchestrator_config.feature_flags import FeatureFlags
@@ -65,6 +71,35 @@ from src.loki_logger import LokiLogger
 
 # Initialize Loki logger for centralized logging
 logger = LokiLogger(service_name="llm-orchestration-api")
+
+
+def _user_language(message: object) -> str:
+    """Language for user-facing errors raised before the pipeline detects it.
+
+    Uses the same detector as the pipeline so errors match the language the
+    user wrote in. Falls back to Estonian when there is no usable message text.
+    """
+    if isinstance(message, str) and message.strip():
+        return detect_language(message)
+    return "et"
+
+
+async def _user_language_from_body(request: Request) -> tuple[str, Dict[str, Any]]:
+    """Detect the user's language from a raw request body (validation errors).
+
+    Returns the language and the parsed body (empty dict if it is not JSON).
+    """
+    import json as json_module
+
+    try:
+        body = await request.body()
+        body_json = json_module.loads(body) if body else {}
+        if not isinstance(body_json, dict):
+            body_json = {}
+    except Exception:
+        # The body is already known to be invalid here; fall back to defaults.
+        body_json = {}
+    return _user_language(body_json.get("message")), body_json
 
 
 @asynccontextmanager
@@ -206,43 +241,38 @@ async def validation_exception_handler(
     )
 
     # Map technical errors to user-friendly messages
-    user_message = VALIDATION_GENERIC_ERROR
+    messages = VALIDATION_GENERIC_ERROR_MESSAGES
 
     if "message" in field_location:
         if "at least 3 characters" in error_msg.lower():
-            user_message = VALIDATION_MESSAGE_TOO_SHORT
+            messages = VALIDATION_TOO_SHORT_MESSAGES
         elif "maximum length" in error_msg.lower() or "exceeds" in error_msg.lower():
-            user_message = VALIDATION_MESSAGE_TOO_LONG
+            messages = VALIDATION_TOO_LONG_MESSAGES
         elif "sanitization" in error_msg.lower():
-            user_message = VALIDATION_MESSAGE_INVALID_FORMAT
+            messages = VALIDATION_INVALID_FORMAT_MESSAGES
         else:
-            user_message = VALIDATION_MESSAGE_GENERIC
+            messages = VALIDATION_INVALID_INPUT_MESSAGES
 
     elif "conversationhistory" in "".join(str(loc).lower() for loc in field_location):
-        user_message = VALIDATION_CONVERSATION_HISTORY_ERROR
+        messages = VALIDATION_CONVERSATION_HISTORY_ERROR_MESSAGES
 
     elif "payload" in error_msg.lower() or "size" in error_msg.lower():
-        user_message = VALIDATION_REQUEST_TOO_LARGE
+        messages = VALIDATION_REQUEST_TOO_LARGE_MESSAGES
 
     elif any(
         field in field_location
         for field in ["chatId", "authorId", "url", "environment"]
     ):
-        user_message = VALIDATION_REQUIRED_FIELDS_MISSING
+        messages = VALIDATION_REQUIRED_FIELDS_MISSING_MESSAGES
+
+    # Reply in the language the user wrote in (Estonian if it can't be detected)
+    language, body_json = await _user_language_from_body(request)
+    user_message = get_localized_message(messages, language)
 
     # Check if this is a streaming endpoint request
     if request.url.path == "/orchestrate/stream":
-        # Extract chatId from request body if available
-        chat_id = "unknown"
-        try:
-            body = await request.body()
-            if body:
-                body_json = json_module.loads(body)
-                chat_id = body_json.get("chatId", "unknown")
-        except Exception:
-            # Silently fall back to "unknown" if body parsing fails
-            # This is a validation error handler, so body is already malformed
-            pass
+        # Use chatId from the request body if available
+        chat_id = body_json.get("chatId", "unknown")
 
         # Return SSE format for streaming endpoint
         async def validation_error_stream() -> AsyncGenerator[str, None]:
@@ -285,10 +315,14 @@ async def pydantic_validation_exception_handler(
     # Log technical details internally
     logger.error(f"[{error_id}] Pydantic validation error: {exc.errors()} | {str(exc)}")
 
+    language, _ = await _user_language_from_body(request)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "error": "I apologize, but I couldn't process your request due to invalid data format. Please check your input and try again.",
+            "error": get_localized_message(
+                VALIDATION_INVALID_DATA_FORMAT_MESSAGES, language
+            ),
             "error_id": error_id,
             "type": "validation_error",
         },
@@ -596,6 +630,10 @@ async def stream_orchestrated_response(
             f"connection_id: {request.connection_id}"
         )
 
+        # Errors below are returned before the pipeline detects the language,
+        # so detect it here to reply in the language the user wrote in.
+        language = _user_language(request.message)
+
         # Streaming is only for allowed environments
         if request.environment not in STREAMING_ALLOWED_ENVS:
             error_msg = f"Streaming is only available for production and testing environments. Current environment: {request.environment}. Please use /orchestrate endpoint for non-streaming environments."
@@ -616,7 +654,9 @@ async def stream_orchestrated_response(
 
         # Get the orchestration service from app state
         if not hasattr(http_request.app.state, "orchestration_service"):
-            error_msg = "I apologize, but the service is not available at the moment. Please try again later."
+            error_msg = get_localized_message(
+                ORCHESTRATION_SERVICE_UNAVAILABLE_MESSAGES, language
+            )
             logger.error("Orchestration service not found in app state")
 
             async def service_error_stream() -> AsyncGenerator[str, None]:
@@ -634,7 +674,9 @@ async def stream_orchestrated_response(
 
         orchestration_service = http_request.app.state.orchestration_service
         if orchestration_service is None:
-            error_msg = "I apologize, but the service is not available at the moment. Please try again later."
+            error_msg = get_localized_message(
+                ORCHESTRATION_SERVICE_UNAVAILABLE_MESSAGES, language
+            )
             logger.error("Orchestration service is None")
 
             async def service_none_stream() -> AsyncGenerator[str, None]:
@@ -670,9 +712,13 @@ async def stream_orchestrated_response(
             if not rate_limit_result.allowed:
                 # Determine appropriate error message
                 if rate_limit_result.limit_type == "requests":
-                    error_msg = RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGE
+                    error_msg = get_localized_message(
+                        RATE_LIMIT_REQUESTS_EXCEEDED_MESSAGES, language
+                    )
                 else:
-                    error_msg = RATE_LIMIT_TOKENS_EXCEEDED_MESSAGE
+                    error_msg = get_localized_message(
+                        RATE_LIMIT_TOKENS_EXCEEDED_MESSAGES, language
+                    )
 
                 logger.warning(
                     f"Rate limit exceeded for {request.authorId} - "
@@ -729,7 +775,8 @@ async def stream_orchestrated_response(
                     )
                     # Send timeout message to client
                     yield create_sse_error_stream(
-                        request.chatId, STREAM_TIMEOUT_MESSAGE
+                        request.chatId,
+                        get_localized_message(STREAM_TIMEOUT_MESSAGES, language),
                     )
                 except Exception as stream_error:
                     error_id = generate_error_id()
@@ -743,7 +790,9 @@ async def stream_orchestrated_response(
                     # Send generic error message to client
                     yield create_sse_error_stream(
                         request.chatId,
-                        "I apologize, but I encountered an issue while generating your response. Please try again.",
+                        get_localized_message(
+                            STREAM_GENERATION_ERROR_MESSAGES, language
+                        ),
                     )
 
         # Stream the response
@@ -765,7 +814,10 @@ async def stream_orchestrated_response(
         async def unexpected_error_stream() -> AsyncGenerator[str, None]:
             yield create_sse_error_stream(
                 request.chatId if hasattr(request, "chatId") else "unknown",
-                "I apologize, but I encountered an unexpected issue. Please try again.",
+                get_localized_message(
+                    UNEXPECTED_ERROR_MESSAGES,
+                    _user_language(getattr(request, "message", None)),
+                ),
             )
 
         return StreamingResponse(

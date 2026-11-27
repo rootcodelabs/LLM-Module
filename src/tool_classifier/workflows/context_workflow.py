@@ -23,7 +23,7 @@ from src.utils.observation_utils import (
 )
 from src.llm_orchestrator_config.llm_ochestrator_constants import (
     is_output_guardrail_violation,
-    OUTPUT_GUARDRAIL_VIOLATION_MESSAGE,
+    OUTPUT_GUARDRAIL_VIOLATION_MESSAGES,
     OUTPUT_GUARDRAIL_VIOLATION_PARTIAL_MESSAGES,
     get_localized_message,
 )
@@ -340,14 +340,16 @@ class ContextWorkflowExecutor(BaseWorkflow):
                     # If part of the answer already streamed, use the "rest of the
                     # response" wording on a new line so it doesn't concatenate with
                     # the partial answer; otherwise use the standard message.
+                    detected_language = getattr(request, "_detected_language", "en")
                     if accumulated_response:
-                        detected_language = getattr(request, "_detected_language", "en")
                         violation_message = "\n\n" + get_localized_message(
                             OUTPUT_GUARDRAIL_VIOLATION_PARTIAL_MESSAGES,
                             detected_language,
                         )
                     else:
-                        violation_message = OUTPUT_GUARDRAIL_VIOLATION_MESSAGE
+                        violation_message = get_localized_message(
+                            OUTPUT_GUARDRAIL_VIOLATION_MESSAGES, detected_language
+                        )
                     yield orchestration_service.format_sse(chat_id, violation_message)
                     await orchestration_service.store_streaming_inference(
                         request, violation_message
